@@ -1,0 +1,1176 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  Ponte Meshtastic <-> TAK Server  (mesh2tak @@VERSIONE@@)
+#
+#  Prepara da zero un Raspberry con Raspberry Pi OS appena installato:
+#  aggiornamenti, Meshtastic (meshtasticd) per la scheda LoRa, configurazione
+#  del nodo con il canale privato della squadra, e il ponte con il TAK Server:
+#  posizioni, chat e oggetti dalla radio al server; chat e oggetti dal server alla radio.
+#
+#  Uso:
+#    sudo bash installa-ponte-meshtastic.sh            cerca da solo il certificato
+#    sudo bash installa-ponte-meshtastic.sh FILE.zip   pacchetto d'integrazione infra-TAK (o .p12)
+#    sudo bash installa-ponte-meshtastic.sh --rimuovi  toglie il ponte (Meshtastic resta)
+#  Opzione: --scheda usb|waveshare|meshadv|meshadv-mini|rak
+#           (predefinita: la radio Meshtastic collegata via USB; le schede sul Raspberry vanno indicate;
+#            rak = scheda RAK6421 sui pin con la radio RAK13300 nello slot 1)
+#  Opzione: --canale-squadra  chiede nome e chiave del canale della squadra gia' esistente (es. quello
+#           di ICARO) e lo mette sul nodo al posto di quello creato dall'installatore
+#  Opzione: --canale-pubblico  come secondario il canale pubblico standard di Meshtastic (LongFast, nome
+#           vuoto); --canale-pubblico=NOME un canale pubblico con quel nome (es. Public). Non tocca il
+#           canale della squadra e rifa' il QR
+#  Opzione: --accesso-esterno  gestione del nodo e stato del ponte anche da internet, dalla pagina della
+#           rete Meshtastic sul server: il ponte chiede da solo di entrare, alla fine l'installatore mostra
+#           il codice da confermare su quella pagina; --accesso-esterno=no lo spegne
+#  Opzione: --aggiorna-meshtasticd  aggiorna meshtasticd (bloccato alla versione installata: gli
+#           aggiornamenti automatici non lo toccano) e lo blocca di nuovo
+#  Dopo:    sudo mesh2tak-scorta  prepara una microSD di scorta (in un lettore USB), copia di questa
+#  Aggiornamenti (dalla 1.8.0): dalla pagina della rete, "Aggiorna i ponti"; il Raspberry scarica la
+#           versione nuova da GitHub, la controlla, la installa e se non riparte rimette quella di prima
+#
+#  La prima volta il Raspberry si riavvia a meta': poi si rilancia lo stesso comando.
+# =============================================================================
+set -euo pipefail
+
+VERSIONE="@@VERSIONE@@"
+SE_STESSO=$(readlink -f "$0" 2>/dev/null || echo "$0")   # copiato in $DIR alla fine: serve per tornare indietro
+DIR=/opt/mesh2tak
+VENV="$DIR/venv"
+CONF_DIR=/etc/mesh2tak
+CONF="$CONF_DIR/mesh2tak.conf"
+STATO="$CONF_DIR/installazione.conf"
+UTENTE=mesh2tak
+UNITA=/etc/systemd/system/mesh2tak.service
+LOG=/var/log/mesh2tak-installazione.log
+FILE_LINK=/root/canale-meshtastic.txt
+MESHTASTIC_VER=2.7.11
+# Libreria TAK di Meshtastic (TAKPacket-SDK): pubblicata come file allegato alla release su GitHub
+TAK_SDK_VER=0.10.0
+TAK_SDK_FILE=meshtastic_tak-0.10.0-py3-none-any.whl
+TAK_SDK_SHA256=34c0501137830712f69a41c2a2cfa0d0f57ab55a5f395d7b525e9b14219365d1
+NOME_NODO="Ponte CNSAS Varese"
+NOME_BREVE="PONT"
+CANALE="CNSAS"
+CONFIG_TXT="${MESH2TAK_CONFIG_TXT:-/boot/firmware/config.txt}"
+[ -f "$CONFIG_TXT" ] || [ -n "${MESH2TAK_CONFIG_TXT:-}" ] || CONFIG_TXT=/boot/config.txt
+MESHTASTICD_DIR="${MESH2TAK_MESHTASTICD_DIR:-/etc/meshtasticd}"
+SOLO_LOCALE_DIR=/etc/systemd/system/meshtasticd.service.d
+SOLO_LOCALE="$SOLO_LOCALE_DIR/mesh2tak-solo-locale.conf"
+AVAHI_APP=/etc/avahi/services/mesh2tak-meshtastic.service   # l'app Meshtastic trova il Raspberry da sola
+ACCESSO_DIR="$CONF_DIR/accesso"            # chiave SSH del ponte per il tunnel verso il server della rete
+AIUTO_ACCESSO=/usr/local/bin/mesh2tak-accesso
+AIUTO_SCORTA=/usr/local/bin/mesh2tak-scorta
+UNITA_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.service
+TIMER_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.timer
+STATO_AGGIORNA=/var/lib/mesh2tak-aggiorna
+SYSTEMD_DIR="${MESH2TAK_SYSTEMD_DIR:-/etc/systemd}"
+APT_CONF_DIR="${MESH2TAK_APT_CONF_DIR:-/etc/apt/apt.conf.d}"
+WATCHDOG_DEV="${MESH2TAK_WATCHDOG_DEV:-/dev/watchdog0}"
+WATCHDOG_CONF="$SYSTEMD_DIR/system.conf.d/mesh2tak-watchdog.conf"
+REGISTRI_CONF="$SYSTEMD_DIR/journald.conf.d/mesh2tak.conf"
+AGGIORNAMENTI_CONF="$APT_CONF_DIR/52mesh2tak-aggiornamenti"
+OS_RELEASE="${MESH2TAK_OS_RELEASE:-/etc/os-release}"
+
+if [ -t 1 ] || [ -n "${MESH2TAK_COLORI:-}" ]; then V=$'\033[32m'; G=$'\033[33m'; R=$'\033[31m'; B=$'\033[1m'; N=$'\033[0m'; else V= G= R= B= N=; fi
+passo()  { printf '\n%s%s%s\n' "$B" "$*" "$N"; }
+ok()     { printf '  %s✔%s %s\n' "$V" "$N" "$*"; }
+info()   { printf '    %s\n' "$*"; }
+avviso() { printf '  %s!%s %s\n' "$G" "$N" "$*"; }
+fallisci() { printf '\n%s✘ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
+fallisci_log() { printf '\n%s✘ %s%s\n' "$R" "$1" "$N" >&2; echo "    Ultime righe di $LOG:" >&2; tail -n 12 "$LOG" 2>/dev/null | sed 's/^/      /' >&2; exit 1; }
+
+INTERATTIVO=0; [ -t 0 ] && INTERATTIVO=1
+APT_OPZ=(-o DPkg::Lock::Timeout=600)   # al primo avvio gli aggiornamenti automatici possono tenere occupato apt
+valida_posizione() {  # stampa "lat,lon[,quota]" se le coordinate hanno senso
+  python3 - "$1" <<'PYPOS'
+import sys
+p = [x for x in sys.argv[1].replace(";", ",").replace(" ", ",").split(",") if x.strip()]
+try:
+    assert len(p) in (2, 3)
+    lat, lon = float(p[0]), float(p[1])
+    assert -90 <= lat <= 90 and -180 <= lon <= 180 and not (lat == 0 and lon == 0)
+    if len(p) == 3:
+        float(p[2])
+    print(",".join(p))
+except Exception:
+    sys.exit(1)
+PYPOS
+}
+porta_in_ascolto() {
+  if command -v ss >/dev/null; then
+    ss -ltnH 2>/dev/null | awk '{print $4}' | grep -E "[:.]$1\$" >/dev/null
+  else
+    python3 -c "import socket,sys; socket.create_connection(('127.0.0.1', int(sys.argv[1])), 2).close()" "$1" 2>/dev/null
+  fi
+}
+installa_pacchetti() {
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get "${APT_OPZ[@]}" install -y -q "$@" >>"$LOG" 2>&1 \
+    || { dpkg --configure -a >>"$LOG" 2>&1; apt-get "${APT_OPZ[@]}" update -q >>"$LOG" 2>&1 \
+         && apt-get "${APT_OPZ[@]}" install -y -q "$@" >>"$LOG" 2>&1; } \
+    || fallisci_log "apt-get non riesce a installare: $* (il Raspberry e' collegato a internet?)"
+}
+
+installato() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'; }
+scrivi_se_cambia() {  # $1 = file, contenuto da stdin; esito 0 se il file e' cambiato
+  local nuovo; nuovo=$(cat)
+  if [ -f "$1" ] && [ "$(cat "$1")" = "$nuovo" ]; then return 1; fi
+  mkdir -p "$(dirname "$1")"
+  printf '%s\n' "$nuovo" > "$1.nuovo" && chmod 644 "$1.nuovo" && mv -f "$1.nuovo" "$1"
+}
+
+# ---------------------------------------------------------------- argomenti
+PACCHETTO=""; SCHEDA="${MESH2TAK_SCHEDA:-}"; RIMUOVI=0; AGGIORNA_MESHTASTICD=0; CHIEDI_CANALE=0; CHIEDI_ACCESSO=0; NOME_ACCESSO_DATO=""
+CANALE_PUBBLICO_DATO=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --rimuovi) RIMUOVI=1 ;;
+    --aggiorna-meshtasticd) AGGIORNA_MESHTASTICD=1 ;;
+    --canale-squadra) CHIEDI_CANALE=1 ;;
+    --canale-pubblico) CANALE_PUBBLICO_DATO=longfast ;;
+    --canale-pubblico=*) CANALE_PUBBLICO_DATO="${1#--canale-pubblico=}"; CANALE_PUBBLICO_DATO="${CANALE_PUBBLICO_DATO:-longfast}" ;;
+    --accesso-esterno) CHIEDI_ACCESSO=1 ;;
+    --accesso-esterno=*) CHIEDI_ACCESSO=1; NOME_ACCESSO_DATO="${1#--accesso-esterno=}" ;;
+    --scheda) SCHEDA="${2:-}"; shift ;;
+    --scheda=*) SCHEDA="${1#--scheda=}" ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    *) PACCHETTO="$1" ;;
+  esac
+  shift
+done
+
+[ "$(id -u)" -eq 0 ] || fallisci "Va avviato con sudo:  sudo bash $0"
+command -v apt-get >/dev/null || fallisci "Questo installatore e' per Raspberry Pi OS (Debian)."
+
+# ---------------------------------------------------------------- rimozione
+if [ "$RIMUOVI" = 1 ]; then
+  passo "Rimozione del ponte Meshtastic -> TAK"
+  systemctl disable --now mesh2tak >/dev/null 2>&1 || true
+  NOME_RETE=$(sed -n 's/^ACCESSO_NOME=//p' "$STATO" 2>/dev/null | tr -d "'\"" | head -n1 || true)
+  PAGINA_RETE=$(sed -n 's/^ACCESSO_RETE=//p' "$STATO" 2>/dev/null | tr -d "'\"" | head -n1 || true)
+  rm -f "$UNITA" /usr/local/bin/mesh2tak-stato /usr/local/bin/mesh2tak-canale "$AIUTO_ACCESSO" "$AIUTO_SCORTA"
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  rm -rf "$DIR" "$CONF_DIR" /var/lib/mesh2tak
+  id "$UTENTE" >/dev/null 2>&1 && userdel "$UTENTE" >/dev/null 2>&1 || true
+  rm -f "$AVAHI_APP"
+  if [ -f "$SOLO_LOCALE" ] || [ -f "$MESHTASTICD_DIR/config.d/mesh2tak.yaml" ]; then
+    rm -f "$SOLO_LOCALE"; rmdir "$SOLO_LOCALE_DIR" 2>/dev/null || true
+    if [ -f "$MESHTASTICD_DIR/config.d/mesh2tak.yaml" ]; then
+      rm -f "$MESHTASTICD_DIR/config.d/mesh2tak.yaml"
+      printf '%s\n' "# Pagina di gestione di Meshtastic: https://<nome-del-raspberry>.local:9443" \
+        "Webserver:" "  Port: 9443" "  RootPath: /usr/share/meshtasticd/web" > "$MESHTASTICD_DIR/config.d/cnsas-web.yaml"
+    fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl restart meshtasticd >/dev/null 2>&1 || true
+    ok "meshtasticd come prima: pagina diretta sulla porta 9443, app via Wi-Fi sulla 4403"
+  fi
+  if [ -f "$WATCHDOG_CONF" ]; then rm -f "$WATCHDOG_CONF"; systemctl daemon-reexec >/dev/null 2>&1 || true; fi
+  if [ -f "$REGISTRI_CONF" ]; then rm -f "$REGISTRI_CONF"; systemctl restart systemd-journald >/dev/null 2>&1 || true; fi
+  rm -f "$AGGIORNAMENTI_CONF"
+  systemctl disable --now mesh2tak-aggiorna.timer >/dev/null 2>&1 || true
+  rm -f "$UNITA_AGGIORNA" "$TIMER_AGGIORNA"; rm -rf "$STATO_AGGIORNA"
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  if installato meshtasticd; then apt-mark unhold meshtasticd >/dev/null 2>&1 || true; fi
+  ok "tolte anche le protezioni del Raspberry (riavvio automatico, registri, aggiornamenti automatici)"
+  ok "Rimosso. Meshtastic e il canale della squadra restano come sono."
+  [ -n "$NOME_RETE" ] && info "Togli anche il ponte dalla rete: su ${PAGINA_RETE:-la pagina della rete}, 'Togli dalla rete' sotto $NOME_RETE"
+  exit 0
+fi
+
+# ---------------------------------------------------------------- aggiornamento di meshtasticd
+if [ "$AGGIORNA_MESHTASTICD" = 1 ]; then
+  passo "Aggiornamento di meshtasticd"
+  installato meshtasticd || fallisci "meshtasticd non e' installato (con la radio USB non serve)."
+  trap '' HUP     # se la connessione cade, l'aggiornamento finisce lo stesso
+  PRIMA=$(dpkg-query -W -f='${Version}' meshtasticd)
+  info "versione installata: $PRIMA. Il ponte si ferma per un minuto: fallo quando non ci sono interventi."
+  touch "$LOG"; chmod 600 "$LOG"
+  echo "=== $(date '+%F %T') aggiornamento di meshtasticd (mesh2tak $VERSIONE)" >>"$LOG"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-mark unhold meshtasticd >>"$LOG" 2>&1 || true
+  ESITO_AGG=0
+  apt-get "${APT_OPZ[@]}" update -q >>"$LOG" 2>&1 || ESITO_AGG=1
+  if [ "$ESITO_AGG" = 0 ]; then
+    apt-get "${APT_OPZ[@]}" install -y -q --only-upgrade -o Dpkg::Options::=--force-confold meshtasticd \
+      >>"$LOG" 2>&1 || ESITO_AGG=1
+  fi
+  apt-mark hold meshtasticd >>"$LOG" 2>&1 || true
+  [ "$ESITO_AGG" = 0 ] || fallisci_log "Aggiornamento di meshtasticd non riuscito (internet?): resta la versione $PRIMA."
+  DOPO=$(dpkg-query -W -f='${Version}' meshtasticd)
+  systemctl restart meshtasticd >/dev/null 2>&1 || true
+  if [ "$DOPO" = "$PRIMA" ]; then
+    ok "meshtasticd e' gia' all'ultima versione ($DOPO)"
+  else
+    ok "meshtasticd aggiornato: $PRIMA -> $DOPO"
+  fi
+  info "Il ponte si ricollega da solo in pochi secondi. meshtasticd resta fermo alla versione $DOPO."
+  exit 0
+fi
+
+mkdir -p "$CONF_DIR"; chmod 755 "$CONF_DIR"
+IN_CORSO="$CONF_DIR/.in-corso"            # PID dell'installazione che lavora staccata dal terminale
+SCHERMO="$CONF_DIR/installazione-schermo.log"
+if [ -z "${MESH2TAK_STACCATO:-}" ] && [ -f "$IN_CORSO" ] && kill -0 "$(cat "$IN_CORSO" 2>/dev/null)" 2>/dev/null; then
+  printf "%sL'installazione sta gia' lavorando%s (era partita prima che la connessione cadesse). Ecco a che punto e':\n" "$B" "$N"
+  tail -n 40 --pid="$(cat "$IN_CORSO")" -f "$SCHERMO" 2>/dev/null || true
+  exit 0
+fi
+[ -n "${MESH2TAK_STACCATO:-}" ] || printf '%sPonte Meshtastic <-> TAK Server%s (versione %s)\n' "$B" "$N" "$VERSIONE"
+touch "$LOG"; chmod 600 "$LOG"
+echo "=== $(date '+%F %T') installazione mesh2tak $VERSIONE" >>"$LOG"
+TMP=$(mktemp -d); chmod 700 "$TMP"
+trap 'rm -rf "$TMP"' EXIT
+[ -n "${MESH2TAK_STACCATO:-}" ] && trap 'rm -rf "$TMP"; rm -f "$IN_CORSO"' EXIT
+
+# Risposte gia' date nella prima esecuzione (prima del riavvio)
+HOST=""; PORTA=8089; CA_RIGA=""; POSIZIONE=""; SCHEDA_SALVATA=""; CERTIFICATO_OK=0; CANALE_SQUADRA=""; SECONDARIO=""
+SECONDARIO_DATO=0
+ACCESSO_NOME=""; ACCESSO_RETE=""
+# shellcheck disable=SC1090
+[ -f "$STATO" ] && . "$STATO"
+SCHEDA="${SCHEDA:-${SCHEDA_SALVATA:-}}"
+CANALE="${CANALE_SQUADRA:-$CANALE}"
+CHIAVE_CANALE="$CONF_DIR/.chiave-canale"   # chiave del canale della squadra da impostare (solo root, poi cancellata)
+if [ -z "$SCHEDA" ]; then
+  if [ -n "${MESH2TAK_COLLEGAMENTO:-}" ] || ls /dev/serial/by-id/* >/dev/null 2>&1; then SCHEDA=usb; else
+    fallisci "Non vedo nessuna radio Meshtastic collegata via USB. Collegala al Raspberry (con l'antenna avvitata)
+   usando un cavo dati, poi rilancia lo stesso comando. Se invece usi una scheda innestata sul Raspberry,
+   indicala:  sudo bash $(basename "$0") --scheda waveshare   (oppure meshadv, meshadv-mini, rak)"
+  fi
+fi
+case "$SCHEDA" in
+  waveshare)    FILE_SCHEDA=lora-waveshare-sxxx.yaml;        RUOLO=CLIENT_MUTE ;;
+  meshadv)      FILE_SCHEDA=lora-MeshAdv-900M30S.yaml;       RUOLO=CLIENT ;;
+  meshadv-mini) FILE_SCHEDA=lora-MeshAdv-Mini-900M22S.yaml;  RUOLO=CLIENT ;;
+  # RAK6421 + RAK13300 nello slot 1. Non lora-hat-rak-6421-pi-hat.yaml: quello ha la tabella
+  # TX_GAIN_LORA dell'amplificatore della RAK13302 e con la RAK13300 trasmetterebbe molto piu' piano.
+  rak)          FILE_SCHEDA=lora-RAK6421-13300-slot1.yaml;   RUOLO=CLIENT ;;
+  usb)          FILE_SCHEDA="";                              RUOLO=CLIENT ;;
+  *) fallisci "Scheda '$SCHEDA' non prevista: usa waveshare, meshadv, meshadv-mini, rak o usb" ;;
+esac
+salva_stato() {
+  {
+    printf 'HOST=%q\nPORTA=%q\nCA_RIGA=%q\nPOSIZIONE=%q\nSCHEDA_SALVATA=%q\nCERTIFICATO_OK=%q\nCANALE_SQUADRA=%q\nSECONDARIO=%q\n' \
+      "$HOST" "$PORTA" "$CA_RIGA" "$POSIZIONE" "$SCHEDA" "$CERTIFICATO_OK" "$CANALE_SQUADRA" "$SECONDARIO"
+    printf 'ACCESSO_NOME=%q\nACCESSO_RETE=%q\nSECONDARIO_DATO=%q\n' "$ACCESSO_NOME" "$ACCESSO_RETE" "$SECONDARIO_DATO"
+  } > "$STATO"
+  chmod 600 "$STATO"
+}
+
+# ---------------------------------------------------------------- 1. certificato e domande
+if [ -z "${MESH2TAK_STACCATO:-}" ]; then
+passo "1/9  Certificato del ponte"
+id "$UTENTE" >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "$UTENTE"
+if [ "$CERTIFICATO_OK" = 1 ] && [ -z "$PACCHETTO" ] && [ -f "$CONF_DIR/client.pem" ] && [ -f "$CONF_DIR/client.key" ]; then
+  ok "gia' installato nella prima esecuzione (TAK Server $HOST porta $PORTA)"
+else
+  CASA=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6); CASA=${CASA:-/root}
+  if [ -z "$PACCHETTO" ]; then
+    PACCHETTO=$(ls -td "$CASA"/*-integration.zip "$CASA"/*.p12 "$CASA"/*-integration/ ./*-integration.zip ./*.p12 \
+      2>/dev/null | head -n1 || true)
+    PACCHETTO=${PACCHETTO%/}
+    [ -n "$PACCHETTO" ] || fallisci "Non trovo il certificato. Copia sul Raspberry il pacchetto scaricato dalla console
+   infra-TAK (es. meshtastic-cnsas-integration.zip) nella cartella $CASA e riprova."
+  fi
+  [ -e "$PACCHETTO" ] || fallisci "File non trovato: $PACCHETTO"
+  info "uso: $PACCHETTO"
+  command -v openssl >/dev/null || installa_pacchetti openssl
+
+  PASSWORD="${MESH2TAK_PASSWORD:-}"
+  if [ -z "$PASSWORD" ] && [ "$INTERATTIVO" = 1 ]; then
+    read -r -s -p "    Password del certificato (Invio = atakatak): " PASSWORD || true; echo
+  fi
+  export M2T_PASS="${PASSWORD:-atakatak}"
+
+  HOST=""; PORTA=8089; CA_SORGENTE=""
+  TIPO="$PACCHETTO"; [ -d "$PACCHETTO" ] && TIPO="cartella.zip"   # Safari apre da solo lo zip in una cartella
+  case "$TIPO" in
+    *.zip)
+      if [ -d "$PACCHETTO" ]; then
+        mkdir -p "$TMP/pkg"; find "$PACCHETTO" -maxdepth 2 -type f -exec cp {} "$TMP/pkg/" \;
+      else
+        python3 - "$PACCHETTO" "$TMP/pkg" <<'PYZIP' || fallisci "Il file .zip non si apre: e' quello scaricato dalla console infra-TAK?"
+import sys, zipfile, os
+z = zipfile.ZipFile(sys.argv[1]); os.makedirs(sys.argv[2], exist_ok=True)
+for n in z.namelist():
+    b = os.path.basename(n)
+    if b and not n.endswith("/"):
+        with open(os.path.join(sys.argv[2], b), "wb") as f: f.write(z.read(n))
+PYZIP
+      fi
+      CERT=$(ls "$TMP"/pkg/*.pem 2>/dev/null | grep -v -e '/ca-chain.pem$' -e '/ca.pem$' | head -n1 || true)
+      CHIAVE=$(ls "$TMP"/pkg/*.key 2>/dev/null | head -n1 || true)
+      P12=$(ls "$TMP"/pkg/*.p12 2>/dev/null | grep -v -e '-legacy.p12$' -e '/truststore-' | head -n1 || true)
+      [ -f "$TMP/pkg/ca-chain.pem" ] && CA_SORGENTE="$TMP/pkg/ca-chain.pem"
+      if [ -f "$TMP/pkg/README.txt" ]; then
+        HOST=$(sed -n 's/^Server:[[:space:]]*//p' "$TMP/pkg/README.txt" | head -n1 | tr -d '\r[:space:]' || true)
+        P=$(sed -n 's/^Port:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$TMP/pkg/README.txt" | head -n1 || true)
+        [ -n "$P" ] && PORTA=$P
+      fi
+      case "$HOST" in "<"*|"") HOST="" ;; esac
+      if [ -n "$CERT" ] && [ -n "$CHIAVE" ]; then
+        cp "$CERT" "$TMP/client.pem"
+        openssl pkey -in "$CHIAVE" -passin env:M2T_PASS -out "$TMP/client.key" 2>/dev/null \
+          || fallisci "Password del certificato sbagliata (quella mostrata nella console infra-TAK)."
+      elif [ -n "$P12" ]; then
+        PACCHETTO="$P12"
+      else
+        fallisci "Nel pacchetto non c'e' ne' il certificato .pem/.key ne' il .p12."
+      fi
+      ;;
+    *.p12|*.pfx) ;;
+    *) fallisci "Formato non riconosciuto: serve il .zip della console infra-TAK (o la sua cartella) oppure un .p12" ;;
+  esac
+
+  if [ ! -f "$TMP/client.key" ]; then
+    estrai_p12() {  # $1 = opzioni, $2 = uscita
+      openssl pkcs12 -in "$PACCHETTO" -passin env:M2T_PASS $1 -out "$2" 2>/dev/null \
+        || openssl pkcs12 -legacy -in "$PACCHETTO" -passin env:M2T_PASS $1 -out "$2" 2>/dev/null
+    }
+    estrai_p12 "-clcerts -nokeys" "$TMP/client.pem" || fallisci "Password del certificato sbagliata, o file .p12 rovinato."
+    estrai_p12 "-nocerts -nodes" "$TMP/client.key.tmp" || fallisci "Non riesco a leggere la chiave dal .p12."
+    openssl pkey -in "$TMP/client.key.tmp" -out "$TMP/client.key" 2>/dev/null || fallisci "Chiave del .p12 non valida."
+    if estrai_p12 "-cacerts -nokeys" "$TMP/ca-p12.pem" && grep -q 'BEGIN CERTIFICATE' "$TMP/ca-p12.pem"; then
+      CA_SORGENTE="$TMP/ca-p12.pem"
+    fi
+  fi
+
+  PUB_CERT=$(openssl x509 -in "$TMP/client.pem" -noout -pubkey 2>/dev/null || true)
+  PUB_KEY=$(openssl pkey -in "$TMP/client.key" -pubout 2>/dev/null || true)
+  [ -n "$PUB_CERT" ] && [ "$PUB_CERT" = "$PUB_KEY" ] || fallisci "Certificato e chiave non corrispondono."
+  NOME_CERT=$(openssl x509 -in "$TMP/client.pem" -noout -subject -nameopt multiline | sed -n 's/^ *commonName *= *//p')
+  SCADENZA=$(openssl x509 -in "$TMP/client.pem" -noout -enddate | cut -d= -f2)
+  ok "certificato '$NOME_CERT' (scade: $SCADENZA)"
+
+  if [ -z "$HOST" ]; then
+    HOST="${MESH2TAK_HOST:-}"
+    if [ -z "$HOST" ] && [ "$INTERATTIVO" = 1 ]; then
+      read -r -p "    Indirizzo del TAK Server (es. takserver.tuodominio.it): " HOST || true
+    fi
+    [ -n "$HOST" ] || fallisci "Manca l'indirizzo del TAK Server: il pacchetto non lo dice e non l'hai scritto."
+  fi
+  ok "TAK Server: $HOST porta $PORTA"
+
+  install -m 644 -o root -g root "$TMP/client.pem" "$CONF_DIR/client.pem"
+  install -m 640 -o root -g "$UTENTE" "$TMP/client.key" "$CONF_DIR/client.key"
+  CA_RIGA="$CONF_DIR/server-ca.pem"
+  if [ -n "$CA_SORGENTE" ]; then
+    install -m 644 "$CA_SORGENTE" "$CONF_DIR/server-ca.pem"
+    ok "CA del TAK Server presa dal pacchetto"
+  else
+    # Nessuna CA nel file: si salva quella che il server presenta adesso (fiducia al primo uso)
+    openssl s_client -connect "$HOST:$PORTA" -servername "$HOST" -cert "$TMP/client.pem" -key "$TMP/client.key" \
+      -showcerts </dev/null 2>/dev/null | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > "$TMP/catena.pem" || true
+    if grep -q 'BEGIN CERTIFICATE' "$TMP/catena.pem"; then
+      install -m 644 "$TMP/catena.pem" "$CONF_DIR/server-ca.pem"
+      ok "CA del TAK Server salvata dal collegamento attuale"
+    else
+      CA_RIGA=""
+      rm -f "$CONF_DIR/server-ca.pem"
+      avviso "non riesco a leggere il certificato del TAK Server: connessione cifrata ma senza verifica del server"
+    fi
+  fi
+  CERTIFICATO_OK=1
+
+  if [ -z "$POSIZIONE" ]; then
+    if [ -n "${MESH2TAK_POSIZIONE:-}" ]; then
+      POSIZIONE=$(valida_posizione "$MESH2TAK_POSIZIONE" || true)
+    elif [ "$INTERATTIVO" = 1 ]; then
+      info "Dove si trova il Raspberry? Coordinate come le copi da Google Maps (es. 45.8205, 8.8257)."
+      for _ in 1 2 3; do
+        read -r -p "    Coordinate (Invio = salta, il Raspberry non comparira' sulla mappa): " RISPOSTA || RISPOSTA=""
+        [ -z "$RISPOSTA" ] && break
+        if POSIZIONE=$(valida_posizione "$RISPOSTA"); then break; fi
+        POSIZIONE=""
+        avviso "non le capisco: latitudine e longitudine separate da una virgola, es. 45.8205, 8.8257"
+      done
+    fi
+    if [ -n "$POSIZIONE" ]; then ok "posizione del Raspberry: $POSIZIONE"; else info "posizione del Raspberry: saltata"; fi
+  fi
+  salva_stato
+fi
+if [ "$CHIEDI_CANALE" = 1 ]; then
+  passo "   Canale della squadra (dato da fuori, es. ICARO)"
+  NOME_CANALE="${MESH2TAK_CANALE_SQUADRA:-}"
+  if [ -z "$NOME_CANALE" ] && [ "$INTERATTIVO" = 1 ]; then
+    read -r -p "    Nome del canale (Invio = CNSAS-VA): " NOME_CANALE || true
+  fi
+  NOME_CANALE="${NOME_CANALE:-CNSAS-VA}"
+  [ "$(printf '%s' "$NOME_CANALE" | wc -c)" -le 11 ] || fallisci "Il nome del canale puo' avere al massimo 11 caratteri."
+  CHIAVE="${MESH2TAK_CHIAVE_CANALE:-}"
+  for _ in 1 2 3; do
+    if [ -z "$CHIAVE" ] && [ "$INTERATTIVO" = 1 ]; then
+      read -r -s -p "    Chiave del canale (PSK in base64; non si vede mentre la scrivi o la incolli): " CHIAVE || true; echo
+    fi
+    if printf '%s' "$CHIAVE" | python3 -c 'import base64,sys; t=sys.stdin.read().strip(); t=t[7:] if t.lower().startswith("base64:") else t; sys.exit(0 if len(base64.b64decode(t, validate=True)) in (16, 32) else 1)' 2>/dev/null; then
+      break
+    fi
+    avviso "chiave non valida: serve quella del canale privato, in base64 (16 o 32 byte, es. 44 caratteri con = in fondo)"
+    CHIAVE=""
+    [ "$INTERATTIVO" = 1 ] || break
+  done
+  [ -n "$CHIAVE" ] || fallisci "Senza una chiave valida non cambio il canale. Rilancia con --canale-squadra quando ce l'hai."
+  ( umask 077; printf '%s\n' "$CHIAVE" > "$CHIAVE_CANALE" ); unset CHIAVE
+  CANALE_SQUADRA="$NOME_CANALE"; CANALE="$NOME_CANALE"; SECONDARIO="${MESH2TAK_SECONDARIO-}"
+  salva_stato
+  ok "canale '$CANALE' con la chiave data, secondario pubblico '${SECONDARIO:-LongFast}': li imposto al passo 7"
+fi
+if [ -n "$CANALE_PUBBLICO_DATO" ]; then
+  passo "   Canale pubblico (secondario)"
+  if [ "$(printf '%s' "$CANALE_PUBBLICO_DATO" | tr 'A-Z' 'a-z')" = longfast ]; then NUOVO_SECONDARIO=""
+  else NUOVO_SECONDARIO="$CANALE_PUBBLICO_DATO"; fi
+  [[ "$NUOVO_SECONDARIO" =~ ^[A-Za-z0-9_-]{0,11}$ ]] \
+    || fallisci "Nome del canale pubblico non valido: lettere, numeri, - e _, al massimo 11 caratteri (o niente: --canale-pubblico)."
+  SECONDARIO="$NUOVO_SECONDARIO"; SECONDARIO_DATO=1
+  salva_stato
+  if [ -z "$SECONDARIO" ]; then
+    ok "secondario: il canale pubblico standard di Meshtastic (LongFast, nome vuoto): lo imposto al passo 7, poi QR nuovo"
+  else
+    ok "secondario: canale pubblico '$SECONDARIO' (chiave AQ==): lo imposto al passo 7, poi QR nuovo"
+    info "Con un nome non e' il LongFast pubblico di tutti: lo sentono solo le radio con un canale '$SECONDARIO'."
+  fi
+fi
+if [ "$CHIEDI_ACCESSO" = 1 ]; then
+  passo "   Accesso da internet (pagina della rete Meshtastic)"
+  if [ "$NOME_ACCESSO_DATO" = no ]; then
+    [ -n "$ACCESSO_NOME" ] && info "togli anche il ponte dalla rete: su ${ACCESSO_RETE:-la pagina della rete}, 'Togli dalla rete' sotto $ACCESSO_NOME"
+    ACCESSO_NOME=""; ACCESSO_RETE=""
+    salva_stato
+    ok "accesso da internet spento: lo tolgo al passo 8"
+  else
+    # nome predefinito: quello di prima, altrimenti il nome del Raspberry in minuscolo
+    NOME_DEF="${ACCESSO_NOME:-$(hostname 2>/dev/null | tr 'A-Z_.' 'a-z--' | tr -cd 'a-z0-9-' | sed 's/^-*//; s/-*$//' | cut -c1-20 | sed 's/-*$//')}"
+    NOME_DEF="${NOME_DEF:-ponte1}"
+    NOME_A="${NOME_ACCESSO_DATO:-${MESH2TAK_ACCESSO_NOME:-}}"
+    for _ in 1 2 3; do
+      if [ -z "$NOME_A" ] && [ "$INTERATTIVO" = 1 ]; then
+        info "Nome di questo ponte nella rete: diventa l'indirizzo meshtastic-NOME (es. casa, sede, campo-dei-fiori)."
+        read -r -p "    Nome (minuscole, numeri e trattini; Invio = $NOME_DEF): " NOME_A || true
+      fi
+      NOME_A="${NOME_A:-$NOME_DEF}"
+      printf '%s' "$NOME_A" | grep -qE '^[a-z0-9]([a-z0-9-]{0,18}[a-z0-9])?$' && break
+      avviso "nome non valido: solo minuscole, numeri e trattini (non all'inizio o alla fine), al massimo 20 caratteri"
+      NOME_A=""
+      [ "$INTERATTIVO" = 1 ] || break
+    done
+    [ -n "$NOME_A" ] || fallisci "Nome del ponte non valido: rilancia con --accesso-esterno=casa (o un altro nome)."
+    # pagina della rete: dal dominio del TAK Server (takserver.tuodominio.it -> https://meshtastic.tuodominio.it)
+    RETE_DEF="${MESH2TAK_ACCESSO_RETE:-$ACCESSO_RETE}"
+    if [ -z "$RETE_DEF" ] && [ -n "$HOST" ] && ! printf '%s' "$HOST" | grep -qE '^[0-9.]+$' \
+       && [ "$(printf '%s' "$HOST" | tr -cd '.' | wc -c)" -ge 2 ]; then
+      RETE_DEF="https://meshtastic.${HOST#*.}"
+    fi
+    if [ -z "$RETE_DEF" ] && [ "$INTERATTIVO" = 1 ]; then
+      read -r -p "    Indirizzo della pagina della rete (es. https://meshtastic.tuodominio.it): " RETE_DEF || true
+    fi
+    printf '%s' "$RETE_DEF" | grep -qE '^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$' \
+      || fallisci "Indirizzo della pagina della rete non valido: rilancia con MESH2TAK_ACCESSO_RETE=https://meshtastic.tuodominio.it"
+    ACCESSO_NOME="$NOME_A"; ACCESSO_RETE="${RETE_DEF%/}"
+    salva_stato
+    ok "ponte '$ACCESSO_NOME' nella rete $ACCESSO_RETE: alla fine chiede da solo di entrare"
+  fi
+fi
+fi
+
+# ---------------------------------------------------------------- da qui in poi, senza domande
+# Aggiornamenti e installazione durano a lungo: il lavoro continua anche se la connessione ssh
+# cade (il Mac va in stop, il Wi-Fi salta). Rilanciando lo stesso comando si torna a seguirlo.
+if [ -z "${MESH2TAK_STACCATO:-}" ] && [ -t 1 ] && command -v setsid >/dev/null && tail --version >/dev/null 2>&1; then
+  : > "$SCHERMO"; chmod 600 "$SCHERMO"
+  info "(se la connessione cade il lavoro continua: ricollegati e rilancia lo stesso comando per seguirlo)"
+  MESH2TAK_STACCATO=1 MESH2TAK_COLORI="${B:+1}" setsid bash "$0" --scheda "$SCHEDA" >>"$SCHERMO" 2>&1 </dev/null &
+  FIGLIO=$!
+  echo "$FIGLIO" > "$IN_CORSO"
+  tail -n +1 --pid="$FIGLIO" -f "$SCHERMO" 2>/dev/null || true
+  ESITO_FIGLIO=0; wait "$FIGLIO" 2>/dev/null || ESITO_FIGLIO=$?
+  exit "$ESITO_FIGLIO"
+fi
+
+# ---------------------------------------------------------------- 2. sistema
+passo "2/9  Aggiornamento del Raspberry"
+BOOT_ID="${MESH2TAK_BOOT_ID:-$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo boot)}"
+RIAVVIO=0
+if [ -n "${MESH2TAK_SALTA_SISTEMA:-}" ]; then
+  info "saltato (prova)"
+elif [ -f "$CONF_DIR/.sistema-aggiornato" ]; then
+  ok "gia' aggiornato nella prima esecuzione"
+else
+  [ -f "$OS_RELEASE" ] && . "$OS_RELEASE"
+  case "${VERSION_ID:-}" in 12|13) ;; *) fallisci "Serve Raspberry Pi OS basato su Debian 12 o 13 (trovato: ${PRETTY_NAME:-?})." ;; esac
+  getent hosts download.opensuse.org >/dev/null || fallisci "Il Raspberry non e' collegato a internet (non trovo download.opensuse.org)."
+  info "scarico e installo gli aggiornamenti: su un Raspberry Pi 3 servono 10-20 minuti, non spegnerlo"
+  export DEBIAN_FRONTEND=noninteractive
+  dpkg --configure -a >>"$LOG" 2>&1 || true   # ripara un aggiornamento interrotto a meta'
+  apt-get "${APT_OPZ[@]}" update -q >>"$LOG" 2>&1 || fallisci_log "Non riesco a scaricare l'elenco degli aggiornamenti."
+  apt-get "${APT_OPZ[@]}" -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+    full-upgrade >>"$LOG" 2>&1 \
+    || fallisci_log "Aggiornamento non riuscito."
+  installa_pacchetti curl gnupg python3-venv openssl qrencode ca-certificates
+  touch "$CONF_DIR/.sistema-aggiornato"
+  RIAVVIO=1
+  ok "sistema aggiornato"
+fi
+
+# ---------------------------------------------------------------- 3. meshtastic
+passo "3/9  Meshtastic per la scheda LoRa ($SCHEDA)"
+if [ "$SCHEDA" = usb ]; then
+  info "radio USB: Meshtastic gira gia' sulla radio, sul Raspberry non serve meshtasticd"
+else
+  if [ -z "${MESH2TAK_SALTA_SISTEMA:-}" ] && ! command -v meshtasticd >/dev/null; then
+    . "$OS_RELEASE"
+    if [[ "${NAME:-}" == Raspbian* ]]; then DISTRO="Raspbian_${VERSION_ID}"; else DISTRO="Debian_${VERSION_ID}"; fi
+    info "aggiungo il repository ufficiale Meshtastic ($DISTRO) e installo meshtasticd"
+    echo "deb http://download.opensuse.org/repositories/network:/Meshtastic:/beta/$DISTRO/ /" \
+      > /etc/apt/sources.list.d/network:Meshtastic:beta.list
+    curl -fsSL "https://download.opensuse.org/repositories/network:Meshtastic:beta/$DISTRO/Release.key" \
+      | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/network_Meshtastic_beta.gpg 2>>"$LOG" \
+      || fallisci_log "Non riesco a scaricare la chiave del repository Meshtastic."
+    apt-get "${APT_OPZ[@]}" update -q >>"$LOG" 2>&1 || fallisci_log "Il repository Meshtastic non risponde."
+    installa_pacchetti meshtasticd
+  fi
+  [ -d "$MESHTASTICD_DIR/available.d" ] || fallisci "meshtasticd non sembra installato ($MESHTASTICD_DIR/available.d manca)."
+  [ -f "$MESHTASTICD_DIR/available.d/$FILE_SCHEDA" ] || fallisci "Nella versione installata di meshtasticd manca $FILE_SCHEDA."
+  mkdir -p "$MESHTASTICD_DIR/config.d"
+  # una sola scheda alla volta: altre configurazioni LoRa vengono messe da parte
+  for altro in "$MESHTASTICD_DIR"/config.d/lora-*.yaml; do
+    [ -e "$altro" ] || continue
+    [ "$(basename "$altro")" = "$FILE_SCHEDA" ] && continue
+    mkdir -p "$MESHTASTICD_DIR/messi-da-parte"; mv "$altro" "$MESHTASTICD_DIR/messi-da-parte/"
+    avviso "messa da parte una configurazione di un'altra scheda: $(basename "$altro")"
+  done
+  CAMBIO_MESHTASTICD=0
+  if ! cmp -s "$MESHTASTICD_DIR/available.d/$FILE_SCHEDA" "$MESHTASTICD_DIR/config.d/$FILE_SCHEDA"; then
+    cp "$MESHTASTICD_DIR/available.d/$FILE_SCHEDA" "$MESHTASTICD_DIR/config.d/"; CAMBIO_MESHTASTICD=1
+  fi
+  # meshtasticd su porte interne (pagina 9444, API 4404) e raggiungibile solo dal Raspberry: dalla rete
+  # pagina (9443) e app Meshtastic via Wi-Fi (4403) passano dal ponte, che intanto si mette in pausa.
+  # Il nodo serve un programma collegato alla volta: insieme al ponte, l'app lo butterebbe fuori.
+  rm -f "$MESHTASTICD_DIR/config.d/cnsas-web.yaml"   # versioni fino alla 1.2.2
+  printf '%s\n' "# Porte interne di Meshtastic per il ponte mesh2tak. Dalla rete: pagina https://<raspberry>.local:9443" \
+    "# e app Meshtastic via Wi-Fi sulla 4403, passando dal ponte (che intanto va in pausa)." \
+    "Webserver:" "  Port: 9444" "  RootPath: /usr/share/meshtasticd/web" "General:" "  APIPort: 4404" > "$TMP/mesh2tak.yaml"
+  if ! cmp -s "$TMP/mesh2tak.yaml" "$MESHTASTICD_DIR/config.d/mesh2tak.yaml"; then
+    cp "$TMP/mesh2tak.yaml" "$MESHTASTICD_DIR/config.d/mesh2tak.yaml"; CAMBIO_MESHTASTICD=1
+  fi
+  chown -R meshtasticd:meshtasticd "$MESHTASTICD_DIR/config.d" 2>/dev/null || true
+  mkdir -p "$SOLO_LOCALE_DIR"
+  printf '%s\n' "# Aggiunto da installa-ponte-meshtastic.sh: meshtasticd risponde solo ai programmi del Raspberry." \
+    "# Dalla rete pagina (9443) e app (4403) passano dal ponte, che si mette in pausa." \
+    "[Service]" "IPAddressAllow=localhost" "IPAddressDeny=any" > "$TMP/solo-locale.conf"
+  if ! cmp -s "$TMP/solo-locale.conf" "$SOLO_LOCALE"; then
+    cp "$TMP/solo-locale.conf" "$SOLO_LOCALE"; systemctl daemon-reload >/dev/null 2>&1 || true; CAMBIO_MESHTASTICD=1
+  fi
+  if [ -d "$(dirname "$AVAHI_APP")" ]; then
+    printf '%s\n' '<?xml version="1.0" standalone="no"?>' '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' \
+      '<service-group>' '  <name replace-wildcards="yes">Meshtastic %h</name>' '  <service>' \
+      '    <type>_meshtastic._tcp</type>' '    <port>4403</port>' "    <txt-record>shortname=$NOME_BREVE</txt-record>" \
+      '  </service>' '</service-group>' > "$AVAHI_APP"
+  fi
+  ok "configurazione: $FILE_SCHEDA; gestione del nodo attraverso il ponte (pagina 9443, app via Wi-Fi 4403)"
+  if [ "$SCHEDA" = waveshare ]; then
+    info "Nota: Meshtastic sconsiglia questa scheda per i messaggi lunghi. Per le posizioni va bene:"
+    info "il nodo resta in ascolto e non ripete i messaggi degli altri (ruolo CLIENT_MUTE)."
+  fi
+
+  if [ "$SCHEDA" = rak ]; then
+    info "La radio RAK13300 deve stare nello slot 1 della scheda RAK6421 (quello indicato come IO Slot 1)."
+  fi
+
+  # SPI: lo usa la scheda. Le schede che comandano da sole il pin CS (Waveshare, MeshAdv: "CS:" nel loro
+  # file) vogliono spi0-0cs, che lascia libero quel pin (indicazione ufficiale Meshtastic). La RAK6421
+  # invece usa il CS del kernel (spidev0.0, "CS" commentato nel suo file): con spi0-0cs non risponde.
+  [ -f "$CONFIG_TXT" ] || fallisci "Non trovo $CONFIG_TXT: e' davvero Raspberry Pi OS?"
+  MANCA=""; TOGLI_0CS=0
+  grep -qE '^[[:space:]]*dtparam=spi=on' "$CONFIG_TXT" || MANCA="$MANCA dtparam=spi=on"
+  if [ "$SCHEDA" = rak ]; then
+    grep -qE '^[[:space:]]*dtoverlay=spi0-0cs' "$CONFIG_TXT" && TOGLI_0CS=1
+  else
+    grep -qE '^[[:space:]]*dtoverlay=spi0-0cs' "$CONFIG_TXT" || MANCA="$MANCA dtoverlay=spi0-0cs"
+  fi
+  if [ -n "$MANCA" ] || [ "$TOGLI_0CS" = 1 ]; then
+    cp "$CONFIG_TXT" "$CONFIG_TXT.prima-di-meshtastic"
+    if [ "$TOGLI_0CS" = 1 ]; then
+      sed -i -E 's/^[[:space:]]*dtoverlay=spi0-0cs.*/# & (tolto: la scheda RAK6421 usa il chip select del kernel)/' "$CONFIG_TXT"
+      ok "tolta la riga dtoverlay=spi0-0cs: con la scheda RAK la radio non risponderebbe"
+    fi
+    if [ -n "$MANCA" ]; then
+      { echo; echo "[all]"; echo "# Scheda LoRa per Meshtastic (aggiunto da installa-ponte-meshtastic.sh)"
+        for riga in $MANCA; do echo "$riga"; done; } >> "$CONFIG_TXT"
+    fi
+    RIAVVIO=1
+    ok "interfaccia SPI attivata (serve un riavvio)"
+  else
+    ok "interfaccia SPI gia' attiva"
+  fi
+  systemctl enable meshtasticd >/dev/null 2>&1 || true
+  if [ "$RIAVVIO" = 0 ] && [ "$CAMBIO_MESHTASTICD" = 1 ]; then systemctl restart meshtasticd >/dev/null 2>&1 || true; fi
+fi
+
+# ---------------------------------------------------------------- 4. riavvio
+passo "4/9  Riavvio"
+if [ -f "$CONF_DIR/.riavvio" ] && [ "$(cat "$CONF_DIR/.riavvio")" = "$BOOT_ID" ]; then RIAVVIO=1; fi
+if [ "$RIAVVIO" = 1 ]; then
+  echo "$BOOT_ID" > "$CONF_DIR/.riavvio"
+  printf '\n%sIl Raspberry ora si riavvia.%s\n' "$B" "$N"
+  info "Tra 2-3 minuti ricollegati con ssh e lancia di nuovo lo stesso comando:"
+  info "    sudo bash $(basename "$0")"
+  info "Riprende da dove si e' fermato."
+  sleep 5
+  systemctl reboot
+  exit 0
+fi
+rm -f "$CONF_DIR/.riavvio"
+ok "non serve"
+
+# ---------------------------------------------------------------- 5. scheda lora
+passo "5/9  Scheda LoRa"
+SERIALE=0
+if [ "$SCHEDA" = usb ]; then
+  if [ -n "${MESH2TAK_COLLEGAMENTO:-}" ]; then COLLEGAMENTO="$MESH2TAK_COLLEGAMENTO"; else
+    USB=$(ls /dev/serial/by-id/* 2>/dev/null || true)
+    [ -n "$USB" ] || fallisci "Non vedo nessuna radio collegata via USB. Controlla che sia accesa, con l'antenna, e che il
+   cavo sia un cavo dati (quelli solo di ricarica non bastano), poi rilancia lo stesso comando."
+    [ "$(printf '%s\n' "$USB" | grep -c .)" = 1 ] || fallisci "Vedo piu' dispositivi USB: lascia collegata solo la radio Meshtastic e rilancia.
+$(printf '%s\n' "$USB" | sed 's/^/     /')"
+    COLLEGAMENTO="serial:$USB"
+  fi
+  SERIALE=1
+else
+  systemctl is-active --quiet meshtasticd || systemctl restart meshtasticd >/dev/null 2>&1 || true
+  ESITO_RADIO=attesa
+  for _ in $(seq 1 30); do
+    REG=$(journalctl -u meshtasticd -b --no-pager -o cat 2>/dev/null | tail -n 300 || true)
+    if printf '%s\n' "$REG" | grep -qiE 'init success'; then ESITO_RADIO=ok; break; fi
+    if printf '%s\n' "$REG" | grep -qiE 'No [A-Za-z0-9]+ radio'; then ESITO_RADIO=assente; break; fi
+    sleep 2
+  done
+  case "$ESITO_RADIO" in
+    ok) ok "la scheda risponde: $(printf '%s\n' "$REG" | grep -iE 'init success' | tail -n1 | sed 's/.*| *[0-9:]* *[0-9]* *//')" ;;
+    assente)
+      [ "$SCHEDA" = waveshare ] && SUGG="
+   Deve essere la Waveshare «SX1262 LoRaWAN HAT»: la «SX1262 LoRa HAT» con i ponticelli M0/M1 e' un'altra
+   scheda, a porta seriale, che Meshtastic non usa." || SUGG=""
+      fallisci "meshtasticd non trova la scheda LoRa. Spegni il Raspberry, controlla che la scheda sia
+   inserita bene su tutti i 40 pin e che sia il modello giusto ($SCHEDA), poi rilancia lo script.$SUGG" ;;
+    *) avviso "non trovo nel registro l'avvio della scheda: provo comunque" ;;
+  esac
+  COLLEGAMENTO="${MESH2TAK_COLLEGAMENTO:-tcp:127.0.0.1:4404}"
+  for _ in $(seq 1 30); do porta_in_ascolto 4404 && break; sleep 2; done
+  porta_in_ascolto 4404 || fallisci "meshtasticd non risponde sulla porta 4404. Registro: sudo journalctl -u meshtasticd -b"
+  if [ -z "${MESH2TAK_SALTA_SISTEMA:-}" ]; then
+    IP_RETE=$(hostname -I 2>/dev/null | awk '{print $1}')
+    if [ -n "$IP_RETE" ] && timeout 3 bash -c "exec 3<>/dev/tcp/$IP_RETE/4404" 2>/dev/null; then
+      avviso "meshtasticd risponde anche dalla rete (filtro di systemd non attivo): pagina e app passano"
+      info "comunque dal ponte, ma chi conosce le porte interne 9444 e 4404 lo scavalca."
+    else
+      ok "meshtasticd risponde solo al Raspberry: pagina e app passano dal ponte"
+    fi
+  fi
+fi
+ok "collegamento: $COLLEGAMENTO"
+
+# ---------------------------------------------------------------- 6. programmi del ponte
+passo "6/9  Programmi del ponte"
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
+  || fallisci "Serve Python 3.9 o piu' recente: aggiorna Raspberry Pi OS."
+[ "$SERIALE" = 1 ] && usermod -a -G dialout "$UTENTE"
+mkdir -p "$DIR"
+rm -rf "$DIR/dizionari"   # versioni precedenti: ora i dizionari sono dentro la libreria meshtastic-tak
+if [ ! -x "$VENV/bin/python" ]; then
+  if ! python3 -m venv "$VENV" >>"$LOG" 2>&1; then
+    rm -rf "$VENV"
+    installa_pacchetti python3-venv
+    python3 -m venv "$VENV" >>"$LOG" 2>&1 || fallisci_log "Non riesco a creare l'ambiente Python in $VENV"
+  fi
+fi
+if [ -z "${MESH2TAK_SALTA_PIP:-}" ]; then
+  info "scarico la libreria Meshtastic $MESHTASTIC_VER e la libreria TAK meshtastic-tak $TAK_SDK_VER..."
+  "$VENV/bin/python" -m pip install -q --disable-pip-version-check --upgrade pip >>"$LOG" 2>&1 || true
+  "$VENV/bin/python" -m pip install -q --disable-pip-version-check --no-deps "meshtastic==$MESHTASTIC_VER" >>"$LOG" 2>&1 \
+    || fallisci_log "Download della libreria Meshtastic non riuscito (internet?)"
+  RUOTA="$TMP/$TAK_SDK_FILE"
+  python3 - "https://github.com/meshtastic/TAKPacket-SDK/releases/download/v$TAK_SDK_VER/$TAK_SDK_FILE" "$RUOTA" \
+    >>"$LOG" 2>&1 <<'PYGET' || true
+import sys, urllib.request
+with urllib.request.urlopen(sys.argv[1], timeout=120) as r, open(sys.argv[2], "wb") as f:
+    f.write(r.read())
+PYGET
+  if [ -f "$RUOTA" ] && [ "$(sha256sum "$RUOTA" | cut -d' ' -f1)" = "$TAK_SDK_SHA256" ]; then
+    LIBRERIA_TAK="$RUOTA"
+  else
+    avviso "libreria TAK non scaricata da GitHub (o diversa da quella provata): la cerco su PyPI"
+    LIBRERIA_TAK="meshtastic-tak==$TAK_SDK_VER"
+  fi
+  "$VENV/bin/python" -m pip install -q --disable-pip-version-check "pyserial>=3.5" "protobuf>=5.29,<8" \
+    "pypubsub>=4.0.3" "tabulate>=0.9" "requests>=2.31" "packaging>=24.0" "zstandard>=0.23,<1" \
+    "$LIBRERIA_TAK" >>"$LOG" 2>&1 \
+    || fallisci_log "Download delle librerie Python non riuscito (internet?)"
+fi
+"$VENV/bin/python" -c 'import meshtastic.tcp_interface, meshtastic.serial_interface, pubsub, google.protobuf' 2>/dev/null \
+  || fallisci "La libreria Meshtastic non si carica: riprova l'installazione."
+
+cat > "$DIR/mesh2tak.py" <<'FINE_MESH2TAK_PY'
+@@MESH2TAK_PY@@
+FINE_MESH2TAK_PY
+chmod 755 "$DIR/mesh2tak.py"
+
+# microSD di scorta: programma di sistema (solo librerie standard di Python), lanciato da root
+cat > "$DIR/scorta.py" <<'FINE_SCORTA_PY'
+@@SCORTA_PY@@
+FINE_SCORTA_PY
+chmod 755 "$DIR/scorta.py"
+printf '%s\n' '#!/bin/sh' '# MicroSD di scorta del Raspberry (mesh2tak): copia identica su una microSD in un lettore USB' \
+  "exec python3 $DIR/scorta.py \"\$@\"" > "$AIUTO_SCORTA"
+chmod 755 "$AIUTO_SCORTA"
+
+# aggiornamento chiesto dalla pagina della rete: lo controlla ogni 2 minuti un timer, da root
+cat > "$DIR/aggiorna.py" <<'FINE_AGGIORNA_PY'
+@@AGGIORNA_PY@@
+FINE_AGGIORNA_PY
+chmod 755 "$DIR/aggiorna.py"
+mkdir -p "$STATO_AGGIORNA"; chmod 755 "$STATO_AGGIORNA"
+{
+  echo "[Unit]"
+  echo "Description=Ponte Meshtastic: aggiornamento chiesto dalla pagina della rete"
+  echo "After=network-online.target"
+  echo "Wants=network-online.target"
+  echo
+  echo "[Service]"
+  echo "Type=oneshot"
+  echo "ExecStart=/usr/bin/python3 -I $DIR/aggiorna.py"
+  echo "TimeoutStartSec=100min"
+  echo "Nice=5"
+} > "$UNITA_AGGIORNA.nuovo"
+{
+  echo "[Unit]"
+  echo "Description=Ponte Meshtastic: ogni 2 minuti guarda se la pagina della rete chiede un aggiornamento"
+  echo
+  echo "[Timer]"
+  echo "OnBootSec=2min"
+  echo "OnUnitInactiveSec=2min"
+  echo "RandomizedDelaySec=20s"
+  echo
+  echo "[Install]"
+  echo "WantedBy=timers.target"
+} > "$TIMER_AGGIORNA.nuovo"
+CAMBIO_UNITA=0
+for f in "$UNITA_AGGIORNA" "$TIMER_AGGIORNA"; do
+  if cmp -s "$f.nuovo" "$f"; then rm -f "$f.nuovo"; else mv -f "$f.nuovo" "$f"; CAMBIO_UNITA=1; fi
+done
+[ "$CAMBIO_UNITA" = 0 ] || systemctl daemon-reload >/dev/null 2>&1 || true
+systemctl enable --now mesh2tak-aggiorna.timer >/dev/null 2>&1 || true
+{ command -v rsync >/dev/null && command -v mkfs.vfat >/dev/null; } || installa_pacchetti rsync dosfstools
+
+LIB=$("$VENV/bin/python" "$DIR/mesh2tak.py" --verifica-librerie 2>&1 || true)
+printf '%s\n' "$LIB" | grep -q '^ESITO librerie=ok' || {
+  printf '%s\n' "$LIB" | grep -v '^ESITO' | sed 's/^/    /'
+  fallisci "La libreria TAK di Meshtastic non funziona (vedi sopra): riprova l'installazione."; }
+ok "librerie pronte ($(printf '%s\n' "$LIB" | sed -n 's/^ *\(meshtastic-tak [^:]*\):.*/\1/p'))"
+
+# ---------------------------------------------------------------- 7. nodo meshtastic
+passo "7/9  Nodo Meshtastic: regione EU 868, nome, ruolo $RUOLO, canale privato '$CANALE'"
+systemctl stop mesh2tak >/dev/null 2>&1 || true
+OPZ_CANALE=()
+[ -s "$CHIAVE_CANALE" ] && OPZ_CANALE+=(--chiave-canale-file "$CHIAVE_CANALE")
+if [ -n "$CANALE_SQUADRA" ] || [ "$SECONDARIO_DATO" = 1 ]; then OPZ_CANALE+=(--secondario "$SECONDARIO"); fi
+NODO=$("$VENV/bin/python" "$DIR/mesh2tak.py" --configura-nodo "$COLLEGAMENTO" --nome "$NOME_NODO" \
+  --nome-breve "$NOME_BREVE" --canale "$CANALE" --ruolo "$RUOLO" --posizione "$POSIZIONE" \
+  --file-link "$FILE_LINK" "${OPZ_CANALE[@]}" 2>&1 || true)
+printf '%s\n' "$NODO" | grep -v -e '^ESITO' -e '^LINK ' | sed 's/^/    /'
+printf '%s\n' "$NODO" | grep -q '^ESITO configurazione=ok' || fallisci "Configurazione del nodo non riuscita (vedi sopra)."
+rm -f "$CHIAVE_CANALE"   # la chiave ora e' sul nodo (e nel link del canale, solo root)
+ok "nodo configurato"
+cat > /usr/local/bin/mesh2tak-canale <<EOF
+#!/bin/sh
+# QR e link del canale della squadra, per aggiungere una radio dall'app Meshtastic
+[ "\$(id -u)" -eq 0 ] || { echo "Usa: sudo mesh2tak-canale"; exit 1; }
+echo "Per ogni radio: inquadra il QR con la fotocamera del telefono abbinato e,"
+echo "nell'app Meshtastic, scegli Sostituisci. Contiene la chiave del canale: non pubblicarlo."
+command -v qrencode >/dev/null && qrencode -t ANSIUTF8 < $FILE_LINK
+echo; cat $FILE_LINK
+EOF
+chmod 700 /usr/local/bin/mesh2tak-canale
+
+# ---------------------------------------------------------------- 8. ponte
+passo "8/9  Ponte con il TAK Server"
+vecchio() {  # valore gia' impostato in una configurazione precedente
+  if [ -f "$CONF" ]; then
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\([^#;]*\).*/\1/p" "$CONF" | head -n1 | sed 's/[[:space:]]*$//' || true
+  fi
+}
+CANALI=$(vecchio canali); CANALI=${CANALI:-privati}
+SQUADRA=$(vecchio squadra); SQUADRA=${SQUADRA:-Cyan}
+VALIDITA=$(vecchio validita_min); VALIDITA=${VALIDITA:-90}
+AGGIORNAMENTO=$(vecchio aggiornamento_min); AGGIORNAMENTO=${AGGIORNAMENTO:-2}
+ERRORE_MAX=$(vecchio errore_massimo_m); ERRORE_MAX=${ERRORE_MAX:-200}
+PONTE_MAPPA=$(vecchio includi_ponte); PONTE_MAPPA=${PONTE_MAPPA:-si}
+INVIO_RADIO=$(vecchio invio); INVIO_RADIO=${INVIO_RADIO:-si}
+TEMPO_RADIO=$(vecchio tempo_radio_percento); TEMPO_RADIO=${TEMPO_RADIO:-3}
+PAUSA_MAX=$(vecchio pausa_massima_min); PAUSA_MAX=${PAUSA_MAX:-30}
+if [ -f "$CONF" ] && grep -qE '^[[:space:]]*icona_ponte[[:space:]]*=' "$CONF"; then ICONA_PONTE=$(vecchio icona_ponte)
+else ICONA_PONTE="6d781afb-89a6-4c07-b2b9-a89748b6a38f/Landmarks/tower.png"; fi
+GESTIONE=no; PORTA_PAGINA=0; PORTA_APP=4403; NODO_PAGINA=https://127.0.0.1:9444
+if [ "$SCHEDA" = usb ]; then
+  PORTA_APP=0; NODO_PAGINA=""
+  # con la radio USB la pagina del ponte da' solo lo stato, per la pagina della rete
+  [ -n "$ACCESSO_NOME" ] && { GESTIONE=si; PORTA_PAGINA=9443; }
+else
+  GESTIONE=si; PORTA_PAGINA=9443
+fi
+if [ "$PORTA_PAGINA" != 0 ] && { [ ! -s "$CONF_DIR/pagina.pem" ] || [ ! -s "$CONF_DIR/pagina.key" ]; }; then
+  NOME_PAGINA=$(hostname 2>/dev/null || echo raspberry)
+  if openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=$NOME_PAGINA.local" \
+      -addext "subjectAltName=DNS:$NOME_PAGINA.local,DNS:$NOME_PAGINA,DNS:localhost" \
+      -keyout "$TMP/pagina.key" -out "$TMP/pagina.pem" >>"$LOG" 2>&1; then
+    install -m 644 -o root -g root "$TMP/pagina.pem" "$CONF_DIR/pagina.pem"
+    install -m 640 -o root -g "$UTENTE" "$TMP/pagina.key" "$CONF_DIR/pagina.key"
+  else
+    PORTA_PAGINA=0
+    avviso "certificato della pagina di gestione non creato: pagina spenta (l'app via Wi-Fi funziona)"
+  fi
+fi
+ACCESSO_SEZIONE=""
+if [ -n "$ACCESSO_NOME" ]; then
+  # chiave SSH del ponte per il tunnel verso il server della rete: resta sul Raspberry, solo l'utente del ponte la legge
+  command -v ssh-keygen >/dev/null && command -v ssh >/dev/null || installa_pacchetti openssh-client
+  mkdir -p "$ACCESSO_DIR"
+  if [ ! -s "$ACCESSO_DIR/chiave" ] || [ ! -s "$ACCESSO_DIR/chiave.pub" ]; then
+    rm -f "$ACCESSO_DIR/chiave" "$ACCESSO_DIR/chiave.pub"
+    ssh-keygen -q -t ed25519 -N "" -C "mesh2tak-$ACCESSO_NOME@$(hostname 2>/dev/null || echo raspberry)" \
+      -f "$ACCESSO_DIR/chiave" >>"$LOG" 2>&1 || fallisci_log "Non riesco a creare la chiave SSH del ponte."
+    ok "chiave SSH del ponte creata (resta sul Raspberry)"
+  fi
+  chown -R "$UTENTE:$UTENTE" "$ACCESSO_DIR"; chmod 700 "$ACCESSO_DIR"
+  chmod 600 "$ACCESSO_DIR/chiave"; chmod 644 "$ACCESSO_DIR/chiave.pub"
+  if [ "$PORTA_PAGINA" = 0 ]; then
+    avviso "accesso da internet spento: serve la pagina del ponte (certificato non creato)"
+  else
+    ACCESSO_SEZIONE="si"
+  fi
+else
+  rm -rf "$ACCESSO_DIR" "$AIUTO_ACCESSO" /var/lib/mesh2tak/server-rete.known_hosts
+fi
+[ -f "$CONF" ] && cp "$CONF" "$CONF.prima-di-$(date +%Y%m%d-%H%M%S)"
+cat > "$CONF" <<EOF
+# Ponte Meshtastic <-> TAK Server. Dopo una modifica:  sudo systemctl restart mesh2tak
+[tak]
+host = $HOST
+porta = $PORTA
+certificato = $CONF_DIR/client.pem
+chiave = $CONF_DIR/client.key
+ca_server = $CA_RIGA
+
+[meshtastic]
+collegamento = $COLLEGAMENTO
+# privati = solo i canali con chiave propria (consigliato) | tutti | elenco, es. 1,2
+canali = $CANALI
+
+[mappa]
+# minuti in cui una radio resta sulla mappa dopo l'ultimo segnale ricevuto
+validita_min = $VALIDITA
+# ogni quanti minuti il ponte ripete al TAK Server le posizioni ancora valide, per chi apre l'app
+# dopo. Non usa la radio: ogni posizione nuova passa subito; quanto spesso le radio mandano la
+# posizione si imposta sulle radio.
+aggiornamento_min = $AGGIORNAMENTO
+# posizioni volutamente approssimate oltre questo errore (metri) vengono scartate
+errore_massimo_m = $ERRORE_MAX
+# colore squadra TAK delle radio Meshtastic: White, Yellow, Orange, Magenta, Red, Maroon,
+# Purple, Dark Blue, Blue, Cyan, Teal, Green, Dark Green, Brown
+squadra = $SQUADRA
+# mostra sulla mappa anche il Raspberry (si/no)
+includi_ponte = $PONTE_MAPPA
+# icona del Raspberry sulla mappa: traliccio con onde radio (insieme OSM, di serie in ATAK e TAK Aware).
+# Vuoto = simbolo militare di installazione.
+icona_ponte = $ICONA_PONTE
+
+[radio]
+# manda alle radio in campo chat, segnaposti, forme, percorsi, MEDEVAC e allarmi che arrivano dal
+# TAK Server (si/no). Serve un certificato con lettura e scrittura (BOTH) sul canale della squadra.
+invio = $INVIO_RADIO
+# tempo di trasmissione massimo che il ponte usa per questi invii, in percento (la legge ne permette 10;
+# il resto serve alle radio della squadra). Gli allarmi passano anche oltre.
+tempo_radio_percento = $TEMPO_RADIO
+
+[gestione]
+# gestione del nodo (solo con la scheda sui pin): pagina nel browser https://<raspberry>.local:9443 e
+# app Meshtastic via Wi-Fi sulla porta 4403. Mentre si usano il ponte va in pausa da solo e riprende
+# 2 minuti dopo la chiusura, al massimo dopo pausa_massima_min minuti (poi: ricaricare la pagina,
+# oppure chiudere l'app e riaprirla dopo 6 minuti). 0 = porta spenta.
+attiva = $GESTIONE
+porta_pagina = $PORTA_PAGINA
+porta_app = $PORTA_APP
+# vuoto con la radio USB: la pagina da' solo lo stato del ponte (per la pagina della rete)
+nodo_pagina = $NODO_PAGINA
+certificato = $CONF_DIR/pagina.pem
+chiave = $CONF_DIR/pagina.key
+pausa_massima_min = $PAUSA_MAX
+EOF
+if [ -n "$ACCESSO_SEZIONE" ]; then
+  cat >> "$CONF" <<EOF
+
+[accesso_esterno]
+# Gestione del nodo e stato del ponte anche da internet, dalla pagina della rete Meshtastic sul server
+# (dietro Authentik, solo amministratori). Il Raspberry apre un tunnel SSH verso il server: a casa non
+# si apre nessuna porta. Codice di controllo, stato e chiave del ponte:  sudo mesh2tak-accesso
+attivo = si
+nome = $ACCESSO_NOME
+rete = $ACCESSO_RETE
+chiave = $ACCESSO_DIR/chiave
+EOF
+fi
+chmod 644 "$CONF"
+
+come_utente() { if command -v runuser >/dev/null; then runuser -u "$UTENTE" -- "$@"; else su -s /bin/sh "$UTENTE" -c "$(printf '%q ' "$@")"; fi; }
+PROVA=$(come_utente "$VENV/bin/python" "$DIR/mesh2tak.py" -c "$CONF" --prova 2>&1 || true)
+printf '%s\n' "$PROVA" | grep -v '^ESITO' | sed 's/^/    /'
+ESITO_NODO=$(printf '%s\n' "$PROVA" | sed -n 's/^ESITO nodo=\([a-z]*\).*/\1/p')
+ESITO_TAK=$(printf '%s\n' "$PROVA" | sed -n 's/^ESITO tak=\([a-z]*\).*/\1/p')
+ESITO_LIB=$(printf '%s\n' "$PROVA" | sed -n 's/^ESITO librerie=\([a-z]*\).*/\1/p')
+
+{
+  echo "[Unit]"
+  echo "Description=Ponte Meshtastic <-> TAK Server"
+  echo "After=network-online.target meshtasticd.service"
+  echo "Wants=network-online.target"
+  echo
+  echo "[Service]"
+  echo "User=$UTENTE"
+  echo "Group=$UTENTE"
+  [ "$SERIALE" = 1 ] && echo "SupplementaryGroups=dialout"
+  echo "ExecStart=$VENV/bin/python $DIR/mesh2tak.py -c $CONF"
+  echo "Restart=always"
+  echo "RestartSec=30"
+  echo "RestartPreventExitStatus=78"
+  echo "NoNewPrivileges=true"
+  echo "ProtectSystem=strict"
+  echo "ProtectHome=true"
+  echo "PrivateTmp=true"
+  echo "StateDirectory=mesh2tak"
+  echo
+  echo "[Install]"
+  echo "WantedBy=multi-user.target"
+} > "$UNITA"
+if [ -n "$ACCESSO_SEZIONE" ]; then
+  CODICE=$("$VENV/bin/python" "$DIR/mesh2tak.py" --codice-controllo "$ACCESSO_DIR/chiave.pub" 2>>"$LOG" || true)
+  {
+    echo "#!/bin/sh"
+    echo "# Accesso da internet del ponte (mesh2tak): codice di controllo, stato e chiave del ponte"
+    echo "NOME='$ACCESSO_NOME'"
+    echo "RETE='$ACCESSO_RETE'"
+    echo "CODICE='$CODICE'"
+    echo "CHIAVE_PUB='$ACCESSO_DIR/chiave.pub'"
+    echo "PORTA='$PORTA_PAGINA'"
+    cat <<'EOF'
+echo "Ponte '$NOME' nella rete Meshtastic $RETE"
+echo "Codice di controllo di questo Raspberry:  $CODICE"
+echo
+echo "Stato:"
+python3 - "$PORTA" <<'FINE_PY' 2>/dev/null || echo "  il ponte non risponde: guarda  sudo mesh2tak-stato"
+import json, ssl, sys, urllib.request
+c = ssl.create_default_context()
+c.check_hostname = False
+c.verify_mode = ssl.CERT_NONE
+o = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=c))
+d = json.load(o.open("https://127.0.0.1:%s/mesh2tak/stato.json" % sys.argv[1], timeout=5))
+a = d.get("accesso") or {}
+print("  " + (a.get("messaggio") or "accesso da internet non attivo"))
+FINE_PY
+echo
+echo "Sulla pagina della rete la richiesta di questo Raspberry ha lo stesso codice: approvala li'."
+echo "Se la richiesta non arriva, sulla pagina usa 'Aggiungilo a mano' con il nome $NOME e questa chiave:"
+echo
+echo "  $(cat "$CHIAVE_PUB")"
+echo
+echo "Ultime notizie dell'accesso da internet:"
+journalctl -u mesh2tak --no-pager -o short-iso 2>/dev/null | grep 'Accesso da internet' | tail -n "${1:-5}" | sed 's/^/  /'
+EOF
+  } > "$AIUTO_ACCESSO"
+  chmod 755 "$AIUTO_ACCESSO"
+fi
+cat > /usr/local/bin/mesh2tak-stato <<'EOF'
+#!/bin/sh
+# Stato del ponte Meshtastic -> TAK e ultime righe del suo registro
+systemctl --no-pager status mesh2tak 2>/dev/null | sed -n '1,3p'
+echo
+journalctl -u mesh2tak -n "${1:-40}" --no-pager -o short-iso 2>/dev/null
+EOF
+chmod 755 /usr/local/bin/mesh2tak-stato
+systemctl daemon-reload
+systemctl enable mesh2tak >/dev/null 2>&1
+systemctl restart mesh2tak
+sleep 8
+if systemctl is-active --quiet mesh2tak; then ok "ponte attivo, riparte da solo a ogni accensione"; else
+  avviso "il servizio non risulta attivo: guarda il registro con  sudo mesh2tak-stato"; fi
+if [ "$GESTIONE" = si ]; then
+  for P in $PORTA_PAGINA $PORTA_APP; do
+    [ "$P" = 0 ] && continue
+    if python3 -c "import socket,sys; socket.create_connection(('127.0.0.1', int(sys.argv[1])), 3).close()" "$P" 2>/dev/null; then
+      if [ -n "$NODO_PAGINA" ]; then ok "gestione del nodo pronta sulla porta $P: mentre la usi il ponte va in pausa da solo"
+      else ok "stato del ponte pronto sulla porta $P (per la pagina della rete)"; fi
+    else
+      avviso "la gestione del nodo non risponde sulla porta $P: guarda  sudo mesh2tak-stato"
+    fi
+  done
+fi
+
+# cosa dice il ponte della sua richiesta alla pagina della rete:  esito|collegato|messaggio
+leggi_accesso() {
+  python3 - "$PORTA_PAGINA" <<'FINE_PY' 2>/dev/null || true
+import json, ssl, sys, urllib.request
+c = ssl.create_default_context()
+c.check_hostname = False
+c.verify_mode = ssl.CERT_NONE
+o = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=c))
+try:
+    d = json.load(o.open("https://127.0.0.1:%s/mesh2tak/stato.json" % sys.argv[1], timeout=5))
+except Exception:
+    sys.exit(0)
+a = d.get("accesso") or {}
+print("%s|%s|%s" % (a.get("richiesta") or "", "si" if a.get("collegato") else "",
+                    " ".join(str(a.get("messaggio") or "").split())))
+FINE_PY
+}
+STATO_ACCESSO=""
+if [ -n "$ACCESSO_SEZIONE" ]; then
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    STATO_ACCESSO=$(leggi_accesso)
+    case "$STATO_ACCESSO" in ""|*"|in avvio") sleep 2 ;; *) break ;; esac
+  done
+fi
+
+# ---------------------------------------------------------------- 9. protezioni
+passo "9/9  Protezioni del Raspberry"
+if [ -e "$WATCHDOG_DEV" ]; then
+  if scrivi_se_cambia "$WATCHDOG_CONF" <<'FINE_WATCHDOG'
+# mesh2tak: se il Raspberry si blocca del tutto, il watchdog del chip lo riavvia da solo.
+# systemd gli dice ogni 7 secondi che e' vivo; se per 14 secondi non succede, il chip riavvia
+# (il Raspberry Pi accetta al massimo 15 secondi).
+[Manager]
+RuntimeWatchdogSec=14s
+RebootWatchdogSec=2min
+FINE_WATCHDOG
+  then
+    systemctl daemon-reexec >>"$LOG" 2>&1 || true
+    sleep 1
+  fi
+  WD_STATO=$(cat "/sys/class/watchdog/$(basename "$WATCHDOG_DEV")/state" 2>/dev/null || true)
+  WD_VALORE=$(systemctl show -p RuntimeWatchdogUSec --value 2>/dev/null || true)
+  if [ "$WD_STATO" = active ] || { [ -z "$WD_STATO" ] && [ "$WD_VALORE" = 14s ]; }; then
+    ok "riavvio automatico se il Raspberry si blocca (watchdog di 14 secondi)"
+  else
+    avviso "watchdog impostato ma non ancora attivo (${WD_STATO:-${WD_VALORE:-?}}): parte al prossimo riavvio"
+  fi
+else
+  avviso "questo Raspberry non ha il watchdog ($WATCHDOG_DEV): niente riavvio automatico se si blocca"
+fi
+
+if scrivi_se_cambia "$REGISTRI_CONF" <<'FINE_REGISTRI'
+# mesh2tak: registri del sistema al massimo 200 MB, e sempre almeno 1 GB libero sulla microSD
+[Journal]
+SystemMaxUse=200M
+SystemKeepFree=1G
+FINE_REGISTRI
+then
+  systemctl restart systemd-journald >>"$LOG" 2>&1 || true
+fi
+ok "registri del sistema al massimo 200 MB: la microSD non si riempie"
+
+installato unattended-upgrades || installa_pacchetti unattended-upgrades
+scrivi_se_cambia "$AGGIORNAMENTI_CONF" <<'FINE_AGGIORNAMENTI' || true
+// mesh2tak: ogni notte il Raspberry installa da solo le correzioni di sicurezza di Debian.
+// Mai meshtasticd (si aggiorna con:  sudo bash installa-ponte-meshtastic.sh --aggiorna-meshtasticd),
+// mai kernel e firmware del Raspberry, mai riavvii automatici.
+#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+        "origin=Debian,codename=${distro_codename},label=Debian-Security";
+};
+Unattended-Upgrade::Package-Blacklist {
+        "meshtasticd";
+};
+Unattended-Upgrade::Automatic-Reboot "false";
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+FINE_AGGIORNAMENTI
+systemctl enable apt-daily.timer apt-daily-upgrade.timer >>"$LOG" 2>&1 || true
+# come la leggera' apt (la cartella delle parti va data prima di leggere la configurazione: APT_CONFIG)
+printf 'Dir::Etc::Parts "%s";\n' "$APT_CONF_DIR" > "$TMP/apt-prova.conf"
+APT_DUMP=$(APT_CONFIG="$TMP/apt-prova.conf" apt-config dump 2>/dev/null || true)
+N_ORIGINI=$(grep -c '^Unattended-Upgrade::Origins-Pattern:: ' <<<"$APT_DUMP" || true)
+if [ "$N_ORIGINI" = 2 ] && grep -q '^Unattended-Upgrade::Package-Blacklist:: "meshtasticd"' <<<"$APT_DUMP"; then
+  ok "aggiornamenti di sicurezza automatici ogni notte (niente riavvii; kernel e meshtasticd a mano)"
+else
+  avviso "aggiornamenti automatici impostati, ma apt li legge diversamente da come previsto ($N_ORIGINI origini)"
+fi
+if installato meshtasticd; then
+  apt-mark hold meshtasticd >>"$LOG" 2>&1 || true
+  if apt-mark showhold 2>/dev/null | grep -qx meshtasticd; then
+    ok "meshtasticd fermo alla versione $(dpkg-query -W -f='${Version}' meshtasticd): si aggiorna solo con --aggiorna-meshtasticd"
+  else
+    avviso "non riesco a bloccare la versione di meshtasticd: un aggiornamento manuale lo cambierebbe"
+  fi
+fi
+
+# ---------------------------------------------------------------- fine
+# questo installatore e' quello buono: se un aggiornamento dalla pagina non riparte, si torna a lui
+if [ -f "$SE_STESSO" ] && [ "$SE_STESSO" != "$DIR/installatore.sh" ]; then
+  install -m 700 -o root -g root "$SE_STESSO" "$DIR/installatore.sh" 2>/dev/null || true
+fi
+printf '\n%sFatto.%s\n' "$B" "$N"
+[ "$ESITO_TAK" = ok ] || avviso "Il TAK Server non ha accettato il collegamento: il ponte riprova da solo, ma leggi il messaggio al passo 8."
+[ "$ESITO_NODO" = ok ] || avviso "Il nodo Meshtastic non ha risposto alla prova: il ponte riprova da solo, ma leggi il messaggio al passo 8."
+[ "$ESITO_LIB" = ok ] || avviso "La libreria TAK non ha superato la prova: passano solo le posizioni. Leggi il messaggio al passo 8."
+echo
+info "Dalla sala operativa alle radio (chat, aree, segnaposti): il certificato del ponte deve avere"
+info "lettura e scrittura (BOTH) sul canale della squadra. Con la sola scrittura passa tutto dalla radio"
+info "al server, ma niente dal server alla radio."
+if [ -s "$FILE_LINK" ]; then
+  echo
+  info "Canale '$CANALE' per le radio della squadra: per ogni radio inquadra questo QR con la fotocamera"
+  info "del telefono abbinato e, nell'app Meshtastic, scegli Sostituisci. Contiene la chiave: non pubblicarlo."
+  if command -v qrencode >/dev/null; then qrencode -t ANSIUTF8 < "$FILE_LINK"; fi
+  info "Lo stesso QR in seguito:   sudo mesh2tak-canale"
+fi
+NOME_HOST=$(hostname 2>/dev/null || echo raspberry)
+if [ "$GESTIONE" = si ]; then
+  [ "$PORTA_PAGINA" = 0 ] || [ -z "$NODO_PAGINA" ] || info "Gestione del nodo dal browser:  https://$NOME_HOST.local:9443"
+  IP_RETE=$(hostname -I 2>/dev/null | awk '{print $1}')
+  [ -n "$IP_RETE" ] || IP_RETE="l'indirizzo del Raspberry"
+  if [ "$PORTA_APP" != 0 ]; then
+    info "Dall'app Meshtastic via Wi-Fi: Rete, $NOME_HOST (o $IP_RETE), porta 4403"
+    info "  (mentre li usi il ponte va in pausa; riprende da solo 2 minuti dopo che chiudi pagina o app)"
+  fi
+fi
+if [ -n "$ACCESSO_SEZIONE" ]; then
+  ESITO_A=${STATO_ACCESSO%%|*}; RESTO_A=${STATO_ACCESSO#*|}
+  COLLEGATO_A=${RESTO_A%%|*}; MESSAGGIO_A=${RESTO_A#*|}
+  [ -n "$STATO_ACCESSO" ] || MESSAGGIO_A="nessuna notizia ancora (guarda tra poco con  sudo mesh2tak-accesso)"
+  echo
+  if [ "$COLLEGATO_A" = si ]; then
+    printf '%sAccesso da internet attivo%s\n' "$B" "$N"
+    info "$MESSAGGIO_A"
+  elif [ "$ESITO_A" = rifiutata ]; then
+    printf "%sAccesso da internet: questo Raspberry non puo' rientrare da solo%s\n" "$B" "$N"
+    info "$MESSAGGIO_A"
+  else
+    printf '%sAccesso da internet: ultimo passo, sulla pagina della rete%s\n' "$B" "$N"
+    info "Codice di controllo di questo Raspberry:   ${B}${CODICE:-?}${N}"
+    if [ "$ESITO_A" = server_da_preparare ]; then
+      avviso "il server non riceve ancora le richieste dei ponti. Prima, sul server, una volta sola (vedi la guida):"
+      info "    sudo bash rete-meshtastic.sh installa"
+    fi
+    info "1. Apri $ACCESSO_RETE (accedi con Authentik, da amministratore)."
+    info "2. In cima trovi \"Un ponte chiede di entrare\": se il codice e' ${CODICE:-quello qui sopra}, premi Approva."
+    info "   Se dice che c'e' gia' un ponte '$ACCESSO_NOME': Sostituisci solo se e' questo Raspberry reinstallato;"
+    info "   se e' un altro ponte, qui rilancia con un altro nome:  --accesso-esterno=altronome"
+    info "Poi entro qualche minuto il ponte compare sulla pagina, con la gestione del suo nodo."
+    info "Adesso il ponte dice: $MESSAGGIO_A"
+  fi
+  info "Codice, stato e chiave del ponte in seguito:   sudo mesh2tak-accesso"
+fi
+info "MicroSD di scorta (lettore USB): sudo mesh2tak-scorta"
+[ -n "$ACCESSO_SEZIONE" ] && info "Aggiornamenti:                  dalla pagina della rete, \"Aggiorna i ponti\""
+info "Stato e registro del ponte:     sudo mesh2tak-stato"
+info "Configurazione del ponte:       $CONF"
+info "Registro dell'installazione:    $LOG"

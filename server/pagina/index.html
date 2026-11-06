@@ -1,0 +1,1450 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Rete Meshtastic</title>
+<link rel="icon" href="icona.svg" type="image/svg+xml">
+<style>
+:root {
+  --neve: #f3f6f5;
+  --carta: #ffffff;
+  --granito: #1f2d34;
+  --ardesia: #55646b;
+  --nebbia: #d3dcd9;
+  --lago: #0d4757;
+  --lago-tenue: #e1edef;
+  --curve: #9fbcc3;
+  --larice: #1f6f45;
+  --ambra: #995700;
+  --ambra-tenue: #fbf0df;
+  --soccorso: #b0261e;
+  --soccorso-tenue: #fbe7e5;
+  --testo: "Avenir Next", "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
+  --titoli: "Avenir Next Condensed", "Avenir Next", "Segoe UI Semibold", Roboto, system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --neve: #0e191d;
+    --carta: #13232a;
+    --granito: #e2ebe9;
+    --ardesia: #9aabaf;
+    --nebbia: #2a3b41;
+    --lago: #8fcfdd;
+    --lago-tenue: #17323a;
+    --curve: #24464f;
+    --larice: #6cc896;
+    --ambra: #f0b45c;
+    --ambra-tenue: #2e2414;
+    --soccorso: #ff8f86;
+    --soccorso-tenue: #33191a;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--neve); color: var(--granito); font: 400 16px/1.5 var(--testo); }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+a { color: var(--lago); }
+:focus-visible { outline: 3px solid var(--lago); outline-offset: 3px; border-radius: 4px; }
+
+.testata { position: relative; overflow: hidden; border-bottom: 1px solid var(--nebbia); background: var(--carta); }
+.testata svg { position: absolute; inset: 0; width: 100%; height: 100%;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, transparent 22%, #000 62%);
+  mask-image: linear-gradient(90deg, transparent 0, transparent 22%, #000 62%); }
+.testata path { fill: none; stroke: var(--curve); stroke-width: 1.2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.testata path:nth-child(5n) { stroke-width: 2.2; }
+.testata .dentro { position: relative; max-width: 68rem; margin: 0 auto; padding: 2.6rem 1.5rem 2rem; }
+h1 { font: 700 2.6rem/1.05 var(--titoli); letter-spacing: -0.01em; margin: 0 0 0.5rem; color: var(--lago); }
+.sintesi { margin: 0; font-size: 1.2rem; max-width: 40rem; }
+.aggiornato { margin: 0.4rem 0 0; color: var(--ardesia); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+
+main { flex: 1; width: 100%; max-width: 68rem; margin: 0 auto; padding: 0.5rem 1.5rem 3rem; }
+.vuoto { margin: 2.5rem 0; max-width: 42rem; }
+.vuoto code, .nota code { font-size: 0.95em; background: var(--lago-tenue); padding: 0.1em 0.35em; border-radius: 3px; }
+.sessione { margin: 1.5rem 0 0; padding: 0.9rem 1.1rem; background: var(--ambra-tenue); border-radius: 6px; }
+
+.ponte { padding: 2rem 0 2.2rem; border-bottom: 1px solid var(--nebbia); }
+.ponte:last-child { border-bottom: 0; }
+.capo { display: grid; grid-template-columns: 1fr auto; gap: 0.3rem 1.5rem; align-items: start; }
+.ponte h2 { font: 700 2rem/1.1 var(--titoli); margin: 0; }
+.chi { margin: 0.15rem 0 0; color: var(--ardesia); }
+.stato { margin: 0.7rem 0 0; font-weight: 600; font-size: 1.15rem; display: flex; align-items: center; gap: 0.55rem; }
+.segno { width: 0.95rem; height: 0.95rem; border-radius: 50%; flex: none; background: currentColor; }
+.ponte[data-stato="ok"] .stato { color: var(--larice); }
+.ponte[data-stato="pausa"] .stato { color: var(--ambra); }
+.ponte[data-stato="pausa"] .segno { border-radius: 2px; background: linear-gradient(90deg, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
+.ponte[data-stato="guasto"] .stato { color: var(--soccorso); }
+.ponte[data-stato="guasto"] .segno { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.ponte[data-stato="giu"] .stato { color: var(--ardesia); }
+.ponte[data-stato="giu"] .segno { background: transparent; border: 2px solid currentColor; }
+.spiega { grid-column: 1 / -1; margin: 0.6rem 0 0; padding: 0.75rem 1rem; border-radius: 6px; max-width: 46rem; }
+.ponte[data-stato="pausa"] .spiega { background: var(--ambra-tenue); }
+.ponte[data-stato="guasto"] .spiega { background: var(--soccorso-tenue); }
+.ponte[data-stato="giu"] .spiega { background: var(--lago-tenue); }
+.azione { grid-row: 1 / span 3; grid-column: 2; display: flex; flex-direction: column; align-items: end; gap: 0.35rem; padding-top: 0.3rem; }
+.bottone { font: 600 1rem/1 var(--testo); padding: 0.85rem 1.25rem; border-radius: 6px; border: 2px solid var(--lago); background: var(--lago); color: var(--carta); cursor: pointer; text-decoration: none; white-space: nowrap; }
+.bottone:hover { filter: brightness(1.12); }
+.bottone[disabled] { background: transparent; color: var(--ardesia); border-color: var(--nebbia); cursor: not-allowed; filter: none; }
+.bottone.secondario { background: transparent; color: var(--lago); }
+.azione small { color: var(--ardesia); max-width: 15rem; text-align: right; }
+
+.fatti { display: grid; grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr)); gap: 1rem 1.5rem; margin: 1.6rem 0 0; }
+.fatti div { border-top: 2px solid var(--nebbia); padding-top: 0.5rem; }
+.fatti dt { color: var(--ardesia); font-size: 0.9rem; }
+.fatti dd { margin: 0.1rem 0 0; font-variant-numeric: tabular-nums; }
+.fatti div.attenzione { border-top-color: var(--ambra); }
+.fatti div.attenzione dd { color: var(--ambra); font-weight: 600; }
+.fatti div.guasto { border-top-color: var(--soccorso); }
+.fatti div.guasto dd { color: var(--soccorso); font-weight: 600; }
+.fatti dd code { font-size: 0.9em; background: var(--lago-tenue); padding: 0.05em 0.3em; border-radius: 3px; }
+.avvisi-email .stato-avvisi { margin: 0.9rem 0; }
+.aggiornamenti .evidenza { font-weight: 600; margin: 0.9rem 0 0.3rem; }
+.aggiornamenti .note { margin: 0 0 1rem; padding: 0.2rem 0 0.2rem 1rem; border-left: 3px solid var(--lago-tenue); }
+.aggiornamenti .note ul { margin: 0.3rem 0; padding-left: 1.2rem; }
+.aggiornamenti .note p { margin: 0.4rem 0; }
+.aggiornamenti small { display: block; margin: 0.4rem 0 0.9rem; color: var(--ardesia); max-width: 44rem; }
+.aggiornamenti .nota code { font-size: 0.95em; background: var(--lago-tenue); padding: 0.1em 0.35em; border-radius: 3px; }
+.avviso-versione { margin: 1.4rem 0 0; padding: 0.8rem 1.1rem; border-radius: 6px; background: var(--lago-tenue);
+  display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; }
+.avviso-versione[hidden] { display: none; }
+.avviso-versione p { margin: 0; font-weight: 600; }
+.avvisi-email .stato-avvisi[data-esito="nessuno"], .avvisi-email .stato-avvisi[data-esito="pausa"],
+.avvisi-email .stato-avvisi[data-esito="errore"], .avvisi-email .stato-avvisi[data-esito="trattenuto"] {
+  color: var(--ambra); font-weight: 600; }
+
+.radio { margin-top: 1.8rem; }
+.radio h3 { font: 600 1.15rem/1.3 var(--testo); margin: 0; }
+.radio h3 span { font-weight: 400; color: var(--ardesia); }
+.righe { list-style: none; margin: 0.6rem 0 0; padding: 0; }
+.riga, .scala { display: grid; grid-template-columns: minmax(9rem, 15rem) 1fr 7.5rem 5rem 6rem; gap: 0 1rem; align-items: center; }
+.scala { color: var(--ardesia); font-size: 0.8rem; padding: 0.2rem 0; font-variant-numeric: tabular-nums; }
+.scala .asse { display: flex; justify-content: space-between; }
+.riga { padding: 0.45rem 0; border-top: 1px solid var(--nebbia); font-variant-numeric: tabular-nums; }
+.riga .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.riga .nome small { display: block; color: var(--ardesia); font-size: 0.8rem; }
+.traccia { position: relative; height: 2px; background: var(--nebbia); }
+.punto { position: absolute; top: 50%; left: calc(var(--pos, 1) * 100%); width: 0.75rem; height: 0.75rem; border-radius: 50%; transform: translate(-50%, -50%); background: var(--lago); }
+.riga.fuori .punto { background: var(--carta); border: 2px solid var(--ardesia); }
+.riga.fuori { color: var(--ardesia); }
+.riga .quando, .riga .batteria, .riga .salti { text-align: right; }
+.altre { margin-top: 0.7rem; font: 600 0.95rem/1 var(--testo); background: none; border: 0; color: var(--lago); cursor: pointer; padding: 0.4rem 0; text-decoration: underline; }
+
+footer { max-width: 68rem; width: 100%; margin: 0 auto; padding: 1.5rem; color: var(--ardesia); font-size: 0.9rem; border-top: 1px solid var(--nebbia); }
+footer p { margin: 0.2rem 0; max-width: 52rem; }
+
+dialog { border: 0; border-radius: 10px; padding: 1.6rem; max-width: 34rem; background: var(--carta); color: var(--granito); box-shadow: 0 20px 60px rgba(0, 20, 30, 0.35); }
+dialog::backdrop { background: rgba(10, 30, 38, 0.55); }
+dialog h2 { font: 700 1.6rem/1.15 var(--titoli); margin: 0 0 0.8rem; }
+dialog p, dialog li { margin: 0.5rem 0; }
+dialog ul { padding-left: 1.2rem; }
+.pulsanti { display: flex; gap: 0.8rem; justify-content: flex-end; margin-top: 1.4rem; flex-wrap: wrap; }
+
+.novita { margin: 1.8rem 0 0.5rem; padding: 1.4rem 1.5rem 1.5rem; background: var(--carta); border: 2px solid var(--lago); border-radius: 10px; }
+.novita h2, .aggiungi h2 { font: 700 1.7rem/1.1 var(--titoli); margin: 0 0 0.3rem; }
+.novita .guida { margin: 0 0 1rem; color: var(--ardesia); max-width: 46rem; }
+.novita.quieta { background: transparent; border: 0; border-radius: 0; padding: 0; margin: 1.6rem 0 0; }
+.novita.quieta h2 { font-size: 1.15rem; font-family: var(--testo); font-weight: 600; color: var(--ardesia); }
+.richiesta { display: grid; grid-template-columns: 1fr auto auto; gap: 0.6rem 1.5rem; align-items: center; padding: 1rem 0; border-top: 1px solid var(--nebbia); }
+.richiesta h3 { font: 700 1.4rem/1.1 var(--titoli); margin: 0; }
+.richiesta .da { margin: 0.2rem 0 0; color: var(--ardesia); font-size: 0.95rem; }
+.controllo { text-align: center; }
+.controllo small { display: block; color: var(--ardesia); font-size: 0.8rem; }
+.controllo b { font: 700 1.9rem/1.1 var(--titoli); letter-spacing: 0.08em; font-variant-numeric: tabular-nums; color: var(--lago); }
+.richiesta .pulsanti { margin: 0; }
+.richiesta .problema, .lavoro .problema { grid-column: 1 / -1; margin: 0; padding: 0.7rem 1rem; border-radius: 6px; background: var(--soccorso-tenue); }
+.problema pre, .lavoro pre { white-space: pre-wrap; font-size: 0.85rem; margin: 0.5rem 0 0; max-height: 16rem; overflow: auto; }
+.novita .lavoro { margin: 0; padding: 0.8rem 0; border-top: 1px solid var(--nebbia); max-width: none; }
+.novita.quieta .lavoro { padding: 0.4rem 0; border: 0; }
+.lavoro[data-esito="in_corso"], .lavoro[data-esito="in_coda"] { color: var(--ambra); font-weight: 600; }
+.lavoro[data-esito="ok"] { color: var(--larice); }
+.lavoro small { display: block; font-weight: 400; color: var(--ardesia); }
+.aggiungi { margin-top: 0.5rem; padding-top: 1.8rem; border-top: 1px solid var(--nebbia); max-width: 50rem; }
+.aggiungi ol { padding-left: 1.3rem; }
+.aggiungi li { margin: 0.6rem 0; }
+.comando { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem; }
+.comando code { font-size: 0.95rem; background: var(--lago-tenue); padding: 0.45rem 0.7rem; border-radius: 4px; }
+.aggiungi details { margin-top: 1.2rem; }
+.aggiungi summary { cursor: pointer; color: var(--lago); font-weight: 600; }
+.aggiungi label { display: block; margin: 0.9rem 0 0.3rem; font-weight: 600; }
+.aggiungi input, .aggiungi textarea { width: 100%; font: 400 1rem/1.4 var(--testo); padding: 0.6rem 0.7rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); }
+.aggiungi textarea { min-height: 5.5rem; font-size: 0.9rem; }
+.aggiungi .esito { margin: 0.8rem 0 0; }
+.richiesta .avviso { margin: 0.4rem 0 0; padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--ambra-tenue); max-width: 40rem; }
+.richiesta .lavora { margin: 0; max-width: 22rem; color: var(--ambra); font-weight: 600; }
+.richiesta .lavora small { display: block; font-weight: 400; color: var(--ardesia); margin-top: 0.25rem; }
+.rifiutate .richiesta h3 { font-size: 1.2rem; }
+.schede { display: flex; gap: 1.8rem; margin: 1.4rem 0 0; border-bottom: 1px solid var(--nebbia); }
+.schede button { font: 600 1.05rem/1 var(--testo); background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 0.75rem 0 0.8rem; color: var(--ardesia); cursor: pointer; }
+.schede button[aria-selected="true"] { color: var(--lago); border-bottom-color: var(--lago); }
+.schede button span { font-weight: 400; margin-left: 0.35rem; font-variant-numeric: tabular-nums; }
+.radio-rete { padding: 1.6rem 0 0.5rem; }
+.radio-rete .riassunto { font-size: 1.1rem; margin: 0 0 0.8rem; max-width: 52rem; }
+.avvisi { list-style: none; padding: 0; margin: 0 0 1rem; }
+.avvisi li { margin: 0.4rem 0; padding: 0.6rem 0.9rem; border-radius: 6px; background: var(--ambra-tenue); max-width: 52rem; }
+.avvisi li.grave { background: var(--soccorso-tenue); }
+.cerca { display: flex; gap: 0.7rem; align-items: center; margin: 0.8rem 0 0.6rem; }
+.cerca label { font-weight: 600; }
+.cerca input { font: 400 1rem/1.4 var(--testo); padding: 0.5rem 0.7rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); width: min(22rem, 100%); }
+.voce, .testa-voci { display: grid; grid-template-columns: minmax(12rem, 1.3fr) 7.5rem 9.5rem minmax(13rem, 1.5fr); gap: 0 1.3rem; align-items: start; }
+.testa-voci { color: var(--ardesia); font-size: 0.8rem; padding: 0.3rem 0; }
+.voci { list-style: none; margin: 0; padding: 0; }
+.voce { padding: 0.8rem 0; border-top: 1px solid var(--nebbia); font-variant-numeric: tabular-nums; }
+.voce b { font-weight: 600; }
+.voce .nome b { font-size: 1.05rem; }
+.voce small { display: block; color: var(--ardesia); font-size: 0.82rem; }
+.voce[data-stato="silenziosa"] .nome b, .voce[data-stato="silenziosa"] .batteria b { color: var(--ardesia); }
+.problemi { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.35rem; }
+.problemi span { font-size: 0.8rem; font-weight: 600; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--soccorso-tenue); color: var(--soccorso); }
+.problemi span.lieve { background: var(--ambra-tenue); color: var(--ambra); }
+.pila { width: 4.5rem; height: 0.4rem; margin-top: 0.35rem; border-radius: 2px; background: var(--nebbia); overflow: hidden; }
+.pila i { display: block; height: 100%; background: var(--larice); }
+.pila i.bassa { background: var(--ambra); }
+.pila i.scarica { background: var(--soccorso); }
+.voce[data-stato="silenziosa"] .pila i { background: var(--ardesia); }
+.voce .via { display: block; }
+.voce .via em { font-style: normal; color: var(--ardesia); font-size: 0.82rem; }
+.voce.vuota { display: block; color: var(--ardesia); }
+.togli { font: 600 0.9rem/1 var(--testo); background: none; border: 0; padding: 0.3rem 0; color: var(--ardesia); cursor: pointer; text-decoration: underline; }
+.togli:hover { color: var(--soccorso); }
+.piccolo { font-size: 0.9rem; padding: 0.6rem 0.9rem; }
+
+@media (max-width: 760px) {
+  h1 { font-size: 2.1rem; }
+  .richiesta { grid-template-columns: 1fr; }
+  .controllo { text-align: left; }
+  .richiesta .pulsanti { justify-content: flex-start; }
+  .testa-voci { display: none; }
+  .voce { grid-template-columns: 1fr auto; grid-template-areas: "nome batteria" "quando quando" "ponti ponti"; row-gap: 0.45rem; }
+  .voce .nome { grid-area: nome; }
+  .voce .batteria { grid-area: batteria; text-align: right; }
+  .voce .batteria .pila { margin-left: auto; }
+  .voce .quando { grid-area: quando; }
+  .voce .ponti { grid-area: ponti; }
+  .testata svg { -webkit-mask-image: linear-gradient(90deg, transparent 0, transparent 35%, rgba(0,0,0,.6) 100%); mask-image: linear-gradient(90deg, transparent 0, transparent 35%, rgba(0,0,0,.6) 100%); }
+  .capo { grid-template-columns: 1fr; }
+  .azione { grid-row: auto; grid-column: 1; align-items: stretch; padding-top: 0.8rem; }
+  .azione small { text-align: left; max-width: none; }
+  .scala { display: none; }
+  .riga { grid-template-columns: 1fr auto; grid-template-areas: "nome quando" "traccia traccia" "batteria salti"; row-gap: 0.35rem; }
+  .riga .nome { grid-area: nome; } .riga .traccia { grid-area: traccia; } .riga .quando { grid-area: quando; }
+  .riga .batteria { grid-area: batteria; text-align: left; color: var(--ardesia); } .riga .salti { grid-area: salti; color: var(--ardesia); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .punto { transition: left 0.6s ease; }
+}
+</style>
+</head>
+<body>
+<header class="testata">
+  <svg viewBox="0 0 1200 240" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+    <path d="M1015 150 L1014 154 L1013 157 L1011 161 L1008 164 L1004 167 L1000 170 L995 173 L989 175 L983 176 L976 177 L969 178 L963 178 L957 179 L951 179 L946 179 L941 180 L935 181 L930 182 L924 184 L918 185 L911 186 L903 186 L896 186 L889 186 L882 184 L876 182 L870 180 L866 177 L862 174 L858 171 L855 167 L853 164 L851 161 L850 157 L849 154 L849 150 L851 147 L853 143 L856 140 L859 137 L863 134 L867 132 L872 130 L876 127 L880 125 L884 123 L888 120 L893 118 L898 116 L904 114 L910 113 L917 113 L923 113 L930 113 L936 114 L942 115 L948 117 L953 118 L959 119 L964 120 L970 121 L976 122 L983 124 L989 125 L995 127 L1001 130 L1006 132 L1010 136 L1012 139 L1014 143 L1015 146 L1015 150Z"/>
+    <path d="M1088 150 L1086 157 L1083 164 L1079 170 L1073 176 L1066 182 L1058 187 L1048 191 L1037 195 L1026 198 L1014 200 L1002 201 L990 202 L979 203 L969 204 L960 205 L950 207 L940 210 L930 212 L919 215 L906 218 L893 220 L879 220 L865 220 L851 218 L839 215 L828 211 L818 206 L809 201 L802 195 L796 189 L791 183 L786 176 L783 170 L781 163 L780 157 L781 150 L783 144 L787 137 L793 132 L800 126 L807 121 L814 117 L822 112 L829 108 L836 103 L844 99 L852 94 L861 90 L870 86 L881 83 L893 81 L905 80 L918 80 L930 81 L942 83 L953 85 L964 87 L974 89 L985 91 L996 93 L1007 95 L1019 97 L1031 99 L1044 102 L1055 106 L1065 111 L1074 116 L1081 123 L1085 129 L1088 136 L1089 143 L1088 150Z"/>
+    <path d="M1164 150 L1161 160 L1156 170 L1149 179 L1140 188 L1130 197 L1117 204 L1102 210 L1086 215 L1069 219 L1051 222 L1034 224 L1018 226 L1003 228 L988 230 L975 233 L961 237 L946 241 L930 246 L912 251 L893 255 L873 257 L851 258 L831 257 L811 253 L792 248 L776 242 L762 234 L750 226 L740 217 L731 208 L723 198 L717 189 L712 179 L709 169 L708 160 L710 150 L714 141 L720 132 L729 123 L738 115 L749 108 L759 101 L769 94 L780 87 L790 80 L801 73 L813 66 L826 60 L841 54 L857 50 L875 47 L893 46 L912 46 L930 48 L947 50 L964 53 L980 56 L996 59 L1013 61 L1030 64 L1048 66 L1066 69 L1085 73 L1103 77 L1120 83 L1135 91 L1147 99 L1156 109 L1162 119 L1165 129 L1166 140 L1164 150Z"/>
+    <path d="M1244 150 L1239 164 L1232 177 L1222 189 L1210 201 L1195 212 L1177 221 L1157 230 L1136 236 L1113 242 L1091 246 L1069 249 L1048 252 L1028 255 L1010 260 L992 265 L973 271 L952 278 L930 285 L905 292 L878 297 L850 300 L821 300 L793 297 L766 292 L742 284 L721 275 L702 264 L687 252 L673 240 L661 228 L651 215 L643 202 L637 189 L634 176 L633 163 L636 150 L642 137 L650 125 L661 114 L674 103 L687 93 L700 84 L713 74 L726 64 L739 55 L754 45 L770 35 L788 27 L808 20 L831 14 L855 11 L880 9 L905 10 L930 12 L954 15 L976 19 L999 22 L1021 25 L1044 28 L1068 30 L1093 33 L1119 37 L1145 42 L1170 49 L1192 58 L1212 69 L1227 81 L1238 94 L1245 108 L1248 122 L1247 136 L1244 150Z"/>
+    <path d="M1327 150 L1320 167 L1310 183 L1297 199 L1281 214 L1262 227 L1239 239 L1214 249 L1187 258 L1159 265 L1132 270 L1105 275 L1080 280 L1057 286 L1034 293 L1011 301 L987 310 L960 320 L930 330 L897 338 L861 344 L824 347 L787 346 L751 342 L718 334 L688 323 L662 310 L639 295 L620 280 L603 264 L589 249 L576 232 L566 216 L559 200 L555 183 L555 166 L558 150 L566 134 L577 119 L591 105 L606 91 L621 78 L637 65 L652 53 L668 40 L684 27 L702 14 L723 2 L746 -9 L773 -18 L803 -25 L834 -29 L867 -30 L899 -29 L930 -26 L960 -23 L990 -19 L1019 -16 L1048 -12 L1079 -10 L1111 -7 L1144 -3 L1178 2 L1212 9 L1243 19 L1271 31 L1294 45 L1312 61 L1324 78 L1331 96 L1334 114 L1332 132 L1327 150Z"/>
+    <path d="M1411 150 L1401 171 L1388 190 L1372 209 L1352 227 L1329 243 L1301 257 L1271 269 L1239 280 L1207 288 L1175 296 L1144 303 L1115 310 L1088 319 L1061 329 L1033 341 L1002 354 L968 368 L930 380 L888 390 L843 396 L797 398 L751 396 L708 388 L668 377 L632 363 L601 346 L575 328 L552 309 L532 289 L515 270 L500 250 L488 230 L479 210 L475 190 L475 170 L480 150 L489 131 L503 112 L518 95 L536 78 L553 62 L570 46 L588 30 L605 14 L625 -3 L647 -19 L673 -34 L703 -47 L736 -58 L773 -65 L812 -70 L852 -71 L892 -70 L930 -67 L967 -63 L1004 -59 L1040 -56 L1078 -53 L1117 -50 L1158 -47 L1200 -43 L1242 -36 L1283 -26 L1320 -14 L1353 2 L1380 20 L1399 41 L1412 62 L1419 84 L1420 107 L1417 129 L1411 150Z"/>
+    <path d="M1500 150 L1488 174 L1472 198 L1453 220 L1429 241 L1401 260 L1368 277 L1333 291 L1296 304 L1259 315 L1223 325 L1189 335 L1156 346 L1124 358 L1092 373 L1058 389 L1020 406 L978 423 L930 437 L878 449 L822 455 L766 456 L711 450 L660 440 L613 424 L572 406 L536 385 L506 362 L479 339 L455 316 L435 293 L417 270 L403 246 L393 222 L388 198 L389 174 L395 150 L406 127 L421 105 L439 84 L457 64 L477 44 L495 25 L515 5 L535 -16 L558 -36 L585 -56 L617 -74 L653 -90 L695 -102 L740 -110 L788 -115 L836 -116 L884 -115 L930 -112 L975 -108 L1020 -105 L1065 -102 L1112 -100 L1160 -97 L1211 -93 L1263 -88 L1314 -79 L1363 -66 L1407 -50 L1444 -30 L1473 -7 L1494 18 L1507 45 L1513 72 L1513 99 L1508 125 L1500 150Z"/>
+    <path d="M1594 150 L1580 178 L1561 206 L1538 231 L1510 256 L1478 278 L1441 297 L1401 315 L1359 330 L1318 344 L1278 357 L1240 371 L1203 387 L1167 404 L1129 424 L1088 445 L1042 466 L989 486 L930 503 L866 515 L799 520 L732 519 L668 510 L608 495 L555 475 L508 452 L467 426 L432 399 L401 372 L374 345 L350 318 L329 290 L312 262 L300 234 L295 206 L296 178 L303 150 L315 123 L332 97 L351 72 L371 48 L391 24 L411 0 L432 -24 L456 -49 L483 -74 L515 -97 L554 -119 L599 -137 L649 -151 L704 -160 L761 -165 L818 -167 L875 -165 L930 -162 L984 -159 L1038 -156 L1093 -154 L1150 -152 L1210 -150 L1271 -145 L1333 -138 L1394 -126 L1451 -110 L1501 -89 L1542 -64 L1574 -36 L1595 -5 L1608 27 L1613 59 L1611 90 L1605 120 L1594 150Z"/>
+    <path d="M1693 150 L1676 183 L1655 214 L1629 244 L1598 272 L1561 297 L1519 320 L1475 341 L1429 359 L1384 377 L1340 395 L1299 413 L1258 434 L1217 457 L1172 483 L1123 509 L1066 535 L1001 558 L930 577 L853 588 L774 592 L696 587 L622 574 L553 554 L493 529 L440 500 L395 469 L355 438 L319 406 L288 375 L259 344 L235 312 L215 280 L202 248 L195 215 L196 182 L204 150 L218 119 L235 89 L255 60 L275 31 L296 2 L317 -27 L340 -56 L367 -86 L399 -116 L438 -143 L485 -168 L539 -189 L600 -204 L665 -215 L732 -220 L799 -221 L865 -220 L930 -218 L994 -216 L1058 -214 L1124 -213 L1193 -211 L1265 -209 L1338 -203 L1411 -194 L1481 -179 L1546 -158 L1601 -132 L1646 -101 L1679 -66 L1701 -30 L1713 7 L1717 45 L1713 81 L1705 116 L1693 150Z"/>
+    <path d="M1796 150 L1778 187 L1755 223 L1726 257 L1691 288 L1650 318 L1605 345 L1556 369 L1507 392 L1459 414 L1412 437 L1366 462 L1321 489 L1274 519 L1221 550 L1162 582 L1093 613 L1016 639 L930 658 L839 668 L747 669 L657 659 L573 641 L496 615 L429 584 L370 550 L319 514 L274 478 L234 442 L197 407 L164 371 L135 335 L113 299 L97 262 L89 224 L90 187 L98 150 L112 114 L129 79 L149 45 L170 12 L191 -22 L213 -57 L238 -92 L268 -128 L306 -162 L353 -194 L409 -222 L474 -245 L546 -262 L622 -273 L700 -279 L778 -281 L855 -280 L930 -279 L1005 -278 L1081 -278 L1159 -278 L1241 -277 L1325 -274 L1411 -267 L1496 -254 L1576 -235 L1647 -209 L1708 -176 L1755 -139 L1790 -98 L1811 -55 L1822 -12 L1824 30 L1819 72 L1810 112 L1796 150Z"/>
+  </svg>
+  <div class="dentro">
+    <h1>Rete Meshtastic</h1>
+    <p class="sintesi" id="sintesi">Carico lo stato dei ponti...</p>
+    <p class="aggiornato" id="aggiornato"></p>
+  </div>
+</header>
+
+<main id="ponti">
+  <p class="sessione" id="sessione" hidden>La sessione di Authentik è scaduta. <a href="./">Ricarica la pagina</a> per entrare di nuovo.</p>
+</main>
+
+<footer>
+  <p>Ogni ponte porta al TAK Server le radio Meshtastic che sente. La pagina di gestione di un ponte apre il suo nodo come
+    dal Wi-Fi di casa: intanto quel ponte va in pausa e riprende da solo.</p>
+  <p id="versione"></p>
+</footer>
+
+<dialog id="conferma" aria-labelledby="conferma-titolo">
+  <h2 id="conferma-titolo">Gestire la radio del ponte?</h2>
+  <p id="conferma-testo"></p>
+  <ul>
+    <li>Riprende da solo <span id="conferma-chiusura">2 minuti</span> dopo che chiudi la pagina, al massimo dopo
+      <span id="conferma-massimo">30 minuti</span>.</li>
+    <li>Da qui non cambiare le impostazioni di rete o Wi-Fi del nodo: se sbagli lo perdi finché non sei davanti al
+      Raspberry.</li>
+  </ul>
+  <div class="pulsanti">
+    <button class="bottone secondario" type="button" id="annulla">Annulla</button>
+    <a class="bottone" id="apri" href="#" target="_blank" rel="noopener noreferrer">Apri la gestione</a>
+  </div>
+</dialog>
+
+<dialog id="aggiorna" aria-labelledby="aggiorna-titolo">
+  <h2 id="aggiorna-titolo"></h2>
+  <p id="aggiorna-testo"></p>
+  <div class="pulsanti">
+    <button class="bottone secondario" type="button" id="aggiorna-annulla">Annulla</button>
+    <button class="bottone" type="button" id="aggiorna-conferma">Aggiorna</button>
+  </div>
+</dialog>
+
+<dialog id="togli" aria-labelledby="togli-titolo">
+  <h2 id="togli-titolo">Togliere il ponte dalla rete?</h2>
+  <p id="togli-testo"></p>
+  <ul>
+    <li>Il Raspberry continua a portare le radio al TAK Server: si chiude solo l'accesso da internet.</li>
+    <li>Non rientra da solo. Per rimetterlo: in fondo a questa pagina, sotto "Ponti tolti e richieste rifiutate", premi
+      "Lascia rientrare".</li>
+  </ul>
+  <div class="pulsanti">
+    <button class="bottone secondario" type="button" id="togli-annulla">Annulla</button>
+    <button class="bottone" type="button" id="togli-conferma">Togli dalla rete</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const OGNI_S = 15;                 // stato dei ponti
+const ELENCO_OGNI_S = 120;         // elenco dei ponti
+const MOSTRATE = 12;               // radio visibili prima di "Mostra tutte"
+let elenco = [];
+let ultimoElenco = 0;
+let versione = "";
+const stati = new Map();           // nome -> {dati, quando, errore, ultimoOk}
+let gestione = null;               // /api/stato: richieste dei Raspberry e lavori; null = servizio non raggiungibile
+let erroreGestione = "";
+let riavvio = 0;                   // da quando l'API non risponde mentre un lavoro e' in corso (Authentik riparte)
+let erroreGiro = "";
+let daTogliere = null;
+const COMANDO_PI = "sudo bash installa-ponte-meshtastic.sh --accesso-esterno";
+const aperte = new Set();          // ponti con tutte le radio in vista
+const dettagliAperti = new Set();  // "Dettagli" aperti: restano aperti quando la pagina si aggiorna
+const zona = document.getElementById("ponti");
+const zonaNovita = document.createElement("div");
+const zonaPonti = document.createElement("div");
+const schede = document.createElement("nav");
+const vistaPonti = document.createElement("div");
+const vistaRadio = document.createElement("div");
+const avvisoVersione = document.createElement("div");   // in cima: versione nuova o pagina da ricaricare
+avvisoVersione.className = "avviso-versione";
+avvisoVersione.hidden = true;
+zona.append(avvisoVersione, zonaNovita, schede, vistaPonti, vistaRadio);
+vistaPonti.append(zonaPonti);
+const SILENZIO_S = 2 * 3600;       // una radio accesa si fa sentire almeno ogni mezz'ora (batteria e canale)
+
+function el(tag, classe, testo) {
+  const e = document.createElement(tag);
+  if (classe) e.className = classe;
+  if (testo !== undefined && testo !== null) e.textContent = String(testo);
+  return e;
+}
+
+function maiuscola(s) {
+  s = String(s || "");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function dettagli(chiave, titolo, ...contenuto) {
+  const det = el("details");
+  det.open = dettagliAperti.has(chiave);
+  det.addEventListener("toggle", () => { det.open ? dettagliAperti.add(chiave) : dettagliAperti.delete(chiave); });
+  det.append(el("summary", null, titolo), ...contenuto);
+  return det;
+}
+
+function numIt(x, cifre) {
+  return Number(x || 0).toLocaleString("it-IT", {maximumFractionDigits: cifre === undefined ? 1 : cifre});
+}
+
+const RUOLI = {CLIENT: "normale", CLIENT_MUTE: "non ripete", CLIENT_HIDDEN: "nascosta", CLIENT_BASE: "base",
+               TRACKER: "localizzatore", TAK: "con ATAK", TAK_TRACKER: "localizzatore TAK", ROUTER: "ripetitore",
+               ROUTER_LATE: "ripetitore di riserva", ROUTER_CLIENT: "ripetitore", REPEATER: "ripetitore puro",
+               SENSOR: "sensore", LOST_AND_FOUND: "smarrita"};
+const MODELLI = {TRACKER_T1000_E: "SenseCAP T1000-E", RAK4631: "RAK WisBlock 4631", RAK11310: "RAK WisBlock 11310",
+                 WISMESH_TAP: "RAK WisMesh Tap", HELTEC_V3: "Heltec V3", HELTEC_WSL_V3: "Heltec Wireless Stick Lite V3",
+                 HELTEC_WIRELESS_TRACKER: "Heltec Wireless Tracker", HELTEC_WIRELESS_PAPER: "Heltec Wireless Paper",
+                 TBEAM: "LilyGO T-Beam", LILYGO_TBEAM_S3_CORE: "LilyGO T-Beam S3", T_ECHO: "LilyGO T-Echo",
+                 T_DECK: "LilyGO T-Deck", TLORA_V2_1_1P6: "LilyGO T-LoRa", STATION_G2: "Station G2",
+                 NANO_G2_ULTRA: "Nano G2 Ultra", SEEED_XIAO_S3: "Seeed XIAO S3", PORTDUINO: "Raspberry (meshtasticd)"};
+
+function nomeModello(m) {
+  if (!m) return "";
+  return MODELLI[m] || m.split("_").map(w => /\d/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
+}
+
+function qualita(snr, rssi) {   // come l'app Meshtastic: il rapporto segnale/rumore conta piu' della potenza
+  if (snr === null || snr === undefined) return "";
+  if (snr > -7 && (rssi === null || rssi === undefined || rssi > -115)) return "buono";
+  if (snr > -15 && (rssi === null || rssi === undefined || rssi > -126)) return "discreto";
+  return "debole";
+}
+
+function frase(s) {               // un messaggio del server come frase: un solo segno in fondo
+  s = String(s || "").trim();
+  return /[.!?]$/.test(s) ? s : s + ".";
+}
+
+function oraDi(ts) {
+  return new Date(ts * 1000).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"});
+}
+
+function giornoOra(ts) {
+  const d = new Date(ts * 1000);
+  const oggi = new Date();
+  const giorno = d.toDateString() === oggi.toDateString() ? "oggi" : "il " + d.toLocaleDateString("it-IT", {day: "numeric", month: "numeric"});
+  return giorno + " alle " + oraDi(ts);
+}
+
+function durata(s) {
+  s = Math.max(0, Math.round(s));
+  if (s < 90) return s < 60 ? "meno di un minuto" : "1 minuto";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + " minuti";
+  const h = Math.floor(m / 60), r = m % 60;
+  if (h < 24) return h + (h === 1 ? " ora" : " ore") + (r ? " e " + r + " min" : "");
+  const g = Math.floor(h / 24);
+  return g === 1 ? "1 giorno" : g + " giorni";
+}
+
+function fa(s) {
+  if (s < 60) return "adesso";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + " min fa";
+  const h = Math.floor(m / 60), r = m % 60;
+  if (h < 24) return h + " h" + (r ? " " + r + " min" : "") + " fa";
+  const g = Math.floor(h / 24);
+  return g === 1 ? "ieri" : g + " giorni fa";
+}
+
+async function prendi(url) {
+  const r = await fetch(url, {cache: "no-store", redirect: "manual", credentials: "same-origin"});
+  if (r.type === "opaqueredirect" || r.status === 401 || r.status === 403) {
+    document.getElementById("sessione").hidden = false;
+    throw new Error("sessione scaduta");
+  }
+  if (!r.ok) throw new Error("risposta " + r.status);
+  return r.json();
+}
+
+async function manda(azione, dati) {
+  const r = await fetch("api/" + azione, {method: "POST", cache: "no-store", redirect: "manual", credentials: "same-origin",
+                                          headers: {"Content-Type": "application/json", "X-Mesh2tak": "1"},
+                                          body: JSON.stringify(dati)});
+  if (r.type === "opaqueredirect") {
+    document.getElementById("sessione").hidden = false;
+    throw new Error("sessione scaduta: ricarica la pagina");
+  }
+  let d = {};
+  try { d = await r.json(); } catch (e) { d = {}; }
+  if (!r.ok) throw new Error(d.errore || ("il server risponde " + r.status));
+  return d;
+}
+
+async function aggiornaGestione() {
+  try {
+    gestione = await prendi("api/stato");
+    erroreGestione = "";
+    riavvio = 0;
+  } catch (e) {
+    // durante un lavoro Authentik si riavvia: per qualche minuto si tiene quello che si sapeva
+    if (e.message !== "sessione scaduta" && lavoroInCorso() && (!riavvio || Date.now() - riavvio < 5 * 60 * 1000)) {
+      riavvio = riavvio || Date.now();
+      return;
+    }
+    gestione = null;
+    riavvio = 0;
+    erroreGestione = e.message;
+  }
+}
+
+function lavoroInCorso() {
+  return !!(gestione && ((gestione.lavori || []).some(l => l.esito === "in_coda" || l.esito === "in_corso") ||
+                         (gestione.richieste || []).some(r => r.stato === "in_corso")));
+}
+
+async function aggiornaElenco() {
+  const d = await prendi("ponti.json");
+  elenco = Array.isArray(d.ponti) ? d.ponti : [];
+  versione = d.versione || "";
+  ultimoElenco = Date.now();
+}
+
+async function aggiornaPonte(p) {
+  const vecchio = stati.get(p.nome) || {};
+  try {
+    const dati = await prendi(p.stato);
+    if (!dati || typeof dati !== "object" || !dati.nodo) throw new Error("risposta non valida");
+    stati.set(p.nome, {dati, quando: Date.now(), errore: null, ultimoOk: Date.now()});
+  } catch (e) {
+    stati.set(p.nome, {dati: null, quando: Date.now(), errore: e.message, ultimoOk: vecchio.ultimoOk || null});
+  }
+}
+
+function valuta(st) {
+  if (!st || !st.dati) {
+    const quando = st && st.ultimoOk ? " Ultimo contatto " + fa((Date.now() - st.ultimoOk) / 1000) + "." : "";
+    return {classe: "giu", parole: "Non raggiungibile",
+            spiega: "Il Raspberry è spento, senza internet o il tunnel si sta ricollegando." + quando};
+  }
+  const d = st.dati;
+  if (d.pausa && d.pausa.attiva) {
+    return {classe: "pausa", parole: "In pausa",
+            spiega: "Nodo gestito " + (d.pausa.chi || "da qualcuno") + " dalle " + oraDi(d.pausa.dal) +
+                    ": le posizioni via radio non arrivano al TAK Server. Il ponte riprende da solo, al più tardi alle " +
+                    oraDi(d.pausa.fino_al_massimo) + "."};
+  }
+  if (!d.tak || !d.tak.collegato) {
+    return {classe: "guasto", parole: "Non arriva al TAK Server",
+            spiega: (d.tak && d.tak.errore ? maiuscola(d.tak.errore) + ". " : "") + "Il ponte riprova da solo."};
+  }
+  if (!d.nodo.collegato) {
+    return {classe: "guasto", parole: "Radio non collegata",
+            spiega: "Il ponte non parla con la sua radio e riprova da solo. Se dura, sul Raspberry: sudo mesh2tak-stato"};
+  }
+  return {classe: "ok", parole: "In linea", spiega: ""};
+}
+
+function fatto(dl, titolo, valore, classe) {
+  const d = el("div", classe);
+  const dd = el("dd");
+  // `testo` tra apici inversi diventa un comando da copiare
+  String(valore).split("`").forEach((pezzo, i) => { if (pezzo) dd.append(i % 2 ? el("code", null, pezzo) : pezzo); });
+  d.append(el("dt", null, titolo), dd);
+  dl.append(d);
+}
+
+function giorno(ts) {
+  return new Date(ts * 1000).toLocaleDateString("it-IT", {day: "numeric", month: "numeric", year: "numeric"});
+}
+
+const PROTEZIONI = {watchdog: "riavvio automatico se si blocca", aggiornamenti: "aggiornamenti di sicurezza ogni notte",
+                    registri: "registri limitati"};
+
+function fattiRaspberry(dl, d) {
+  const sis = d.sistema;
+  if (!sis) {
+    fatto(dl, "Raspberry", "aggiorna il ponte alla 1.7 per vedere certificato, corrente e protezioni", "attenzione");
+    return;
+  }
+  const ag = sis.aggiornamento;
+  if (ag && ag.versione && (ag.stato !== "fatto" || (ag.quando && d.ora - ag.quando < 7 * 86400))) {
+    if (ag.stato === "in_corso") fatto(dl, "Aggiornamento", "alla " + ag.versione + " in corso: il ponte si ferma per un paio di minuti", "attenzione");
+    else if (ag.stato === "fatto") fatto(dl, "Aggiornamento", "alla " + ag.versione + ", " + giornoOra(ag.quando));
+    else if (ag.stato === "ripristinato") fatto(dl, "Aggiornamento", maiuscola(ag.messaggio || "non riuscito, rimessa la versione di prima"), "attenzione");
+    else fatto(dl, "Aggiornamento", "alla " + ag.versione + " non riuscito: " + (ag.messaggio || "errore"), "guasto");
+  }
+  const disco = sis.disco;
+  const libero = disco ? disco.libero_mb : null;
+  let testo = sis.acceso_dal ? "acceso da " + durata(d.ora - sis.acceso_dal) : "acceso";
+  let classe = "";
+  if (libero !== null && libero !== undefined) {
+    testo += ", " + numIt(libero / 1024) + " GB liberi sulla microSD";
+    if (libero < 500) { testo = "microSD quasi piena: " + numIt(libero / 1024, 2) + " GB liberi"; classe = "guasto"; }
+    else if (libero < 2000) classe = "attenzione";
+  }
+  fatto(dl, "Raspberry", testo, classe);
+  const al = sis.alimentazione;
+  if (al) {
+    if (al.ultima && d.ora - al.ultima < 3600) {
+      fatto(dl, "Corrente", "non basta: " + al.volte + (al.volte === 1 ? " calo" : " cali") + ", l'ultimo " +
+                            fa(d.ora - al.ultima) + ". Serve l'alimentatore da 5,1 V 2,5 A", "guasto");
+    } else if (al.volte) {
+      fatto(dl, "Corrente", "basta adesso; " + al.volte + (al.volte === 1 ? " calo" : " cali") +
+                            " da quando il ponte è acceso, l'ultimo " + giornoOra(al.ultima), "attenzione");
+    } else {
+      fatto(dl, "Corrente", "sufficiente");
+    }
+  }
+  const pr = sis.protezioni || {};
+  const mancano = Object.keys(PROTEZIONI).filter(k => !pr[k]);
+  if (!mancano.length) {
+    fatto(dl, "Protezioni", maiuscola(PROTEZIONI.watchdog) + "; " + PROTEZIONI.aggiornamenti);
+  } else {
+    fatto(dl, "Protezioni", "manca: " + mancano.map(k => PROTEZIONI[k]).join(", ") +
+                            ". Rilancia l'installatore del ponte", "attenzione");
+  }
+  if (sis.scorta && sis.scorta.quando) {
+    const vecchia = d.ora - sis.scorta.quando > 180 * 86400;
+    fatto(dl, "MicroSD di scorta", "del " + giorno(sis.scorta.quando) + (vecchia ? ": vecchia, rifalla con `sudo mesh2tak-scorta`" : ""),
+          vecchia ? "attenzione" : "");
+  } else {
+    fatto(dl, "MicroSD di scorta", "nessuna: sul Raspberry `sudo mesh2tak-scorta`", "attenzione");
+  }
+  const c = d.certificato;
+  if (c && c.scade) {
+    const giorni = Math.floor((c.scade - d.ora) / 86400);
+    if (c.scade <= d.ora) fatto(dl, "Certificato TAK", "scaduto il " + giorno(c.scade) + ": il TAK Server non lo accetta", "guasto");
+    else if (giorni < 30) fatto(dl, "Certificato TAK", "scade il " + giorno(c.scade) + ", tra " + Math.max(1, giorni) +
+                                                    (giorni === 1 ? " giorno" : " giorni") + ": rinnovalo", "attenzione");
+    else fatto(dl, "Certificato TAK", "valido fino al " + giorno(c.scade));
+  }
+}
+
+function canali(d) {
+  const c = (d.nodo && d.nodo.canali) || [];
+  if (!c.length) return "non ancora letti";
+  return c.map(x => x.nome + (x.privato ? " (squadra" + (x.inoltrato ? ", inoltrato" : "") + ")" : " (pubblico)")).join(", ");
+}
+
+function disegnaRadio(sez, p, d) {
+  const radio = Array.isArray(d.radio) ? d.radio : [];
+  const box = el("div", "radio");
+  const titolo = el("h3", null, "Radio sentite ");
+  titolo.append(el("span", null, radio.length ? "(" + radio.length + ", sulla mappa " + (d.radio_sulla_mappa || 0) + ")" : "(nessuna da quando il ponte è acceso)"));
+  box.append(titolo);
+  if (radio.length) {
+    const finestra = Math.max(5, Number(d.validita_min) || 90) * 60;
+    const scala = el("div", "scala");
+    const asse = el("div", "asse");
+    asse.append(el("span", null, Math.round(finestra / 60) + " min fa"), el("span", null, "adesso"));
+    scala.append(el("span"), asse, el("span", null, "ultimo segnale"), el("span", null, "batteria"), el("span", null, "salti radio"));
+    box.append(scala);
+    const ol = el("ol", "righe");
+    const tutte = aperte.has(p.nome);
+    radio.slice(0, tutte ? radio.length : MOSTRATE).forEach(r => {
+      const eta = Math.max(0, (d.ora || 0) - (r.ultimo_segnale || 0));
+      const li = el("li", "riga" + (r.sulla_mappa ? "" : " fuori"));
+      const nome = el("span", "nome", r.nome || r.id);
+      nome.title = r.nome || r.id;
+      nome.append(el("small", null, (r.id || "") + (r.app_tak ? ", app TAK" : "") + (r.canale ? ", " + r.canale : "")));
+      const traccia = el("span", "traccia");
+      const punto = el("span", "punto");
+      punto.style.setProperty("--pos", String(Math.max(0, 1 - eta / finestra)));
+      traccia.append(punto);
+      traccia.title = r.sulla_mappa ? "Sulla mappa del TAK" : "Fuori dalla mappa: non si sente da più di " + Math.round(finestra / 60) + " minuti";
+      li.append(nome, traccia, el("span", "quando", fa(eta)),
+                el("span", "batteria", r.batteria ? r.batteria + "%" : ""),
+                el("span", "salti", r.salti === 0 ? "diretta" : (r.salti ? r.salti + (r.salti === 1 ? " salto" : " salti") : "")));
+      ol.append(li);
+    });
+    box.append(ol);
+    if (radio.length > MOSTRATE) {
+      const b = el("button", "altre", tutte ? "Mostra solo le più recenti" : "Mostra tutte le " + radio.length + " radio");
+      b.type = "button";
+      b.addEventListener("click", () => { tutte ? aperte.delete(p.nome) : aperte.add(p.nome); disegna(); });
+      box.append(b);
+    }
+  }
+  sez.append(box);
+}
+
+function disegnaPonte(p) {
+  const st = stati.get(p.nome);
+  const v = valuta(st);
+  const d = st && st.dati;
+  if (!d && p.aggiunto && Date.now() - Date.parse(p.aggiunto) < 10 * 60 * 1000) {
+    v.parole = "In attesa del primo collegamento";
+    v.spiega = "Appena aggiunto: il Raspberry se ne accorge entro qualche minuto e apre il tunnel da solo.";
+  }
+  const sez = el("section", "ponte");
+  sez.dataset.stato = v.classe;
+  sez.setAttribute("aria-labelledby", "ponte-" + p.nome);
+  const capo = el("div", "capo");
+  const h2 = el("h2", null, p.nome);
+  h2.id = "ponte-" + p.nome;
+  const chi = el("p", "chi", d ? [d.nome || "nodo senza nome", d.nome_breve ? "sigla " + d.nome_breve : "", d.id_nodo || ""].filter(Boolean).join(", ") : p.indirizzo.replace(/^https:\/\//, "").replace(/\/$/, ""));
+  const stato = el("p", "stato");
+  stato.append(el("span", "segno"), el("span", null, v.parole));
+  capo.append(h2, chi, stato);
+
+  const azione = el("div", "azione");
+  const b = el("button", "bottone", "Gestisci la radio");
+  b.type = "button";
+  if (!d) {
+    b.disabled = true;
+    azione.append(b, el("small", null, "Si apre quando il ponte è raggiungibile"));
+  } else if (!d.gestione || !d.gestione.pagina) {
+    b.disabled = true;
+    azione.append(b, el("small", null, "Radio USB: si gestisce dall'app Meshtastic"));
+  } else {
+    b.addEventListener("click", () => chiediConferma(p, d));
+    azione.append(b, el("small", null, "Mentre è aperta il ponte è in pausa"));
+  }
+  if (gestione) {
+    const t = el("button", "togli", "Togli dalla rete");
+    t.type = "button";
+    t.addEventListener("click", () => chiediTogli(p));
+    azione.append(t);
+  }
+  capo.append(azione);
+  if (v.spiega) capo.append(el("p", "spiega", v.spiega));
+  sez.append(capo);
+
+  if (d) {
+    const dl = el("dl", "fatti");
+    fatto(dl, "TAK Server", d.tak.collegato ? "collegato da " + durata(d.ora - d.tak.dal) : "non collegato");
+    fatto(dl, "Radio del ponte", (d.nodo.collegato ? "collegata, " : (d.pausa && d.pausa.attiva ? "lasciata alla gestione, " : "non collegata, ")) + (d.nodo.preset || ""));
+    fatto(dl, "Canali", canali(d));
+    const c = d.conteggi || {};
+    const finestra = d.ora - (d.conteggi_dal || d.avviato);
+    fatto(dl, finestra < 90 ? "Nell'ultimo minuto" : (finestra >= 3600 ? "Nell'ultima ora" : "Negli ultimi " + durata(finestra)), (c.inoltrate || 0) + " posizioni al TAK Server, " + (c.radio_al_server || 0) + " messaggi dalla radio, " + (c.radio_trasmessi || 0) + " alle radio");
+    fatto(dl, "Programma", "mesh2tak " + (d.versione || "?") + ", acceso da " + durata(d.ora - d.avviato));
+    const cr = d.canale_radio;
+    if (cr && cr.occupato !== null && cr.occupato !== undefined) {
+      fatto(dl, "Canale radio", "occupato " + numIt(cr.occupato) + "% del tempo; il ponte trasmette " +
+                                numIt(cr.trasmesso, 2) + "% (limite 10%)");
+    }
+    fattiRaspberry(dl, d);
+    sez.append(dl);
+    disegnaRadio(sez, p, d);
+  }
+  return sez;
+}
+
+function disegnaRichiesta(r) {
+  const li = el("li", "richiesta");
+  const chi = el("div");
+  chi.append(el("h3", null, r.nome));
+  chi.append(el("p", "da", "Raspberry " + (r.macchina || "?") + ", dall'indirizzo " + (r.ip || "?") + ", " +
+                            giornoOra(r.arrivata) + (r.versione ? " (mesh2tak " + r.versione + ")" : "")));
+  if (r.sostituisce) chi.append(el("p", "avviso", "C'è già un ponte " + r.nome + " nella rete: un altro Raspberry, o questo reinstallato. " +
+                                                  "Sostituendo, questo Raspberry prende il suo posto e quello vecchio non entra più."));
+  if (r.stesso_nome) chi.append(el("p", "avviso", "C'è un'altra richiesta con lo stesso nome: approva solo quella con il codice giusto."));
+  const codice = el("div", "controllo");
+  codice.append(el("small", null, "codice di controllo"), el("b", null, r.controllo || "?"));
+  li.append(chi, codice);
+  if (r.stato === "in_corso") {
+    const lav = el("p", "lavora", "Sto aggiungendo il ponte, ci vuole un paio di minuti.");
+    lav.append(el("small", null, r.fermo ? "Il server non ha ancora cominciato: se resta così, sul server  sudo bash rete-meshtastic.sh installa"
+                                         : "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
+    li.append(lav);
+  } else {
+    const pulsanti = el("div", "pulsanti");
+    const no = el("button", "bottone secondario piccolo", "Rifiuta");
+    no.type = "button";
+    const si = el("button", "bottone piccolo", r.errore ? "Riprova" : (r.sostituisce ? "Sostituisci" : "Approva"));
+    si.type = "button";
+    no.addEventListener("click", () => azioneRichiesta(no, "rifiuta", {id: r.id}));
+    si.addEventListener("click", () => azioneRichiesta(si, "approva", {id: r.id, sostituisci: !!r.sostituisce}));
+    pulsanti.append(no, si);
+    li.append(pulsanti);
+  }
+  if (r.errore && r.stato !== "in_corso") {
+    const pr = el("div", "problema", "Non riuscito: " + frase(r.errore));
+    if (r.dettagli) pr.append(dettagli("richiesta:" + r.id, "Dettagli", el("pre", null, r.dettagli)));
+    li.append(pr);
+  }
+  return li;
+}
+
+const PAROLE_AZIONE = {aggiungi: "Aggiunta del ponte ", rimuovi: "Rimozione del ponte "};
+
+function cosaLavoro(l) {
+  if (l.azione === "aggiorna-server") return "Aggiornamento del server alla " + (l.versione || "?");
+  if (l.azione === "aggiorna-ponti") return "Richiesta di aggiornamento " + (l.nome === "tutti" ? "ai ponti" : "al ponte " + l.nome) +
+                                            " alla " + (l.versione || "?");
+  return (PAROLE_AZIONE[l.azione] || "Lavoro sul ponte ") + (l.nome || "?");
+}
+
+function disegnaLavoro(l) {
+  const p = el("p", "lavoro");
+  p.dataset.esito = l.esito;
+  const cosa = cosaLavoro(l);
+  if (l.esito === "in_coda" || l.esito === "in_corso") {
+    p.append(document.createTextNode(cosa + ": in corso (chiesta da " + (l.da || "?") + ")."));
+    if (l.fermo) p.append(el("small", null, "Il server non ha ancora cominciato: se resta così, sul server  sudo bash rete-meshtastic.sh installa"));
+    else if (l.azione === "aggiungi") p.append(el("small", null, "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
+    else if (l.azione === "aggiorna-server") p.append(el("small", null, "Il servizio della pagina riparte: per circa un minuto la pagina può non rispondere, poi riprende da sola."));
+  } else if (l.esito === "ok") {
+    p.textContent = cosa + ": fatta alle " + oraDi(l.quando) + "." +
+                    (l.azione === "aggiorna-ponti" ? " I ponti si aggiornano da soli entro qualche minuto." : "");
+  } else {
+    p.textContent = cosa + ": non riuscita alle " + oraDi(l.quando) + ".";
+    const pr = el("div", "problema", maiuscola(frase(l.messaggio || "errore")));
+    if (l.testo) pr.append(dettagli("lavoro:" + l.id, "Dettagli", el("pre", null, l.testo)));
+    p.append(pr);
+  }
+  return p;
+}
+
+function disegnaNovita() {
+  if (!gestione) return null;
+  const richieste = (gestione.richieste || []).filter(r => r.stato === "attesa" || r.stato === "in_corso");
+  const ora = Date.now() / 1000;
+  const lavori = (gestione.lavori || []).filter(l => l.esito === "in_coda" || l.esito === "in_corso" ||
+                                                     (l.quando && ora - l.quando < 15 * 60))
+                                        .filter(l => !(l.richiesta && richieste.some(r => r.id === l.richiesta)));
+  if (!richieste.length && !lavori.length) return null;
+  const sez = el("section", "novita");
+  sez.setAttribute("aria-live", "polite");
+  const inAttesa = richieste.filter(r => r.stato === "attesa").length;
+  if (richieste.length) {
+    sez.append(el("h2", null, inAttesa === 1 ? "Un ponte chiede di entrare" :
+                              (inAttesa ? inAttesa + " ponti chiedono di entrare" : "Ponti in arrivo")));
+    sez.append(el("p", "guida", "Approva solo se il codice di controllo è lo stesso che il Raspberry ha mostrato alla fine dell'installazione. Una richiesta che non riconosci, rifiutala."));
+    const ul = el("ul", "righe");
+    richieste.forEach(r => ul.append(disegnaRichiesta(r)));
+    sez.append(ul);
+  } else {
+    // solo lavori: in evidenza se uno e' in corso o non e' riuscito, altrimenti una riga discreta
+    if (lavori.every(l => l.esito === "ok")) sez.classList.add("quieta");
+    sez.append(el("h2", null, sez.classList.contains("quieta") ? "Ultimi lavori" : "Lavori sulla rete"));
+  }
+  lavori.forEach(l => sez.append(disegnaLavoro(l)));
+  return sez;
+}
+
+let sezAggiungi = null, zonaServizio = null, zonaModulo = null, zonaRifiutate = null;
+
+function costruisciAggiungi() {
+  // una volta sola: chi sta scrivendo nel modulo non perde nulla quando la pagina si aggiorna
+  const sez = el("section", "aggiungi");
+  sez.id = "aggiungi";
+  sez.append(el("h2", null, "Aggiungere un ponte"));
+  const ol = el("ol");
+  const passo1 = el("li", null, "Sul Raspberry del nuovo ponte lancia:");
+  const riga = el("div", "comando");
+  const codice = el("code", null, COMANDO_PI);
+  const copia = el("button", "bottone secondario piccolo", "Copia");
+  copia.type = "button";
+  copia.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(COMANDO_PI); copia.textContent = "Copiato"; }
+    catch (e) { window.getSelection().selectAllChildren(codice); copia.textContent = "Selezionato: copialo"; }
+    setTimeout(() => { copia.textContent = "Copia"; }, 4000);
+  });
+  riga.append(codice, copia);
+  passo1.append(riga);
+  ol.append(passo1);
+  ol.append(el("li", null, "Ti chiede il nome del ponte e alla fine mostra un codice di controllo (la procedura completa del Raspberry è nella guida)."));
+  ol.append(el("li", null, "Entro un minuto la richiesta compare in cima a questa pagina: se il codice è lo stesso, approvala. Il resto lo fa il server."));
+  sez.append(ol);
+  zonaServizio = el("div");
+  zonaModulo = el("div");
+  zonaRifiutate = el("div");
+  const det = el("details");
+  det.append(el("summary", null, "Il Raspberry non riesce a mandare la richiesta? Aggiungilo a mano"));
+  const f = el("form");
+  const l1 = el("label", null, "Nome del ponte");
+  const nome = el("input");
+  nome.name = "nome"; nome.required = true; nome.maxLength = 20; nome.pattern = "[a-z0-9]([a-z0-9\\-]{0,18}[a-z0-9])?";
+  nome.placeholder = "es. sede";
+  nome.autocomplete = "off";
+  nome.title = "minuscole, numeri e trattini (non all'inizio o alla fine), al massimo 20 caratteri";
+  l1.htmlFor = nome.id = "nuovo-nome";
+  const l2 = el("label", null, "Chiave del Raspberry (la mostra  sudo mesh2tak-accesso)");
+  const chiave = el("textarea");
+  chiave.name = "chiave"; chiave.required = true; chiave.placeholder = "ssh-ed25519 AAAA...";
+  chiave.spellcheck = false;
+  l2.htmlFor = chiave.id = "nuova-chiave";
+  const invia = el("button", "bottone", "Aggiungi il ponte");
+  invia.type = "submit";
+  const esito = el("p", "esito");
+  esito.setAttribute("aria-live", "polite");
+  f.append(l1, nome, l2, chiave, el("p"), invia, esito);
+  f.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    invia.disabled = true;
+    esito.textContent = "Mando...";
+    try {
+      await manda("aggiungi", {nome: nome.value.trim(), chiave: chiave.value.trim()});
+      esito.textContent = "Fatto: il server sta aggiungendo il ponte " + nome.value.trim() + " (lo vedi in cima alla pagina).";
+      f.reset();
+      await giro();
+    } catch (e) {
+      esito.textContent = "Non accettato: " + e.message;
+    } finally {
+      invia.disabled = false;
+    }
+  });
+  det.append(f);
+  zonaModulo.append(det);
+  sez.append(zonaServizio, zonaModulo, zonaRifiutate);
+  return sez;
+}
+
+function aggiornaAggiungi() {
+  if (!sezAggiungi) {
+    sezAggiungi = costruisciAggiungi();
+    vistaPonti.append(sezAggiungi);
+  }
+  zonaServizio.replaceChildren();
+  if (!gestione) {
+    zonaServizio.append(el("p", "spiega", "Il servizio della pagina non risponde" + (erroreGestione ? " (" + erroreGestione + ")" : "") +
+                                          ": senza, le richieste non arrivano. Sul server, una volta: sudo bash rete-meshtastic.sh installa"));
+  }
+  zonaModulo.hidden = !gestione;
+  const rif = gestione ? (gestione.rifiutate || []) : [];
+  zonaRifiutate.replaceChildren(...(rif.length ? [disegnaRifiutate(rif)] : []));
+}
+
+// ---- aggiornamenti di server e ponti (dalla 1.8.0): le versioni pubblicate su GitHub
+let sezAggiornamenti = null, zonaAggiornamenti = null, versionePagina = "";
+let daAggiornare = null;
+
+function confronta(a, b) {
+  const x = String(a || "0").split(".").map(Number), y = String(b || "0").split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
+  return 0;
+}
+
+function versioniPonti() {
+  return elenco.map(p => {
+    const st = stati.get(p.nome), d = st && st.dati, sis = d && d.sistema;
+    return {nome: p.nome, versione: d ? d.versione : null, aggiornabile: !!(sis && sis.aggiornabile),
+            aggiornamento: sis ? sis.aggiornamento : null};
+  });
+}
+
+function note(testo) {               // le novita' della release: le righe "- ..." diventano un elenco
+  const box = el("div", "note");
+  let ul = null;
+  String(testo || "").split(/\r?\n/).map(r => r.trim()).filter(Boolean).forEach(r => {
+    if (/^#+\s/.test(r)) return;
+    const pulita = r.replace(/\*\*/g, "").replace(/`/g, "");
+    if (/^[-*]\s+/.test(r)) {
+      if (!ul) { ul = el("ul"); box.append(ul); }
+      ul.append(el("li", null, pulita.replace(/^[-*]\s+/, "")));
+    } else {
+      ul = null;
+      box.append(el("p", null, pulita));
+    }
+  });
+  return box;
+}
+
+function costruisciAggiornamenti() {
+  const sez = el("section", "aggiungi aggiornamenti");
+  sez.id = "aggiornamenti";
+  sez.append(el("h2", null, "Aggiornamenti"));
+  zonaAggiornamenti = el("div");
+  zonaAggiornamenti.setAttribute("aria-live", "polite");
+  sez.append(zonaAggiornamenti);
+  return sez;
+}
+
+function chiediAggiornamento(o) {
+  daAggiornare = o;
+  const server = o.azione === "aggiorna-server";
+  document.getElementById("aggiorna-titolo").textContent = server ? "Aggiornare il server alla " + o.versione + "?" :
+    "Aggiornare " + (o.nomi.length === 1 ? "il ponte " + o.nomi[0] : "i ponti") + " alla " + o.versione + "?";
+  document.getElementById("aggiorna-testo").textContent = server ?
+    "Il server scarica la versione nuova da GitHub, la controlla e la installa. Per circa un minuto questa pagina non " +
+    "risponde; i ponti continuano a portare le radio al TAK Server. Se il server non riparte, torna da solo alla " +
+    "versione di prima." :
+    "Ogni ponte scarica la versione nuova da GitHub entro un paio di minuti, la controlla e la installa: intanto si " +
+    "ferma per un paio di minuti, quindi non farlo durante un intervento. Se non riparte, torna da solo alla versione " +
+    "di prima.";
+  document.getElementById("aggiorna").showModal();
+}
+
+function aggiornaAggiornamenti() {
+  if (!sezAggiornamenti) {
+    sezAggiornamenti = costruisciAggiornamenti();
+    vistaPonti.append(sezAggiornamenti);
+  }
+  const r = gestione && gestione.rilasci;
+  sezAggiornamenti.hidden = !r;
+  avvisoVersione.replaceChildren();
+  avvisoVersione.hidden = true;
+  if (!r) return;
+  if (!versionePagina && versione) versionePagina = versione;
+  const z = zonaAggiornamenti;
+  z.replaceChildren();
+  const ponti = versioniPonti();
+  const u = r.ultima;
+  const inCorso = a => (gestione.lavori || []).some(l => l.azione === a && (l.esito === "in_coda" || l.esito === "in_corso"));
+  z.append(el("p", null, "Versioni: server " + r.installata + (ponti.length ? "; " +
+    ponti.map(p => "ponte " + p.nome + " " + (p.versione || "?")).join(", ") : "") + "."));
+  let banner = "";
+  if (r.nuova && u) {
+    z.append(el("p", "evidenza", "È uscita la versione " + u.versione +
+                                 (u.pubblicata ? ", pubblicata il " + giorno(Date.parse(u.pubblicata) / 1000) : "") + ". Novità:"));
+    z.append(note(u.note));
+    const b = el("button", "bottone", inCorso("aggiorna-server") ? "Aggiornamento del server in corso" : "Aggiorna il server alla " + u.versione);
+    b.type = "button";
+    b.disabled = inCorso("aggiorna-server");
+    b.addEventListener("click", () => chiediAggiornamento({azione: "aggiorna-server", versione: u.versione}));
+    z.append(b, el("small", null, "Prima il server, poi i ponti. I ponti continuano a lavorare mentre il server si aggiorna."));
+    banner = "È uscita la versione " + u.versione + ": aggiorna il server.";
+  } else if (u && confronta(u.versione, r.installata) <= 0) {
+    const vecchi = ponti.filter(p => p.versione && confronta(p.versione, u.versione) < 0);
+    const daQui = vecchi.filter(p => p.aggiornabile && !(p.aggiornamento && p.aggiornamento.stato === "in_corso"));
+    const aMano = vecchi.filter(p => !p.aggiornabile);
+    if (daQui.length) {
+      z.append(el("p", "evidenza", (daQui.length === 1 ? "Il ponte " + daQui[0].nome + " ha" : daQui.length + " ponti hanno") +
+                                   " una versione più vecchia della " + u.versione + "."));
+      if (u.note) z.append(note(u.note));
+      const b = el("button", "bottone", inCorso("aggiorna-ponti") ? "Richiesta in corso" :
+                   "Aggiorna " + (daQui.length === 1 ? "il ponte " + daQui[0].nome : "i ponti") + " alla " + u.versione);
+      b.type = "button";
+      b.disabled = inCorso("aggiorna-ponti");
+      b.addEventListener("click", () => chiediAggiornamento({azione: "aggiorna-ponti", versione: u.versione, nomi: daQui.map(p => p.nome)}));
+      z.append(b, el("small", null, "Ogni ponte si ferma per un paio di minuti mentre si aggiorna: non farlo durante un intervento."));
+      banner = (daQui.length === 1 ? "Il ponte " + daQui[0].nome + " è" : daQui.length + " ponti sono") + " da aggiornare alla " + u.versione + ".";
+    } else if (!aMano.length && !vecchi.length) {
+      z.append(el("p", "evidenza", "Tutto aggiornato all'ultima versione, la " + u.versione + "."));
+    }
+    if (aMano.length) {
+      z.append(el("p", "nota", aMano.map(p => "ponte " + p.nome).join(", ") + ": la sua versione non si aggiorna dalla " +
+                               "pagina. Aggiornalo un'ultima volta dal Raspberry, con l'installatore della " + u.versione + "."));
+    }
+  } else if (!u) {
+    z.append(el("p", null, r.errore ? "Non riesco a leggere le versioni pubblicate su GitHub: " + r.errore + "." :
+                                      "Non ho ancora controllato le versioni pubblicate su GitHub."));
+  }
+  const riga = el("p", "nota", r.controllato ? "Ultimo controllo su GitHub " + giornoOra(r.controllato) + ". " : "");
+  const c = el("button", "bottone secondario piccolo", "Controlla adesso");
+  c.type = "button";
+  c.addEventListener("click", async () => {
+    c.disabled = true;
+    c.textContent = "Controllo...";
+    try {
+      const d = await manda("controlla-aggiornamenti", {});
+      gestione.rilasci = d.rilasci;
+    } catch (e) {
+      avviso = "Controllo non riuscito: " + e.message;
+    }
+    disegna();
+  });
+  riga.append(c);
+  z.append(riga);
+  // in cima: versione nuova, ponti da aggiornare, o pagina vecchia dopo l'aggiornamento del server
+  if (versionePagina && gestione.versione && confronta(gestione.versione, versionePagina) !== 0) {
+    const b = el("button", "bottone piccolo", "Ricarica la pagina");
+    b.type = "button";
+    b.addEventListener("click", () => location.reload());
+    avvisoVersione.append(el("p", null, "Il server è passato alla " + gestione.versione + ": ricarica la pagina per vedere le novità."), b);
+    avvisoVersione.hidden = false;
+  } else if (banner) {
+    const a = el("a", null, "Vai agli aggiornamenti");
+    a.href = "#aggiornamenti";
+    avvisoVersione.append(el("p", null, banner), a);
+    avvisoVersione.hidden = false;
+  }
+}
+
+let sezAvvisi = null, statoAvvisi = null;
+
+function costruisciAvvisi() {
+  const sez = el("section", "aggiungi avvisi-email");
+  sez.id = "avvisi";
+  sez.append(el("h2", null, "Avvisi per email"));
+  sez.append(el("p", null, "Il server ti scrive quando un ponte non risponde, perde la radio o il TAK Server da 10 minuti, " +
+                           "e quando torna a posto; quando la microSD è quasi piena, il certificato sta per scadere, " +
+                           "la corrente non basta o un Raspberry si riavvia. Le email vanno agli indirizzi degli avvisi " +
+                           "di infra-TAK (Guard Dog)."));
+  statoAvvisi = el("p", "stato-avvisi");
+  statoAvvisi.setAttribute("aria-live", "polite");
+  const b = el("button", "bottone secondario", "Manda un'email di prova");
+  b.type = "button";
+  const esito = el("p", "esito");
+  esito.setAttribute("aria-live", "polite");
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    esito.textContent = "Mando...";
+    try {
+      const r = await manda("prova-avvisi", {});
+      esito.textContent = r.messaggio || "Fatto.";
+    } catch (e) {
+      esito.textContent = "Non riuscito: " + e.message;
+    } finally {
+      b.disabled = false;
+    }
+  });
+  sez.append(statoAvvisi, b, esito);
+  return sez;
+}
+
+function aggiornaAvvisi() {
+  if (!sezAvvisi) {
+    sezAvvisi = costruisciAvvisi();
+    vistaPonti.append(sezAvvisi);
+  }
+  const a = gestione && gestione.avvisi;
+  sezAvvisi.hidden = !a;
+  if (!a) return;
+  const u = a.ultimo;
+  let testo;
+  if (!u) testo = "Finora nessun avviso.";
+  else if (u.esito === "mandato") testo = "Ultimo avviso mandato " + giornoOra(u.quando) + ": " +
+                                          String(u.oggetto || "").replace(/^\[Rete Meshtastic\] /, "") + ".";
+  else if (u.esito === "nessuno") testo = "L'ultimo avviso non è partito: in infra-TAK non c'è un indirizzo per gli avvisi. " +
+                                          "Impostalo nella console infra-TAK, in Guard Dog, poi manda un'email di prova.";
+  else if (u.esito === "pausa") testo = "L'ultimo avviso non è partito: gli avvisi di infra-TAK sono sospesi (Guard Dog).";
+  else if (u.esito === "trattenuto") testo = "L'ultimo avviso è trattenuto: infra-TAK è in manutenzione. Riprovo da solo.";
+  else testo = "L'ultimo avviso non è partito: " + (u.dettaglio || "errore") + ". Riprovo da solo.";
+  if (a.in_coda) testo += " In attesa di partire: " + a.in_coda + (a.in_coda === 1 ? " avviso." : " avvisi.");
+  statoAvvisi.textContent = testo;
+  statoAvvisi.dataset.esito = u ? u.esito : "";
+}
+
+function disegnaRifiutate(rif) {
+  const ul = el("ul", "righe");
+  rif.forEach(r => {
+    const li = el("li", "richiesta");
+    const chi = el("div");
+    chi.append(el("h3", null, r.nome || "?"));
+    const come = r.motivo === "tolto" ? "Tolto dalla rete" : "Richiesta rifiutata";
+    chi.append(el("p", "da", come + " da " + (r.da || "?") + " " + giornoOra(r.ultima) +
+                              (r.macchina ? ", Raspberry " + r.macchina : "") + (r.ip ? ", indirizzo " + r.ip : "")));
+    const codice = el("div", "controllo");
+    codice.append(el("small", null, "codice di controllo"), el("b", null, r.controllo || "?"));
+    li.append(chi, codice);
+    if (r.presente) {
+      li.append(el("p", "lavora", "Ora c'è un altro ponte " + r.nome + ": per farlo rientrare togli prima quello."));
+    } else {
+      const pulsanti = el("div", "pulsanti");
+      const b = el("button", "bottone secondario piccolo", "Lascia rientrare");
+      b.type = "button";
+      b.addEventListener("click", () => azioneRichiesta(b, "riammetti", {id: r.id}));
+      pulsanti.append(b);
+      li.append(pulsanti);
+    }
+    ul.append(li);
+  });
+  const det = dettagli("rifiutate", "Ponti tolti e richieste rifiutate (" + rif.length + ")",
+                       el("p", "nota", "Questi Raspberry non possono rientrare da soli, per 30 giorni. Se è stato un errore, lasciali rientrare."), ul);
+  det.classList.add("rifiutate");
+  return det;
+}
+
+async function azioneRichiesta(bottone, azione, dati) {
+  bottone.disabled = true;
+  try {
+    const d = await manda(azione, dati);
+    if (d.messaggio) avviso = d.messaggio;
+  } catch (e) {
+    avviso = "Non riuscito: " + e.message;
+  }
+  await giro();
+}
+
+let avviso = "";                   // esito dell'ultima azione, mostrato una volta in cima
+
+function chiediTogli(p) {
+  daTogliere = p;
+  document.getElementById("togli-testo").textContent = "Il ponte " + p.nome + " non sarà più raggiungibile da questa pagina e il suo indirizzo " +
+    p.indirizzo.replace(/^https:\/\//, "").replace(/\/$/, "") + " smette di funzionare.";
+  document.getElementById("togli").showModal();
+}
+
+let schedaPonti = null, schedaRadio = null;
+let riassuntoRadio = null, avvisiRadio = null, cercaRadio = null, testaVoci = null, elencoRadio = null;
+
+function costruisciSchede() {
+  schede.className = "schede";
+  schede.setAttribute("role", "tablist");
+  schede.setAttribute("aria-label", "Cosa mostrare");
+  const scheda = (nome, titolo) => {
+    const b = el("button", null, titolo);
+    b.type = "button";
+    b.id = "scheda-" + nome;
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-controls", "vista-" + nome);
+    b.conteggio = el("span");
+    b.append(b.conteggio);
+    b.addEventListener("click", () => mostraVista(nome, true));
+    schede.append(b);
+    return b;
+  };
+  schedaPonti = scheda("ponti", "Ponti");
+  schedaRadio = scheda("radio", "Radio della rete");
+  schede.addEventListener("keydown", ev => {
+    if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+    const altra = document.activeElement === schedaPonti ? schedaRadio : schedaPonti;
+    altra.focus();
+    altra.click();
+    ev.preventDefault();
+  });
+  for (const [v, nome] of [[vistaPonti, "ponti"], [vistaRadio, "radio"]]) {
+    v.id = "vista-" + nome;
+    v.setAttribute("role", "tabpanel");
+    v.setAttribute("aria-labelledby", "scheda-" + nome);
+  }
+  // la vista delle radio si costruisce una volta: la ricerca non si perde quando la pagina si aggiorna
+  const sez = el("section", "radio-rete");
+  riassuntoRadio = el("p", "riassunto");
+  riassuntoRadio.setAttribute("aria-live", "polite");
+  avvisiRadio = el("ul", "avvisi");
+  const cerca = el("div", "cerca");
+  const etichetta = el("label", null, "Cerca");
+  cercaRadio = el("input");
+  cercaRadio.type = "search";
+  cercaRadio.placeholder = "nome, sigla o modello";
+  cercaRadio.autocomplete = "off";
+  etichetta.htmlFor = cercaRadio.id = "cerca-radio";
+  cercaRadio.addEventListener("input", () => disegnaRadioRete());
+  cerca.append(etichetta, cercaRadio);
+  testaVoci = el("div", "testa-voci");
+  ["Radio", "Batteria", "Ultimo segnale", "Chi la sente"].forEach(x => testaVoci.append(el("span", null, x)));
+  elencoRadio = el("ol", "voci");
+  sez.append(riassuntoRadio, avvisiRadio, cerca, testaVoci, elencoRadio,
+             el("p", "nota", "Le radio compaiono quando trasmettono sul canale della squadra: nome e modello circa ogni " +
+                             "tre ore, batteria ogni mezz'ora. I ponti ascoltano soltanto: per questo elenco non " +
+                             "trasmettono nulla e non chiedono nulla alle radio."));
+  vistaRadio.append(sez);
+  mostraVista(location.hash === "#radio" ? "radio" : "ponti", false);
+  window.addEventListener("hashchange", () => mostraVista(location.hash === "#radio" ? "radio" : "ponti", false));
+}
+
+function mostraVista(nome, daClic) {
+  const radio = nome === "radio";
+  schedaPonti.setAttribute("aria-selected", String(!radio));
+  schedaRadio.setAttribute("aria-selected", String(radio));
+  schedaPonti.tabIndex = radio ? -1 : 0;
+  schedaRadio.tabIndex = radio ? 0 : -1;
+  vistaPonti.hidden = radio;
+  vistaRadio.hidden = !radio;
+  if (daClic) history.replaceState(null, "", radio ? "#radio" : location.pathname + location.search);
+}
+
+function radioDellaRete() {
+  // le radio sentite da tutti i ponti, unite: i dati piu' recenti vincono. Le eta' si calcolano con
+  // l'orologio di ogni ponte (d.ora), cosi' un orologio sbagliato non confonde nulla.
+  const tutte = new Map(), ponteDi = new Map(), vecchi = [], canali = [];
+  let raggiunti = 0;
+  for (const p of elenco) {
+    const st = stati.get(p.nome);
+    const d = st && st.dati;
+    if (!d) continue;
+    raggiunti++;
+    if (d.id_nodo) ponteDi.set(d.id_nodo, p.nome);
+    if (d.canale_radio && d.canale_radio.occupato !== null && d.canale_radio.occupato !== undefined) {
+      canali.push({ponte: p.nome, occupato: d.canale_radio.occupato, trasmesso: d.canale_radio.trasmesso,
+                   eta: d.canale_radio.quando ? Math.max(0, d.ora - d.canale_radio.quando) : null});
+    }
+    if (!Array.isArray(d.radio_rete)) { vecchi.push(p.nome); continue; }
+    for (const r of d.radio_rete) {
+      if (!r || typeof r.id !== "string") continue;
+      const eta = Math.max(0, (d.ora || 0) - (r.ultimo || 0));
+      let v = tutte.get(r.id);
+      if (!v) { v = {id: r.id, eta: Infinity, etaMetriche: Infinity, ponti: []}; tutte.set(r.id, v); }
+      const piuRecente = eta < v.eta;
+      if (piuRecente) v.eta = eta;
+      for (const k of ["nome", "nome_breve", "modello", "ruolo"]) if (r[k] && (piuRecente || !v[k])) v[k] = r[k];
+      if (r.metriche) {
+        const em = Math.max(0, (d.ora || 0) - r.metriche);
+        if (em < v.etaMetriche) {
+          v.etaMetriche = em;
+          v.batteria = r.batteria; v.tensione = r.tensione; v.occupato = r.occupato; v.trasmesso = r.trasmesso;
+          v.acceso = (r.acceso_s === null || r.acceso_s === undefined) ? null : r.acceso_s + em;
+        }
+      }
+      v.ponti.push({ponte: p.nome, eta, salti: r.salti, snr: r.snr, rssi: r.rssi});
+    }
+  }
+  for (const v of tutte.values()) {
+    v.ponte = ponteDi.get(v.id) || "";
+    v.ponti.sort((a, b) => a.eta - b.eta);
+  }
+  return {radio: [...tutte.values()], vecchi, canali, raggiunti};
+}
+
+function problemi(v) {
+  const p = [];
+  if (v.eta >= SILENZIO_S) return p;          // spenta: la batteria di ore fa non e' un allarme
+  if (v.batteria !== null && v.batteria !== undefined && v.batteria <= 20 && v.etaMetriche < 6 * 3600) {
+    p.push(["batteria quasi scarica", ""]);
+  }
+  if (v.trasmesso !== null && v.trasmesso !== undefined && v.trasmesso >= 5 && v.etaMetriche < 3 * 3600) {
+    p.push(["trasmette troppo: " + numIt(v.trasmesso) + "% del tempo", "lieve"]);
+  }
+  return p;
+}
+
+function disegnaVoce(v) {
+  const li = el("li", "voce");
+  const silenziosa = v.eta >= SILENZIO_S;
+  const pr = problemi(v);
+  li.dataset.stato = pr.length ? "problema" : (silenziosa ? "silenziosa" : "ok");
+  const nome = el("div", "nome");
+  nome.append(el("b", null, v.nome || "Radio " + v.id));
+  nome.append(el("small", null, [v.nome_breve, v.id].filter(Boolean).join(", ")));
+  const cosa = [nomeModello(v.modello), v.ruolo ? (RUOLI[v.ruolo] || v.ruolo.toLowerCase()) : "",
+                v.ponte ? "è il ponte " + v.ponte : ""].filter(Boolean).join(", ");
+  if (cosa) nome.append(el("small", null, cosa));
+  if (pr.length) {
+    const box = el("div", "problemi");
+    pr.forEach(([testo, classe]) => box.append(el("span", classe || null, testo)));
+    nome.append(box);
+  }
+  const bat = el("div", "batteria");
+  if (v.batteria === null || v.batteria === undefined) {
+    bat.append(el("b", null, "non nota"));
+  } else if (v.batteria > 100) {
+    bat.append(el("b", null, "alimentata"));
+  } else {
+    bat.append(el("b", null, v.batteria + "%"));
+    const pila = el("div", "pila");
+    const livello = el("i", v.batteria <= 20 ? "scarica" : (v.batteria <= 40 ? "bassa" : null));
+    livello.style.width = Math.max(3, v.batteria) + "%";
+    pila.append(livello);
+    bat.append(pila);
+  }
+  if (v.tensione) bat.append(el("small", null, numIt(v.tensione, 2) + " V"));
+  const quando = el("div", "quando");
+  quando.append(el("b", null, "sentita " + fa(v.eta)));
+  if (silenziosa) quando.append(el("small", null, "spenta o fuori copertura"));
+  else if (v.acceso !== null && v.acceso !== undefined && v.etaMetriche < 6 * 3600) {
+    quando.append(el("small", null, "accesa da " + durata(v.acceso)));
+  }
+  const ponti = el("div", "ponti");
+  v.ponti.forEach(x => {
+    const s = el("span", "via");
+    let testo = x.ponte;
+    if (x.salti === 0) {
+      const q = qualita(x.snr, x.rssi);
+      testo += q ? ": diretta, segnale " + q : ": diretta";
+    } else if (x.salti > 0) {
+      testo += ": passando da " + (x.salti === 1 ? "1 radio" : x.salti + " radio");
+    }
+    s.append(document.createTextNode(testo));
+    if (x.eta >= 15 * 60) s.append(el("em", null, " (" + fa(x.eta) + ")"));
+    if (x.snr !== null && x.snr !== undefined) {
+      s.title = "Rapporto segnale/rumore " + numIt(x.snr) + " dB" + (x.rssi ? ", potenza " + x.rssi + " dBm" : "");
+    }
+    ponti.append(s);
+  });
+  li.append(nome, bat, quando, ponti);
+  return li;
+}
+
+function disegnaRadioRete() {
+  const {radio, vecchi, canali, raggiunti} = radioDellaRete();
+  schedaPonti.conteggio.textContent = elenco.length ? String(elenco.length) : "";
+  schedaRadio.conteggio.textContent = radio.length ? String(radio.length) : "";
+  const attive = radio.filter(v => v.eta < 3600).length;
+  const silenziose = radio.filter(v => v.eta >= SILENZIO_S).length;
+  const scariche = radio.filter(v => problemi(v).some(x => x[0].startsWith("batteria"))).length;
+  const chiacchierone = radio.filter(v => problemi(v).some(x => x[0].startsWith("trasmette")));
+  if (!radio.length) {
+    riassuntoRadio.textContent = raggiunti ? "Nessuna radio della squadra sentita finora." :
+                                 "Nessun ponte raggiungibile: l'elenco delle radio arriva dai ponti.";
+  } else {
+    const parti = [attive + " sentit" + (attive === 1 ? "a" : "e") + " nell'ultima ora"];
+    if (silenziose) parti.push(silenziose + " silenzios" + (silenziose === 1 ? "a" : "e") + " da più di 2 ore");
+    riassuntoRadio.textContent = (radio.length === 1 ? "1 radio della squadra" : radio.length + " radio della squadra") +
+      ": " + parti.join(", ") + "." + (scariche ? " " + (scariche === 1 ? "Una ha" : scariche + " hanno") +
+      " la batteria quasi scarica." : "") + (chiacchierone.length ? " " + (chiacchierone.length === 1 ? "Una trasmette" :
+      chiacchierone.length + " trasmettono") + " troppo spesso." : "");
+  }
+  avvisiRadio.replaceChildren();
+  canali.forEach(c => {
+    if (c.eta !== null && c.eta > 3600) return;
+    if (c.occupato >= 25) {
+      avvisiRadio.append(el("li", c.occupato >= 40 ? "grave" : null, "Canale radio " + (c.occupato >= 40 ? "saturo" : "affollato") +
+        " vicino al ponte " + c.ponte + ": occupato il " + numIt(c.occupato) + "% del tempo. Le radio rimandano le " +
+        "trasmissioni non urgenti (posizioni, batteria)."));
+    }
+    if (c.trasmesso >= 8) {
+      avvisiRadio.append(el("li", "grave", "Il ponte " + c.ponte + " ha trasmesso il " + numIt(c.trasmesso, 2) +
+        "% del tempo nell'ultima ora: il limite di legge è il 10%."));
+    }
+  });
+  chiacchierone.slice(0, 3).forEach(v => avvisiRadio.append(el("li", null, (v.nome || v.id) + " occupa la radio il " +
+    numIt(v.trasmesso) + "% del tempo (di solito meno dell'1%) e rallenta le altre: probabilmente manda la posizione " +
+    "troppo spesso. Controlla nell'app Meshtastic di quella radio: Impostazioni, Posizione.")));
+  vecchi.forEach(n => avvisiRadio.append(el("li", null, "Il ponte " + n + " ha una versione di mesh2tak che non manda " +
+    "l'elenco delle radio: aggiornalo sul Raspberry (dalla 1.6.0).")));
+  const filtro = cercaRadio.value.trim().toLowerCase();
+  const visibili = radio.filter(v => !filtro || [v.nome, v.nome_breve, v.id, v.modello, nomeModello(v.modello)]
+    .some(x => x && String(x).toLowerCase().includes(filtro)));
+  visibili.sort((a, b) => (problemi(b).length > 0) - (problemi(a).length > 0) || a.eta - b.eta);
+  testaVoci.hidden = !visibili.length;
+  if (visibili.length) {
+    elencoRadio.replaceChildren(...visibili.map(disegnaVoce));
+  } else {
+    elencoRadio.replaceChildren(el("li", "voce vuota", radio.length ? "Nessuna radio corrisponde alla ricerca." :
+      (raggiunti ? "Le radio compaiono appena trasmettono sul canale della squadra." : "")));
+  }
+}
+
+function disegna() {
+  const sintesi = document.getElementById("sintesi");
+  if (!schedaPonti) costruisciSchede();
+  const novita = disegnaNovita();
+  zonaNovita.replaceChildren(...(novita ? [novita] : []));
+  zonaPonti.replaceChildren();
+  if (!elenco.length) {
+    sintesi.textContent = "Nessun ponte nella rete per ora.";
+  } else {
+    const conta = {ok: 0, pausa: 0, guasto: 0, giu: 0};
+    elenco.forEach(p => { conta[valuta(stati.get(p.nome)).classe]++; zonaPonti.append(disegnaPonte(p)); });
+    const n = elenco.length;
+    const parti = [];
+    if (conta.ok) parti.push(conta.ok === n ? (n === 1 ? "in linea" : "tutti in linea") : conta.ok + " in linea");
+    if (conta.pausa) parti.push(conta.pausa + " in pausa");
+    if (conta.guasto) parti.push(conta.guasto + " con un problema");
+    if (conta.giu) parti.push(conta.giu + " non raggiungibil" + (conta.giu === 1 ? "e" : "i"));
+    sintesi.textContent = (n === 1 ? "1 ponte" : n + " ponti") + ": " + parti.join(", ") + ".";
+  }
+  const attesa = gestione ? (gestione.richieste || []).filter(r => r.stato === "attesa").length : 0;
+  if (attesa) sintesi.textContent += " " + (attesa === 1 ? "Una richiesta" : attesa + " richieste") + " da approvare.";
+  if (erroreGiro === "sessione scaduta") {
+    sintesi.textContent = "Sessione scaduta: ricarica la pagina.";
+  } else if (riavvio) {
+    sintesi.textContent = "Authentik si sta riavviando per il lavoro in corso: la pagina torna da sola tra circa un minuto.";
+  } else if (erroreGiro) {
+    sintesi.textContent = (ultimoElenco ? "Ultimo aggiornamento non riuscito" : "Elenco dei ponti non disponibile") +
+                          " (" + erroreGiro + "): riprovo da solo.";
+  }
+  if (avviso) { sintesi.textContent = avviso + " " + sintesi.textContent; avviso = ""; }
+  aggiornaAggiungi();
+  aggiornaAvvisi();
+  aggiornaAggiornamenti();
+  disegnaRadioRete();
+  document.getElementById("aggiornato").textContent = "Aggiornata alle " + new Date().toLocaleTimeString("it-IT") + ", si aggiorna da sola";
+  document.getElementById("versione").textContent = versione ? "rete-meshtastic " + versione : "";
+}
+
+function chiediConferma(p, d) {
+  const dlg = document.getElementById("conferma");
+  const g = d.gestione || {};
+  let testo = "Mentre la pagina di gestione è aperta il ponte " + p.nome + " non porta le posizioni delle radio al TAK Server.";
+  if (d.pausa && d.pausa.attiva) testo = "Il nodo è già gestito " + (d.pausa.chi || "da qualcuno") + " dalle " + oraDi(d.pausa.dal) + ". Aprendo anche tu, la pausa continua.";
+  document.getElementById("conferma-testo").textContent = testo;
+  document.getElementById("conferma-chiusura").textContent = durata(g.chiusura_s || 120);
+  document.getElementById("conferma-massimo").textContent = durata((g.pausa_massima_min || 30) * 60);
+  document.getElementById("apri").href = p.indirizzo;
+  dlg.showModal();
+}
+
+document.getElementById("annulla").addEventListener("click", () => document.getElementById("conferma").close());
+document.getElementById("togli-annulla").addEventListener("click", () => document.getElementById("togli").close());
+document.getElementById("togli-conferma").addEventListener("click", async () => {
+  const p = daTogliere;
+  document.getElementById("togli").close();
+  if (!p) return;
+  try {
+    await manda("rimuovi", {nome: p.nome});
+  } catch (e) {
+    avviso = "Non riuscito: " + e.message;
+  }
+  await giro();
+});
+document.getElementById("apri").addEventListener("click", () => document.getElementById("conferma").close());
+document.getElementById("aggiorna-annulla").addEventListener("click", () => document.getElementById("aggiorna").close());
+document.getElementById("aggiorna-conferma").addEventListener("click", async () => {
+  const o = daAggiornare;
+  document.getElementById("aggiorna").close();
+  if (!o) return;
+  try {
+    const d = await manda(o.azione, o.azione === "aggiorna-server" ? {versione: o.versione} :
+                                    {versione: o.versione, nome: o.nomi.length === 1 ? o.nomi[0] : "tutti"});
+    if (d.messaggio) avviso = d.messaggio;
+  } catch (e) {
+    avviso = "Non riuscito: " + e.message;
+  }
+  await giro();
+});
+
+async function giro() {
+  const g = aggiornaGestione();
+  erroreGiro = "";
+  try {
+    await aggiornaElenco();
+    await Promise.all(elenco.map(aggiornaPonte));
+  } catch (e) {
+    erroreGiro = e.message;
+  }
+  await g;
+  disegna();
+}
+
+giro();
+setInterval(() => { if (document.visibilityState === "visible") giro(); }, OGNI_S * 1000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") giro(); });
+</script>
+</body>
+</html>

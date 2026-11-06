@@ -1,0 +1,68 @@
+# Pubblica una release quando su main cambia la versione (VERSIONE in mesh2tak.py): costruisce i due file da
+# consegnare, scrive SHA256SUMS e prende le novita' da NOVITA.md. Server e Raspberry si aggiornano solo da qui.
+name: Rilascio
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rilascio
+  cancel-in-progress: false
+
+jobs:
+  rilascio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versione
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(sed -n 's/^VERSIONE = "\([0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\)"$/\1/p' mesh2tak.py | head -n1)
+          [ -n "$V" ] || { echo "::error::VERSIONE in mesh2tak.py non e' del tipo X.Y.Z"; exit 1; }
+          echo "versione=$V" >> "$GITHUB_OUTPUT"
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "La release v$V c'e' gia': niente da pubblicare."
+            echo "nuova=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "nuova=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Costruisci e controlla
+        if: steps.v.outputs.nuova == 'si'
+        env:
+          V: ${{ steps.v.outputs.versione }}
+        run: |
+          python3 -m py_compile mesh2tak.py scorta.py aggiorna.py server/rete_meshtastic.py
+          python3 build.py
+          bash -n dist/installa-ponte-meshtastic.sh
+          bash -n dist/rete-meshtastic.sh
+          grep -qx "VERSIONE=\"$V\"" dist/installa-ponte-meshtastic.sh
+          grep -qx "VERSIONE = \"$V\"" dist/rete-meshtastic.sh
+          cd dist && sha256sum installa-ponte-meshtastic.sh rete-meshtastic.sh > SHA256SUMS && cat SHA256SUMS
+
+      - name: Novita'
+        if: steps.v.outputs.nuova == 'si'
+        env:
+          V: ${{ steps.v.outputs.versione }}
+        run: |
+          awk -v t="## $V" '$0 == t || index($0, t " ") == 1 { dentro = 1; next } dentro && /^## / { exit } dentro { print }' \
+            NOVITA.md > note.md
+          grep -q '[^[:space:]]' note.md || { echo "::error::manca la sezione '## $V' in NOVITA.md"; exit 1; }
+          cat note.md
+
+      - name: Pubblica
+        if: steps.v.outputs.nuova == 'si'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.versione }}
+        run: |
+          gh release create "v$V" dist/installa-ponte-meshtastic.sh dist/rete-meshtastic.sh dist/SHA256SUMS \
+            --title "mesh2tak $V" --notes-file note.md --target "$GITHUB_SHA"
