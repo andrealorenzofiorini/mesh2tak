@@ -3,6 +3,17 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.9.0
+
+- Ponti nuovi installati da casa: si prepara la microSD con Raspberry Pi Imager (con Raspberry Pi Connect)
+  e ci si copia il pacchetto del certificato; poi, dal terminale remoto di connect.raspberrypi.com, un solo
+  comando scarica l'installatore da GitHub e lo avvia.
+- Il certificato si trova anche sulla microSD (disco "bootfs") e dopo l'installazione viene cancellato da lì.
+- Dopo il riavvio a metà l'installazione continua da sola: non serve ricollegarsi per rilanciarla.
+- Ogni ponte nuovo ha il suo nome sulla radio e sulla mappa: "Ponte CNSAS Velate" (sigla PVEL) per il ponte
+  "velate". I ponti già installati tengono il loro nome.
+- Raspberry Pi Connect resta raggiungibile anche dopo i riavvii del Raspberry.
+
 ## 1.8.0
 
 - Aggiornamenti dalla pagina della rete: quando esce una versione nuova la pagina lo dice, con le novità.

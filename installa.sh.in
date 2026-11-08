@@ -8,7 +8,8 @@
 #  posizioni, chat e oggetti dalla radio al server; chat e oggetti dal server alla radio.
 #
 #  Uso:
-#    sudo bash installa-ponte-meshtastic.sh            cerca da solo il certificato
+#    sudo bash installa-ponte-meshtastic.sh            cerca da solo il certificato (nella cartella
+#                                                      dell'utente o sulla microSD, disco "bootfs")
 #    sudo bash installa-ponte-meshtastic.sh FILE.zip   pacchetto d'integrazione infra-TAK (o .p12)
 #    sudo bash installa-ponte-meshtastic.sh --rimuovi  toglie il ponte (Meshtastic resta)
 #  Opzione: --scheda usb|waveshare|meshadv|meshadv-mini|rak
@@ -27,8 +28,13 @@
 #  Dopo:    sudo mesh2tak-scorta  prepara una microSD di scorta (in un lettore USB), copia di questa
 #  Aggiornamenti (dalla 1.8.0): dalla pagina della rete, "Aggiorna i ponti"; il Raspberry scarica la
 #           versione nuova da GitHub, la controlla, la installa e se non riparte rimette quella di prima
+#  Ponte nuovo da casa (dalla 1.9.0): microSD scritta con Raspberry Pi Imager (con Raspberry Pi Connect) e
+#           il pacchetto del certificato copiato sul disco "bootfs"; poi dal terminale remoto di
+#           connect.raspberrypi.com:
+#    curl -fsSLO https://github.com/andrealorenzofiorini/mesh2tak/releases/latest/download/installa-ponte-meshtastic.sh
+#    sudo bash installa-ponte-meshtastic.sh --accesso-esterno --canale-squadra
 #
-#  La prima volta il Raspberry si riavvia a meta': poi si rilancia lo stesso comando.
+#  La prima volta il Raspberry si riavvia a meta' e poi l'installazione continua da sola.
 # =============================================================================
 set -euo pipefail
 
@@ -48,11 +54,15 @@ MESHTASTIC_VER=2.7.11
 TAK_SDK_VER=0.10.0
 TAK_SDK_FILE=meshtastic_tak-0.10.0-py3-none-any.whl
 TAK_SDK_SHA256=34c0501137830712f69a41c2a2cfa0d0f57ab55a5f395d7b525e9b14219365d1
-NOME_NODO="Ponte CNSAS Varese"
+NOME_NODO="Ponte CNSAS Varese"           # installazioni fatte prima della 1.9.0: restano cosi'
 NOME_BREVE="PONT"
+NOME_NODO_AUTOMATICO=0                   # 1 = ponte installato da zero: nome del nodo dal nome del ponte
 CANALE="CNSAS"
 CONFIG_TXT="${MESH2TAK_CONFIG_TXT:-/boot/firmware/config.txt}"
 [ -f "$CONFIG_TXT" ] || [ -n "${MESH2TAK_CONFIG_TXT:-}" ] || CONFIG_TXT=/boot/config.txt
+AVVIO_DIR=$(dirname "$CONFIG_TXT")       # partizione di avvio: il disco "bootfs" della microSD, scrivibile dal Mac
+UNITA_RIPRESA=/etc/systemd/system/mesh2tak-installazione.service   # riprende l'installazione dopo il riavvio
+RIPRESA_SCRIPT="$CONF_DIR/installatore-in-corso.sh"
 MESHTASTICD_DIR="${MESH2TAK_MESHTASTICD_DIR:-/etc/meshtasticd}"
 SOLO_LOCALE_DIR=/etc/systemd/system/meshtasticd.service.d
 SOLO_LOCALE="$SOLO_LOCALE_DIR/mesh2tak-solo-locale.conf"
@@ -133,7 +143,7 @@ while [ $# -gt 0 ]; do
     --accesso-esterno=*) CHIEDI_ACCESSO=1; NOME_ACCESSO_DATO="${1#--accesso-esterno=}" ;;
     --scheda) SCHEDA="${2:-}"; shift ;;
     --scheda=*) SCHEDA="${1#--scheda=}" ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) sed -n '3,/^# =\{20\}/{/^# =\{20\}/!p}' "$0"; exit 0 ;;
     *) PACCHETTO="$1" ;;
   esac
   shift
@@ -146,6 +156,8 @@ command -v apt-get >/dev/null || fallisci "Questo installatore e' per Raspberry 
 if [ "$RIMUOVI" = 1 ]; then
   passo "Rimozione del ponte Meshtastic -> TAK"
   systemctl disable --now mesh2tak >/dev/null 2>&1 || true
+  systemctl disable --now mesh2tak-installazione.service >/dev/null 2>&1 || true
+  rm -f "$UNITA_RIPRESA"
   NOME_RETE=$(sed -n 's/^ACCESSO_NOME=//p' "$STATO" 2>/dev/null | tr -d "'\"" | head -n1 || true)
   PAGINA_RETE=$(sed -n 's/^ACCESSO_RETE=//p' "$STATO" 2>/dev/null | tr -d "'\"" | head -n1 || true)
   rm -f "$UNITA" /usr/local/bin/mesh2tak-stato /usr/local/bin/mesh2tak-canale "$AIUTO_ACCESSO" "$AIUTO_SCORTA"
@@ -210,6 +222,13 @@ fi
 mkdir -p "$CONF_DIR"; chmod 755 "$CONF_DIR"
 IN_CORSO="$CONF_DIR/.in-corso"            # PID dell'installazione che lavora staccata dal terminale
 SCHERMO="$CONF_DIR/installazione-schermo.log"
+if [ -n "${MESH2TAK_DOPO_RIAVVIO:-}" ]; then
+  # lanciata da mesh2tak-installazione.service dopo il riavvio a meta': senza domande, una volta sola
+  export MESH2TAK_STACCATO=1
+  systemctl disable mesh2tak-installazione.service >/dev/null 2>&1 || true
+  echo $$ > "$IN_CORSO"
+  printf '\n=== %s dopo il riavvio l'"'"'installazione riprende da sola\n' "$(date '+%F %T')"
+fi
 if [ -z "${MESH2TAK_STACCATO:-}" ] && [ -f "$IN_CORSO" ] && kill -0 "$(cat "$IN_CORSO" 2>/dev/null)" 2>/dev/null; then
   printf "%sL'installazione sta gia' lavorando%s (era partita prima che la connessione cadesse). Ecco a che punto e':\n" "$B" "$N"
   tail -n 40 --pid="$(cat "$IN_CORSO")" -f "$SCHERMO" 2>/dev/null || true
@@ -218,14 +237,30 @@ fi
 [ -n "${MESH2TAK_STACCATO:-}" ] || printf '%sPonte Meshtastic <-> TAK Server%s (versione %s)\n' "$B" "$N" "$VERSIONE"
 touch "$LOG"; chmod 600 "$LOG"
 echo "=== $(date '+%F %T') installazione mesh2tak $VERSIONE" >>"$LOG"
+if [ -z "${MESH2TAK_STACCATO:-}" ] && [ -f "$UNITA_RIPRESA" ]; then
+  # la ripresa automatica dopo il riavvio non e' partita (o non ancora): la fa questa esecuzione
+  systemctl disable --now mesh2tak-installazione.service >/dev/null 2>&1 || true
+  info "(dopo il riavvio l'installazione non era ancora ripartita da sola: continuo io)"
+fi
 TMP=$(mktemp -d); chmod 700 "$TMP"
-trap 'rm -rf "$TMP"' EXIT
-[ -n "${MESH2TAK_STACCATO:-}" ] && trap 'rm -rf "$TMP"; rm -f "$IN_CORSO"' EXIT
+RIPRESA_PROGRAMMATA=0
+togli_ripresa() {
+  [ -f "$UNITA_RIPRESA" ] || [ -f "$RIPRESA_SCRIPT" ] || return 0
+  rm -f "$UNITA_RIPRESA" "$RIPRESA_SCRIPT"
+  systemctl daemon-reload >/dev/null 2>&1 || true
+}
+alla_fine() {
+  rm -rf "$TMP"
+  if [ -n "${MESH2TAK_STACCATO:-}" ]; then rm -f "$IN_CORSO"; fi
+  if [ -n "${MESH2TAK_DOPO_RIAVVIO:-}" ] && [ "$RIPRESA_PROGRAMMATA" = 0 ]; then togli_ripresa; fi
+}
+trap alla_fine EXIT
 
 # Risposte gia' date nella prima esecuzione (prima del riavvio)
 HOST=""; PORTA=8089; CA_RIGA=""; POSIZIONE=""; SCHEDA_SALVATA=""; CERTIFICATO_OK=0; CANALE_SQUADRA=""; SECONDARIO=""
 SECONDARIO_DATO=0
 ACCESSO_NOME=""; ACCESSO_RETE=""
+[ -f "$STATO" ] || NOME_NODO_AUTOMATICO=1           # Raspberry nuovo: il nodo prendera' il nome del ponte
 # shellcheck disable=SC1090
 [ -f "$STATO" ] && . "$STATO"
 SCHEDA="${SCHEDA:-${SCHEDA_SALVATA:-}}"
@@ -248,11 +283,19 @@ case "$SCHEDA" in
   usb)          FILE_SCHEDA="";                              RUOLO=CLIENT ;;
   *) fallisci "Scheda '$SCHEDA' non prevista: usa waveshare, meshadv, meshadv-mini, rak o usb" ;;
 esac
+nomi_del_nodo() {  # ponte nuovo: nome e sigla del nodo dal nome del ponte (velate -> "Ponte CNSAS Velate", PVEL)
+  local base parola nome=""
+  base=$(printf '%s' "$1" | sed 's/^ponte-//; s/-/ /g')
+  for parola in $base; do nome="$nome ${parola^}"; done
+  NOME_NODO=$(printf 'Ponte CNSAS%s' "$nome" | cut -c1-39)
+  NOME_BREVE=$(printf 'P%s' "$(printf '%s' "$base" | tr -cd 'a-z0-9' | cut -c1-3)" | tr 'a-z' 'A-Z')
+}
 salva_stato() {
   {
     printf 'HOST=%q\nPORTA=%q\nCA_RIGA=%q\nPOSIZIONE=%q\nSCHEDA_SALVATA=%q\nCERTIFICATO_OK=%q\nCANALE_SQUADRA=%q\nSECONDARIO=%q\n' \
       "$HOST" "$PORTA" "$CA_RIGA" "$POSIZIONE" "$SCHEDA" "$CERTIFICATO_OK" "$CANALE_SQUADRA" "$SECONDARIO"
     printf 'ACCESSO_NOME=%q\nACCESSO_RETE=%q\nSECONDARIO_DATO=%q\n' "$ACCESSO_NOME" "$ACCESSO_RETE" "$SECONDARIO_DATO"
+    printf 'NOME_NODO=%q\nNOME_BREVE=%q\nNOME_NODO_AUTOMATICO=%q\n' "$NOME_NODO" "$NOME_BREVE" "$NOME_NODO_AUTOMATICO"
   } > "$STATO"
   chmod 600 "$STATO"
 }
@@ -267,11 +310,13 @@ else
   CASA=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6); CASA=${CASA:-/root}
   if [ -z "$PACCHETTO" ]; then
     PACCHETTO=$(ls -td "$CASA"/*-integration.zip "$CASA"/*.p12 "$CASA"/*-integration/ ./*-integration.zip ./*.p12 \
-      2>/dev/null | head -n1 || true)
+      "$AVVIO_DIR"/*-integration.zip "$AVVIO_DIR"/*.p12 "$AVVIO_DIR"/*-integration/ 2>/dev/null | head -n1 || true)
     PACCHETTO=${PACCHETTO%/}
-    [ -n "$PACCHETTO" ] || fallisci "Non trovo il certificato. Copia sul Raspberry il pacchetto scaricato dalla console
-   infra-TAK (es. meshtastic-cnsas-integration.zip) nella cartella $CASA e riprova."
+    [ -n "$PACCHETTO" ] || fallisci "Non trovo il certificato. Copia il pacchetto scaricato dalla console infra-TAK
+   (es. meshtastic-cnsas-integration.zip) nella cartella $CASA del Raspberry, oppure, prima di accenderlo,
+   sulla microSD (il disco \"bootfs\" che si apre sul Mac). Poi riprova."
   fi
+  PACCHETTO_DATO="$PACCHETTO"
   [ -e "$PACCHETTO" ] || fallisci "File non trovato: $PACCHETTO"
   info "uso: $PACCHETTO"
   command -v openssl >/dev/null || installa_pacchetti openssl
@@ -388,6 +433,11 @@ PYZIP
     if [ -n "$POSIZIONE" ]; then ok "posizione del Raspberry: $POSIZIONE"; else info "posizione del Raspberry: saltata"; fi
   fi
   salva_stato
+  case "$PACCHETTO_DATO" in
+    "$AVVIO_DIR"/*)   # la microSD si legge da qualunque computer: il certificato resta solo dove serve
+      rm -rf -- "$PACCHETTO_DATO" "$AVVIO_DIR/._$(basename "$PACCHETTO_DATO")"
+      ok "pacchetto del certificato tolto dalla microSD: ora e' solo in $CONF_DIR, letto solo dal ponte" ;;
+  esac
 fi
 if [ "$CHIEDI_CANALE" = 1 ]; then
   passo "   Canale della squadra (dato da fuori, es. ICARO)"
@@ -466,10 +516,21 @@ if [ "$CHIEDI_ACCESSO" = 1 ]; then
     printf '%s' "$RETE_DEF" | grep -qE '^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$' \
       || fallisci "Indirizzo della pagina della rete non valido: rilancia con MESH2TAK_ACCESSO_RETE=https://meshtastic.tuodominio.it"
     ACCESSO_NOME="$NOME_A"; ACCESSO_RETE="${RETE_DEF%/}"
+    if [ "$NOME_NODO_AUTOMATICO" = 1 ]; then
+      nomi_del_nodo "$ACCESSO_NOME"
+      ok "nome del nodo e del ponte sulla mappa: '$NOME_NODO' (sigla $NOME_BREVE)"
+    fi
     salva_stato
     ok "ponte '$ACCESSO_NOME' nella rete $ACCESSO_RETE: alla fine chiede da solo di entrare"
   fi
 fi
+fi
+
+if [ -z "${MESH2TAK_STACCATO:-}" ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ] \
+   && command -v rpi-connect >/dev/null 2>&1 && command -v loginctl >/dev/null 2>&1; then
+  # senza "linger" Raspberry Pi Connect gira solo con l'utente collegato: dopo un riavvio non si rientrerebbe
+  loginctl enable-linger "$SUDO_USER" >/dev/null 2>&1 \
+    && ok "Raspberry Pi Connect resta raggiungibile anche dopo i riavvii (utente $SUDO_USER)"
 fi
 
 # ---------------------------------------------------------------- da qui in poi, senza domande
@@ -611,10 +672,38 @@ passo "4/9  Riavvio"
 if [ -f "$CONF_DIR/.riavvio" ] && [ "$(cat "$CONF_DIR/.riavvio")" = "$BOOT_ID" ]; then RIAVVIO=1; fi
 if [ "$RIAVVIO" = 1 ]; then
   echo "$BOOT_ID" > "$CONF_DIR/.riavvio"
+  # dopo il riavvio l'installazione riparte da sola (con le risposte gia' date), una volta sola
+  if [ -f "$SE_STESSO" ]; then
+    [ "$SE_STESSO" = "$RIPRESA_SCRIPT" ] || install -m 700 -o root -g root "$SE_STESSO" "$RIPRESA_SCRIPT"
+    {
+      echo "[Unit]"
+      echo "Description=Ponte Meshtastic: l'installazione riprende dopo il riavvio"
+      echo "After=network-online.target"
+      echo "Wants=network-online.target"
+      echo
+      echo "[Service]"
+      echo "Type=oneshot"
+      echo "Environment=MESH2TAK_DOPO_RIAVVIO=1 HOME=/root"
+      echo "ExecStart=/bin/bash $RIPRESA_SCRIPT --scheda $SCHEDA"
+      echo "StandardOutput=append:$SCHERMO"
+      echo "StandardError=inherit"
+      echo "TimeoutStartSec=2h"
+      echo
+      echo "[Install]"
+      echo "WantedBy=multi-user.target"
+    } > "$UNITA_RIPRESA"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable mesh2tak-installazione.service >/dev/null 2>&1 && RIPRESA_PROGRAMMATA=1
+  fi
   printf '\n%sIl Raspberry ora si riavvia.%s\n' "$B" "$N"
-  info "Tra 2-3 minuti ricollegati con ssh e lancia di nuovo lo stesso comando:"
-  info "    sudo bash $(basename "$0")"
-  info "Riprende da dove si e' fermato."
+  if [ "$RIPRESA_PROGRAMMATA" = 1 ]; then
+    info "Poi l'installazione continua da sola: non serve rilanciarla (il resto dura 10-20 minuti)."
+    info "Per seguirla: tra 2-3 minuti ricollegati e lancia  sudo bash installa-ponte-meshtastic.sh"
+  else
+    info "Tra 2-3 minuti ricollegati con ssh e lancia di nuovo lo stesso comando:"
+    info "    sudo bash installa-ponte-meshtastic.sh"
+    info "Riprende da dove si e' fermato."
+  fi
   sleep 5
   systemctl reboot
   exit 0
@@ -737,6 +826,7 @@ mkdir -p "$STATO_AGGIORNA"; chmod 755 "$STATO_AGGIORNA"
   echo
   echo "[Service]"
   echo "Type=oneshot"
+  echo "Environment=HOME=/root"
   echo "ExecStart=/usr/bin/python3 -I $DIR/aggiorna.py"
   echo "TimeoutStartSec=100min"
   echo "Nice=5"
@@ -1117,6 +1207,7 @@ fi
 if [ -f "$SE_STESSO" ] && [ "$SE_STESSO" != "$DIR/installatore.sh" ]; then
   install -m 700 -o root -g root "$SE_STESSO" "$DIR/installatore.sh" 2>/dev/null || true
 fi
+togli_ripresa    # dopo la copia: dopo il riavvio "questo installatore" e' proprio la copia della ripresa
 printf '\n%sFatto.%s\n' "$B" "$N"
 [ "$ESITO_TAK" = ok ] || avviso "Il TAK Server non ha accettato il collegamento: il ponte riprova da solo, ma leggi il messaggio al passo 8."
 [ "$ESITO_NODO" = ok ] || avviso "Il nodo Meshtastic non ha risposto alla prova: il ponte riprova da solo, ma leggi il messaggio al passo 8."

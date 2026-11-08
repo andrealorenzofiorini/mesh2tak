@@ -23,14 +23,21 @@ sudo bash rete-meshtastic.sh installa
 ```
 
 Sul Raspberry (Raspberry Pi OS Lite, Debian 12 o 13), con il pacchetto d'integrazione del certificato
-scaricato dalla console infra-TAK nella stessa cartella:
+scaricato dalla console infra-TAK nella cartella dell'utente, oppure copiato sulla microSD (disco "bootfs")
+prima di accenderlo:
 
 ```
-sudo bash installa-ponte-meshtastic.sh --accesso-esterno
+curl -fsSLO https://github.com/andrealorenzofiorini/mesh2tak/releases/latest/download/installa-ponte-meshtastic.sh
+sudo bash installa-ponte-meshtastic.sh --accesso-esterno --canale-squadra
 ```
 
-La prima volta il Raspberry si riavvia a metà: poi si rilancia lo stesso comando. Alla fine mostra un codice
-da confermare sulla pagina della rete. `sudo bash installa-ponte-meshtastic.sh --help` elenca le opzioni.
+Con una scheda LoRa sui pin al posto della radio USB si aggiunge `--scheda waveshare` (o `rak`). Le domande
+sono tutte all'inizio (password del certificato, posizione, chiave del canale, nome del ponte); il Raspberry
+si riavvia a metà e poi continua da solo. Alla fine il ponte chiede di entrare nella rete: si approva sulla
+pagina della rete, controllando il codice. `sudo bash installa-ponte-meshtastic.sh --help` elenca le opzioni.
+
+Si può fare anche da lontano: con Raspberry Pi Imager si attiva Raspberry Pi Connect sulla microSD, e i
+comandi si lanciano dal terminale remoto di [connect.raspberrypi.com](https://connect.raspberrypi.com).
 
 ## Aggiornare
 

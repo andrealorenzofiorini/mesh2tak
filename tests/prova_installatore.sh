@@ -25,7 +25,8 @@ pkill -f 'http.server 18099'
 rm -rf /opt/mesh2tak /etc/mesh2tak /usr/local/bin/mesh2tak-* /var/log/mesh2tak-installazione.log \
   /root/canale-meshtastic.txt "$STUB" "$FINTO" /tmp/pi-eventi.jsonl /var/lib/mesh2tak-aggiorna \
   /etc/systemd/system/mesh2tak-aggiorna.service /etc/systemd/system/mesh2tak-aggiorna.timer \
-  /var/log/mesh2tak-aggiornamento.log /tmp/pi-github /tmp/pi-registrazione.json
+  /var/log/mesh2tak-aggiornamento.log /tmp/pi-github /tmp/pi-registrazione.json \
+  /etc/systemd/system/mesh2tak-installazione.service
 id mesh2tak >/dev/null 2>&1 && userdel mesh2tak
 [ -f "$PKI/meshtastic-cnsas-integration.zip" ] || bash "$QUI/pki.sh" "$PKI" >/dev/null
 
@@ -85,11 +86,14 @@ case "$cmd" in
       nohup runuser -u "$u" -- $exe >> /tmp/stubs-pi/servizio.log 2>&1 &
       echo $! > $pidf
     fi; exit 0 ;;
-  disable) ferma; exit 0 ;;
+  disable) [ "$unit" = mesh2tak ] && ferma; exit 0 ;;
   show) if [ -f /tmp/pi-finto/systemd/system.conf.d/mesh2tak-watchdog.conf ]; then echo 14s; else echo 0; fi; exit 0 ;;
   *) exit 0 ;;
 esac
 EOF
+printf '#!/bin/bash\nexit 0\n' > "$STUB/rpi-connect"
+printf '#!/bin/bash\necho "loginctl $*" >> /tmp/stubs-pi/chiamate.log\n' > "$STUB/loginctl"
+chmod 755 "$STUB/rpi-connect" "$STUB/loginctl"
 cat > "$STUB/journalctl" <<'EOF'
 #!/bin/bash
 case "$*" in *meshtasticd*) echo "INFO  | 18:01:02 4 sx1262 init success";; *) tail -n 20 /tmp/stubs-pi/servizio.log 2>/dev/null;; esac
@@ -194,9 +198,16 @@ controlla "riavvio dopo l'aggiornamento" 'grep -q RIAVVIO "$STUB/chiamate.log"'
 rm -f "/etc/apt/sources.list.d/network:Meshtastic:beta.list" /etc/apt/trusted.gpg.d/network_Meshtastic_beta.gpg
 rm -rf /etc/mesh2tak /root/canale-meshtastic.txt "$FINTO/meshtasticd/config.d"/*; : > "$STUB/chiamate.log"
 
-echo "== 1a esecuzione (Raspberry appena scritto)"
-esegui boot1 /tmp/pi-run1.log --scheda waveshare "$PKI/meshtastic-cnsas-integration.zip"; U1=$?
+echo "== 1a esecuzione (Raspberry appena scritto, certificato copiato sulla microSD dal Mac)"
+cp "$PKI/meshtastic-cnsas-integration.zip" "$FINTO/"
+printf 'AppleDouble del Mac' > "$FINTO/._meshtastic-cnsas-integration.zip"
+(export SUDO_USER=nobody; esegui boot1 /tmp/pi-run1.log --scheda waveshare); U1=$?
 controlla "uscita 0" '[ $U1 = 0 ]'
+controlla "certificato trovato sulla microSD (disco bootfs), non nel file ._ del Mac" 'grep -q "uso: $FINTO/meshtastic-cnsas-integration.zip" /tmp/pi-run1.log'
+controlla "poi tolto dalla microSD, con il file ._" '[ ! -e "$FINTO/meshtastic-cnsas-integration.zip" ] && [ ! -e "$FINTO/._meshtastic-cnsas-integration.zip" ] && grep -q "pacchetto del certificato tolto dalla microSD" /tmp/pi-run1.log'
+controlla "Raspberry Pi Connect raggiungibile dopo i riavvii (linger)" 'grep -qx "loginctl enable-linger nobody" "$STUB/chiamate.log" && grep -q "Raspberry Pi Connect resta raggiungibile anche dopo i riavvii" /tmp/pi-run1.log'
+controlla "dopo il riavvio riparte da sola: unita' e copia dell'installatore" 'grep -qx "ExecStart=/bin/bash /etc/mesh2tak/installatore-in-corso.sh --scheda waveshare" /etc/systemd/system/mesh2tak-installazione.service && grep -qx "Environment=MESH2TAK_DOPO_RIAVVIO=1 HOME=/root" /etc/systemd/system/mesh2tak-installazione.service && grep -qx "StandardOutput=append:/etc/mesh2tak/installazione-schermo.log" /etc/systemd/system/mesh2tak-installazione.service && grep -qx "WantedBy=multi-user.target" /etc/systemd/system/mesh2tak-installazione.service && cmp -s /etc/mesh2tak/installatore-in-corso.sh "$INST" && [ "$(stat -c %a:%U /etc/mesh2tak/installatore-in-corso.sh)" = 700:root ] && grep -q "systemctl enable mesh2tak-installazione.service" "$STUB/chiamate.log"'
+controlla "lo dice prima di riavviare" 'grep -q "Poi l.installazione continua da sola: non serve rilanciarla" /tmp/pi-run1.log'
 controlla "SPI e spi0-0cs aggiunti in [all]" 'tail -n 4 "$FINTO/config.txt" | tr "\n" " " | grep -q "\[all\] # Scheda LoRa.* dtparam=spi=on dtoverlay=spi0-0cs"'
 controlla "copia di sicurezza di config.txt" 'cmp -s "$FINTO/config.txt.prima-di-meshtastic" "$FINTO/config.txt.originale"'
 controlla "configurazione Waveshare in config.d" 'cmp -s "$FINTO/meshtasticd/config.d/lora-waveshare-sxxx.yaml" "$FW/bin/config.d/lora-waveshare-sxxx.yaml"'
@@ -209,13 +220,18 @@ controlla "certificato gia' installato" '[ -s /etc/mesh2tak/client.key ] && grep
 controlla "posizione ricordata" '[ "$(. /etc/mesh2tak/installazione.conf; echo "$POSIZIONE")" = "45.8205,8.8257,400" ]'
 controlla "nodo non ancora toccato" '[ "$(nodo "d[\"regione\"]")" = UNSET ]'
 
-echo "== 2a esecuzione (dopo il riavvio)"
+echo "== 2a esecuzione (dopo il riavvio: la lancia systemd, da sola)"
 : > "$STUB/chiamate.log"
-esegui boot2 /tmp/pi-run2.log; U2=$?
+(cd / && PATH="$STUB:$PATH" MESH2TAK_SALTA_SISTEMA=1 MESH2TAK_SALTA_PIP=1 MESH2TAK_BOOT_ID=boot2 \
+  MESH2TAK_CONFIG_TXT="$FINTO/config.txt" MESH2TAK_MESHTASTICD_DIR="$FINTO/meshtasticd" MESH2TAK_DOPO_RIAVVIO=1 \
+  bash /etc/mesh2tak/installatore-in-corso.sh --scheda waveshare </dev/null > /tmp/pi-run2.log 2>&1); U2=$?
 sleep 8
 controlla "uscita 0" '[ $U2 = 0 ]'
+controlla "ripresa da sola, una volta sola" 'grep -q "dopo il riavvio l.installazione riprende da sola" /tmp/pi-run2.log && grep -q "systemctl disable mesh2tak-installazione.service" "$STUB/chiamate.log"'
+controlla "alla fine niente ripresa rimasta in giro" '[ ! -e /etc/systemd/system/mesh2tak-installazione.service ] && [ ! -e /etc/mesh2tak/installatore-in-corso.sh ] && [ ! -e /etc/mesh2tak/.in-corso ]'
+controlla "ponte nuovo: nome del nodo ricordato per i rilanci" 'grep -q "^NOME_NODO_AUTOMATICO=1" /etc/mesh2tak/installazione.conf'
 controlla "nessun nuovo riavvio" '! grep -q RIAVVIO "$STUB/chiamate.log"'
-controlla "nessuna domanda sul certificato" 'grep -q "gia. installato nella prima esecuzione" /tmp/pi-run2.log'
+controlla "nessuna domanda: certificato e risposte gia' dati prima del riavvio" '! grep -q -e "1/9" -e "Password del certificato" -e "Coordinate (Invio" /tmp/pi-run2.log && grep -q "2/9" /tmp/pi-run2.log'
 controlla "radio vista nel registro" 'grep -q "la scheda risponde: sx1262 init success" /tmp/pi-run2.log'
 controlla "nodo in EU_868" '[ "$(nodo "d[\"regione\"]")" = EU_868 ]'
 controlla "ruolo CLIENT_MUTE (Waveshare)" '[ "$(nodo "d[\"ruolo\"]")" = CLIENT_MUTE ]'
@@ -266,7 +282,9 @@ sed -i 's/^tempo_radio_percento = 3$/tempo_radio_percento = 5/' /etc/mesh2tak/me
 sed -i 's/^aggiornamento_min = 2$/aggiornamento_min = 1/' /etc/mesh2tak/mesh2tak.conf
 sed -i 's/^pausa_massima_min = 30$/pausa_massima_min = 15/' /etc/mesh2tak/mesh2tak.conf
 CERT_PAGINA=$(sha256sum < /etc/mesh2tak/pagina.pem)
+printf '[Unit]\n' > /etc/systemd/system/mesh2tak-installazione.service; cp "$INST" /etc/mesh2tak/installatore-in-corso.sh
 esegui boot2 /tmp/pi-run3.log; U3=$?
+controlla "rilancio a mano: prende il posto della ripresa non ancora partita" 'grep -q "systemctl disable --now mesh2tak-installazione.service" "$STUB/chiamate.log" && grep -q "continuo io" /tmp/pi-run3.log && [ ! -e /etc/systemd/system/mesh2tak-installazione.service ] && [ ! -e /etc/mesh2tak/installatore-in-corso.sh ]'
 controlla "impostazione radio cambiata a mano conservata" 'grep -qx "tempo_radio_percento = 5" /etc/mesh2tak/mesh2tak.conf' 
 controlla "ripetizione cambiata a mano conservata" 'grep -qx "aggiornamento_min = 1" /etc/mesh2tak/mesh2tak.conf'
 controlla "pausa massima cambiata a mano conservata" 'grep -qx "pausa_massima_min = 15" /etc/mesh2tak/mesh2tak.conf'
@@ -335,10 +353,12 @@ python3 "$QUI/hub_finto.py" --porta 8443 --cert "$PKI/rete.pem" --chiave "$PKI/r
   --registrazione /tmp/pi-registrazione.json \
   > /tmp/pi-hub.log 2>&1 &
 sleep 1
+sed -i '/^NOME_NODO=/d; /^NOME_BREVE=/d; /^NOME_NODO_AUTOMATICO=/d' /etc/mesh2tak/installazione.conf   # come la 1.8.0
 (cd /tmp && PATH="$STUB:$PATH" MESH2TAK_SALTA_SISTEMA=1 MESH2TAK_SALTA_PIP=1 MESH2TAK_BOOT_ID=boot2 \
   MESH2TAK_CONFIG_TXT="$FINTO/config.txt" MESH2TAK_MESHTASTICD_DIR="$FINTO/meshtasticd" \
   MESH2TAK_ACCESSO_RETE=https://meshtastic.prova.lan:8443 SSL_CERT_FILE="$PKI/rete-ca.pem" \
   bash "$INST" --accesso-esterno=casa </dev/null > /tmp/pi-run3d.log 2>&1); U3D=$?
+controlla "ponte installato prima della 1.9.0: tiene il suo nome" '[ "$(nodo "d[\"nome\"], d[\"nome_breve\"]")" = "('"'"'Ponte CNSAS Varese'"'"', '"'"'PONT'"'"')" ] && grep -q "^NOME_NODO_AUTOMATICO=0" /etc/mesh2tak/installazione.conf && ! grep -q "nome del nodo e del ponte sulla mappa" /tmp/pi-run3d.log'
 CODICE_ATTESO=$(python3 "$QUI/../mesh2tak.py" --codice-controllo /etc/mesh2tak/accesso/chiave.pub 2>/dev/null)
 controlla "uscita 0" '[ $U3D = 0 ]'
 controlla "chiave SSH del ponte, leggibile solo dall'utente del ponte" '[ "$(stat -c %a:%U /etc/mesh2tak/accesso/chiave)" = 600:mesh2tak ] && [ "$(stat -c %a:%U /etc/mesh2tak/accesso)" = 700:mesh2tak ] && grep -q "^ssh-ed25519 .* mesh2tak-casa@" /etc/mesh2tak/accesso/chiave.pub'
@@ -438,7 +458,7 @@ echo "== rimozione"
 (cd /tmp && PATH="$STUB:$PATH" MESH2TAK_MESHTASTICD_DIR="$FINTO/meshtasticd" bash "$INST" --rimuovi </dev/null > /tmp/pi-rim.log 2>&1)
 controlla "protezioni tolte, meshtasticd sbloccato, mesh2tak-scorta tolto" '[ ! -e "$FINTO/systemd/system.conf.d/mesh2tak-watchdog.conf" ] && [ ! -e "$FINTO/systemd/journald.conf.d/mesh2tak.conf" ] && [ ! -e "$FINTO/apt.conf.d/52mesh2tak-aggiornamenti" ] && [ -e "$FINTO/apt.conf.d/50unattended-upgrades" ] && grep -q "apt-mark unhold meshtasticd" "$STUB/chiamate.log" && grep -q "systemctl daemon-reexec" "$STUB/chiamate.log" && [ ! -e /usr/local/bin/mesh2tak-scorta ] && grep -q "tolte anche le protezioni del Raspberry" /tmp/pi-rim.log'
 controlla "meshtasticd come prima: porte normali, niente filtro, niente annuncio" '[ ! -e /etc/systemd/system/meshtasticd.service.d/mesh2tak-solo-locale.conf ] && [ ! -e "$FINTO/meshtasticd/config.d/mesh2tak.yaml" ] && grep -qx "  Port: 9443" "$FINTO/meshtasticd/config.d/cnsas-web.yaml" && [ ! -e /etc/avahi/services/mesh2tak-meshtastic.service ]'
-controlla "file del ponte rimossi" '[ ! -e /opt/mesh2tak ] && [ ! -e /etc/mesh2tak ] && [ ! -e /usr/local/bin/mesh2tak-canale ]'
+controlla "file del ponte rimossi" '[ ! -e /opt/mesh2tak ] && [ ! -e /etc/mesh2tak ] && [ ! -e /usr/local/bin/mesh2tak-canale ] && [ ! -e /etc/systemd/system/mesh2tak-installazione.service ] && grep -q "systemctl disable --now mesh2tak-installazione.service" "$STUB/chiamate.log"'
 controlla "aggiornamenti dalla pagina tolti" '[ ! -e /etc/systemd/system/mesh2tak-aggiorna.timer ] && [ ! -e /etc/systemd/system/mesh2tak-aggiorna.service ] && [ ! -e /var/lib/mesh2tak-aggiorna ] && grep -q "systemctl disable --now mesh2tak-aggiorna.timer" "$STUB/chiamate.log"'
 controlla "configurazione meshtasticd lasciata" '[ -f "$FINTO/meshtasticd/config.d/lora-waveshare-sxxx.yaml" ]'
 
@@ -474,6 +494,7 @@ controlla "nessun errore o traceback" '! grep -q -e "✘" -e Traceback /tmp/pi-r
   MESH2TAK_COLLEGAMENTO="serial:$RADIO" MESH2TAK_ACCESSO_RETE=https://meshtastic.prova.lan \
   bash "$INST" --accesso-esterno=deposito </dev/null > /tmp/pi-run-usb-accesso.log 2>&1); UUA=$?
 sleep 8
+controlla "ponte nuovo nella rete: il nodo prende il nome del ponte" '[ "$(radio "d[\"nome\"], d[\"nome_breve\"]")" = "('"'"'Ponte CNSAS Deposito'"'"', '"'"'PDEP'"'"')" ] && grep -q "nome del nodo e del ponte sulla mappa: .Ponte CNSAS Deposito. (sigla PDEP)" /tmp/pi-run-usb-accesso.log'
 controlla "radio USB con accesso da internet: pagina del ponte solo per lo stato" '[ $UUA = 0 ] && grep -qx "attiva = si" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_pagina = 9443" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_app = 0" /etc/mesh2tak/mesh2tak.conf && grep -qx "nodo_pagina = " /etc/mesh2tak/mesh2tak.conf && grep -qx "nome = deposito" /etc/mesh2tak/mesh2tak.conf'
 controlla "il servizio da' lo stato sulla 9443 e cerca la registrazione" 'grep -q "Stato del ponte per la pagina della rete sulla porta 9443" "$STUB/servizio.log" && grep -q "Accesso da internet: ponte .deposito." "$STUB/servizio.log" && grep -q "stato del ponte pronto sulla porta 9443" /tmp/pi-run-usb-accesso.log'
 controlla "pagina della rete irraggiungibile: alla fine lo dice, con il codice" 'grep -q "Codice di controllo di questo Raspberry:" /tmp/pi-run-usb-accesso.log && grep -q "Adesso il ponte dice: la pagina della rete https://meshtastic.prova.lan non risponde" /tmp/pi-run-usb-accesso.log'
