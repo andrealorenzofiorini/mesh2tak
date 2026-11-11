@@ -63,7 +63,7 @@ comandi si lanciano dal terminale remoto di [connect.raspberrypi.com](https://co
 
 ## Radio della squadra da lontano (dalla 1.10.0)
 
-Nella scheda "Radio" della pagina della rete, "Gestisci da lontano" legge e cambia le impostazioni di una radio del
+Tra le radio della squadra della pagina della rete, "Gestisci da lontano" legge e cambia le impostazioni di una radio del
 canale della squadra (come l'app Meshtastic: nome, posizione fissa, sezioni, canali) e la riavvia, con i messaggi di
 amministrazione di Meshtastic mandati dal nodo di un ponte. La radio deve avere tra le sue "chiavi amministratore" la
 chiave pubblica del nodo del ponte (la pagina la mostra): si mette una volta, da vicino, con l'app. Le chiavi dei
@@ -71,7 +71,7 @@ canali non escono dal ponte.
 
 ## Icone sulla mappa (dalla 1.11.0)
 
-"Icona sulla mappa", nella scheda "Radio" e nella scheda di ogni ponte, sceglie come compare quella radio o quel
+"Icona sulla mappa", tra le radio della squadra e nella scheda di ogni gateway, sceglie come compare quella radio o quel
 ponte su ATAK e TAK Aware: icone dell'insieme OSM che le app hanno di serie, ognuna con un tipo CoT che dà un
 simbolo militare sensato a chi non le ha. Il servizio della pagina tiene le scelte e le manda a ogni ponte dal suo
 tunnel (`POST /mesh2tak/icone`, accettato solo da lì); il ponte le usa negli eventi che costruisce lui. Le figure
@@ -92,10 +92,24 @@ SSH di quel ponte, che lo scarica con il comando forzato (`certificato`) e lo fa
 Ogni ponte annota, per ogni quadretto di circa 200 m (riquadri della mappa a zoom 17), con che segnale ha sentito le
 radio della squadra che erano lì: ricezioni dirette (rapporto segnale/rumore medio e migliore) e arrivate tramite
 altre radio. Solo quadretto, segnale e giorno, in `/var/lib/mesh2tak/copertura.json`; li dà alla pagina della rete
-da `GET /mesh2tak/copertura.json` (solo dal tunnel, con l'utente di Authentik). La scheda "Copertura" li unisce,
+da `GET /mesh2tak/copertura.json` (solo dal tunnel, con l'utente di Authentik). La mappa della pagina li unisce,
 li colora in base al margine sopra il minimo decifrabile del preset e li disegna su una mappa fatta nella pagina
 stessa (senza librerie esterne; da fuori arrivano solo le immagini di OpenTopoMap o OpenStreetMap). Esporta il KML
 per ATAK; "Azzera" (`POST` con `{"azzera": true}`, solo dalla pagina) ricomincia la mappa di un ponte.
+
+## Pagina della rete, gateway e ripetitori (dalla 1.15.0)
+
+Una pagina sola: in alto lo stato di tutta la rete ("Tutto a posto" o quante cose controllare, con l'elenco); poi la
+mappa con gateway e ripetitori e il loro stato, le schede di gateway e ripetitori, le radio della squadra e, chiusa
+in fondo, la gestione. Nella pagina il ponte si chiama gateway, come il suo nodo ("Gateway CNSAS ...").
+
+Le radio della squadra sono solo quelle che il ponte ha decifrato con la chiave del canale della squadra
+(`/var/lib/mesh2tak/radio-squadra.json`, tenute 90 giorni): il canale che il database del nodo ricorda per ogni
+radio può essere vecchio. Un nodo fisso della squadra (ruolo `ROUTER`, `ROUTER_LATE`, `ROUTER_CLIENT`, `REPEATER`,
+`CLIENT_BASE` o posizione impostata a mano) è un ripetitore. Ogni pacchetto porta l'ultimo byte di chi l'ha
+ripetuto per ultimo (`relay_node`, firmware 2.6 e successivi): se una sola radio della squadra finisce con quel
+byte, il ponte sa quale ripetitore lo ha portato. Le posizioni arrivate con un solo passaggio da un ripetitore fisso
+vanno nella copertura di quel ripetitore, senza segnale (quello tra la radio e il ripetitore non si conosce).
 
 ## Aggiornare
 

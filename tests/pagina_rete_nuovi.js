@@ -1,12 +1,14 @@
 // Ponti nuovi (1.10.0) nel browser: certificato e canale caricati dal modulo (file vero, attraverso Caddy), poi
 // l'invito con le istruzioni da mandare e la chiave d'invito. Stampa quello che vede, in JSON.
 const { chromium } = require('playwright');
+const { sfondoFinto, apri } = require('./pagina_comune');
 (async () => {
   const [url, pacchetto, chiave, foto] = process.argv.slice(2);
   const b = await chromium.launch({args: ['--host-resolver-rules=MAP *.prova.lan 127.0.0.1', '--no-proxy-server']});
   const ctx = await b.newContext({ignoreHTTPSErrors: true, viewport: {width: 1280, height: 900}, deviceScaleFactor: 1});
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: url.replace(/\/$/, '')});
   await ctx.addCookies([{name: 'ak_finto', value: 'andrea', domain: 'meshtastic.prova.lan', path: '/'}]);
+  await sfondoFinto(ctx);
   const p = await ctx.newPage();
   globalThis.paginaProva = p;
   const errori = [], finestre = [];
@@ -15,17 +17,18 @@ const { chromium } = require('playwright');
   p.on('pageerror', e => errori.push(String(e)));
   p.on('dialog', d => { finestre.push(d.message()); d.dismiss(); });
   await p.goto(url, {waitUntil: 'networkidle'});
+  await apri(p, 'aggiungi');
   await p.waitForSelector('.nuovi > .spiega', {timeout: 15000});
   const r = {errori, finestre, prima: await p.innerText('.nuovi > .spiega'),
              moduloInvitoVisibile: await p.isVisible('#invito-nome'), impostazioniAperte: await p.$eval('.nuovi details', d => d.open),
-             ponti: await p.$$eval('section.ponte h2', x => x.map(e => e.textContent))};
+             ponti: await p.$$eval('section.ponte h3', x => x.map(e => e.textContent))};
   // certificato e canale dal modulo
   await p.setInputFiles('#nuovi-file', pacchetto);
   await p.fill('#nuovi-password', 'atakatak');
   await p.fill('#nuovi-canale', 'CNSAS-VA');
   await p.fill('#nuovi-chiave', chiave);
   await p.click('.nuovi form button[type=submit]');
-  await p.waitForFunction(() => document.querySelector('.nuovi > .spiega').textContent.startsWith('Per i ponti nuovi'),
+  await p.waitForFunction(() => document.querySelector('.nuovi > .spiega').textContent.startsWith('Per i gateway nuovi'),
                           null, {timeout: 60000});
   r.dopo = await p.innerText('.nuovi > .spiega');
   r.campoChiaveVuoto = await p.inputValue('#nuovi-chiave');
@@ -45,6 +48,7 @@ const { chromium } = require('playwright');
   if (foto) await p.screenshot({path: foto, fullPage: true});
   // ricaricata la pagina l'invito c'e' ancora, con la sua chiave
   await p.reload({waitUntil: 'networkidle'});
+  await apri(p, 'aggiungi');
   await p.waitForSelector('li.invito h4', {timeout: 15000});
   r.dopoRicarica = await p.$$eval('li.invito .chiave-invito code', x => x.map(e => e.textContent));
   console.log(JSON.stringify(r));

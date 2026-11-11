@@ -53,44 +53,85 @@ a { color: var(--lago); }
   mask-image: linear-gradient(90deg, transparent 0, transparent 22%, #000 62%); }
 .testata path { fill: none; stroke: var(--curve); stroke-width: 1.2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .testata path:nth-child(5n) { stroke-width: 2.2; }
-.testata .dentro { position: relative; max-width: 68rem; margin: 0 auto; padding: 2.6rem 1.5rem 2rem; }
-h1 { font: 700 2.6rem/1.05 var(--titoli); letter-spacing: -0.01em; margin: 0 0 0.5rem; color: var(--lago); }
-.sintesi { margin: 0; font-size: 1.2rem; max-width: 40rem; }
-.aggiornato { margin: 0.4rem 0 0; color: var(--ardesia); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.testata .dentro { position: relative; max-width: 76rem; margin: 0 auto; padding: 1.3rem 1.5rem 1.1rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.4rem; }
+h1 { font: 700 2.1rem/1.05 var(--titoli); letter-spacing: -0.01em; margin: 0; color: var(--lago); }
+/* dalla 1.15.0: in alto, a colpo d'occhio, se la rete va bene */
+.sintesi { display: inline-flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.4rem 1rem 0.4rem 0.8rem;
+  border: 2px solid currentColor; border-radius: 999px; background: var(--carta); font-weight: 700; font-size: 1.05rem; }
+.sintesi[data-livello="ok"] { color: var(--larice); }
+.sintesi[data-livello="attenzione"] { color: var(--ambra); }
+.sintesi[data-livello="problema"] { color: var(--soccorso); }
+.sintesi[data-livello="spento"] { color: var(--ardesia); }
+.aggiornato { flex-basis: 100%; margin: 0; color: var(--ardesia); font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.messaggio { flex-basis: 100%; margin: 0; padding: 0.55rem 0.9rem; border-radius: 6px; background: var(--lago-tenue); font-weight: 600; max-width: 52rem; }
+.messaggio[hidden] { display: none; }
+.semaforo { display: inline-block; width: 0.8rem; height: 0.8rem; flex: none; border-radius: 50%; background: var(--larice); }
+.semaforo[data-livello="attenzione"] { background: var(--ambra); border-radius: 1px; transform: rotate(45deg) scale(0.86); }
+.semaforo[data-livello="problema"] { background: var(--soccorso); border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.semaforo[data-livello="spento"] { background: transparent; border: 2px solid var(--ardesia); }
 
-main { flex: 1; width: 100%; max-width: 68rem; margin: 0 auto; padding: 0.5rem 1.5rem 3rem; }
+main { flex: 1; width: 100%; max-width: 76rem; margin: 0 auto; padding: 0.4rem 1.5rem 3rem; }
+.problemi-rete { list-style: none; margin: 1.1rem 0 0; padding: 0; display: grid; gap: 0.35rem; max-width: 52rem; }
+.problemi-rete li { display: flex; align-items: center; gap: 0.65rem; padding: 0.5rem 0.9rem; border-radius: 6px; background: var(--ambra-tenue); }
+.problemi-rete li[data-livello="problema"] { background: var(--soccorso-tenue); }
+.problemi-rete a { color: var(--granito); font-weight: 600; }
+.problemi-rete .altre-voci { background: none; color: var(--ardesia); padding-top: 0; }
+.panorama { display: grid; grid-template-columns: minmax(0, 1fr) 19.5rem; gap: 1rem 1.6rem; align-items: start; margin: 1.3rem 0 0; }
+.pannello-mappa { min-width: 0; }
+.rete h2, .gruppo-rete > h2, .radio-rete > h2, .gestione-rete > h2 { font: 700 1.55rem/1.1 var(--titoli); margin: 0; }
+.rete h2 { font-size: 1.3rem; margin-bottom: 0.4rem; }
+.elenco-rete { list-style: none; margin: 0; padding: 0; }
+.voce-rete { display: grid; grid-template-columns: 1fr auto; gap: 0 0.6rem; align-items: start; border-top: 1px solid var(--nebbia); }
+.voce-rete .centra { display: grid; gap: 0.1rem; width: 100%; padding: 0.6rem 0.2rem 0.6rem 0; border: 0; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.voce-rete .centra[disabled] { cursor: default; }
+.voce-rete .centra:not([disabled]):hover b { text-decoration: underline; }
+.testa-voce { display: flex; align-items: center; gap: 0.5rem; }
+.testa-voce b { font-weight: 700; }
+.riga-voce { font-size: 0.9rem; padding-left: 1.3rem; font-variant-numeric: tabular-nums; }
+.riga-voce.secondaria { color: var(--ardesia); }
+.dettagli-voce { font-size: 0.85rem; padding: 0.7rem 0 0.4rem; white-space: nowrap; }
+.voce-radio { display: block; padding: 0.65rem 0; }
+.voce-radio a { font-weight: 700; }
+.voce-radio .riga-voce { display: block; padding-left: 0; color: var(--ardesia); }
+.gruppo-rete, .radio-rete, .gestione-rete { margin: 2.6rem 0 0; }
+.gruppo-rete > .vuoto { margin: 0.8rem 0 0; color: var(--ardesia); }
 .vuoto { margin: 2.5rem 0; max-width: 42rem; }
 .vuoto code, .nota code { font-size: 0.95em; background: var(--lago-tenue); padding: 0.1em 0.35em; border-radius: 3px; }
 .sessione { margin: 1.5rem 0 0; padding: 0.9rem 1.1rem; background: var(--ambra-tenue); border-radius: 6px; }
 
-.ponte { padding: 2rem 0 2.2rem; border-bottom: 1px solid var(--nebbia); }
-.ponte:last-child { border-bottom: 0; }
+/* schede di gateway e ripetitori: nome e stato, i fatti che contano, il resto in "Altri dettagli" */
+.ponte, .ripetitore { padding: 1.3rem 0 1.4rem; border-top: 1px solid var(--nebbia); scroll-margin-top: 1rem; }
+/* ogni gruppo comincia con il suo titolo su una riga scura; la prima scheda non ripete la riga */
+.gruppo-rete > h2, .radio-rete > h2, .gestione-rete > h2 { padding-bottom: 0.4rem; border-bottom: 2px solid var(--granito); }
+.gruppo-rete > h2 + section, .gestione-rete > h2 + details.gruppo { border-top: 0; }
 .capo { display: grid; grid-template-columns: 1fr auto; gap: 0.3rem 1.5rem; align-items: start; }
-.ponte h2 { font: 700 2rem/1.1 var(--titoli); margin: 0; }
-.chi { margin: 0.15rem 0 0; color: var(--ardesia); }
-.stato { margin: 0.7rem 0 0; font-weight: 600; font-size: 1.15rem; display: flex; align-items: center; gap: 0.55rem; }
-.segno { width: 0.95rem; height: 0.95rem; border-radius: 50%; flex: none; background: currentColor; }
-.ponte[data-stato="ok"] .stato { color: var(--larice); }
-.ponte[data-stato="pausa"] .stato { color: var(--ambra); }
-.ponte[data-stato="pausa"] .segno { border-radius: 2px; background: linear-gradient(90deg, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
-.ponte[data-stato="guasto"] .stato { color: var(--soccorso); }
-.ponte[data-stato="guasto"] .segno { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-.ponte[data-stato="giu"] .stato { color: var(--ardesia); }
-.ponte[data-stato="giu"] .segno { background: transparent; border: 2px solid currentColor; }
-.spiega { grid-column: 1 / -1; margin: 0.6rem 0 0; padding: 0.75rem 1rem; border-radius: 6px; max-width: 46rem; }
+.ponte h3, .ripetitore h3 { font: 700 1.55rem/1.1 var(--titoli); margin: 0; }
+.chi { margin: 0.15rem 0 0; color: var(--ardesia); font-size: 0.95rem; }
+.stato { margin: 0.5rem 0 0; font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 0.55rem; }
+.stato[data-livello="ok"] { color: var(--larice); }
+.stato[data-livello="attenzione"] { color: var(--ambra); }
+.stato[data-livello="problema"] { color: var(--soccorso); }
+.stato[data-livello="spento"] { color: var(--ardesia); }
+.spiega { grid-column: 1 / -1; margin: 0.5rem 0 0; padding: 0.65rem 0.95rem; border-radius: 6px; max-width: 46rem; background: var(--lago-tenue); }
 .ponte[data-stato="pausa"] .spiega { background: var(--ambra-tenue); }
 .ponte[data-stato="guasto"] .spiega { background: var(--soccorso-tenue); }
-.ponte[data-stato="giu"] .spiega { background: var(--lago-tenue); }
-.azione { grid-row: 1 / span 3; grid-column: 2; display: flex; flex-direction: column; align-items: end; gap: 0.35rem; padding-top: 0.3rem; }
+.azione { grid-row: 1 / span 3; grid-column: 2; display: flex; flex-direction: column; align-items: end; gap: 0.4rem; padding-top: 0.2rem; }
+.altri { margin-top: 0.9rem; }
+.altri > summary, .gruppo-mappa > summary { cursor: pointer; color: var(--lago); font-weight: 600; font-size: 0.95rem; width: fit-content; }
+.altri > .fatti { margin-top: 0.7rem; }
+.altri .togli { margin-top: 1rem; }
+.suggerimento-batteria { display: block; margin-top: 0.25rem; color: var(--ardesia); font-size: 0.85rem; }
 .bottone { font: 600 1rem/1 var(--testo); padding: 0.85rem 1.25rem; border-radius: 6px; border: 2px solid var(--lago); background: var(--lago); color: var(--carta); cursor: pointer; text-decoration: none; white-space: nowrap; }
 .bottone:hover { filter: brightness(1.12); }
 .bottone[disabled] { background: transparent; color: var(--ardesia); border-color: var(--nebbia); cursor: not-allowed; filter: none; }
 .bottone.secondario { background: transparent; color: var(--lago); }
 .azione small { color: var(--ardesia); max-width: 15rem; text-align: right; }
 
-.fatti { display: grid; grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr)); gap: 1rem 1.5rem; margin: 1.6rem 0 0; }
-.fatti div { border-top: 2px solid var(--nebbia); padding-top: 0.5rem; }
-.fatti dt { color: var(--ardesia); font-size: 0.9rem; }
+.fatti { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: 0.8rem 1.5rem; margin: 1.1rem 0 0; }
+.fatti div { border-top: 2px solid var(--nebbia); padding-top: 0.4rem; }
+.fatti dt { color: var(--ardesia); font-size: 0.85rem; }
 .fatti dd { margin: 0.1rem 0 0; font-variant-numeric: tabular-nums; }
 .fatti div.attenzione { border-top-color: var(--ambra); }
 .fatti div.attenzione dd { color: var(--ambra); font-weight: 600; }
@@ -129,7 +170,7 @@ main { flex: 1; width: 100%; max-width: 68rem; margin: 0 auto; padding: 0.5rem 1
 .riga .quando, .riga .batteria, .riga .salti { text-align: right; }
 .altre { margin-top: 0.7rem; font: 600 0.95rem/1 var(--testo); background: none; border: 0; color: var(--lago); cursor: pointer; padding: 0.4rem 0; text-decoration: underline; }
 
-footer { max-width: 68rem; width: 100%; margin: 0 auto; padding: 1.5rem; color: var(--ardesia); font-size: 0.9rem; border-top: 1px solid var(--nebbia); }
+footer { max-width: 76rem; width: 100%; margin: 0 auto; padding: 1.5rem; color: var(--ardesia); font-size: 0.9rem; border-top: 1px solid var(--nebbia); }
 footer p { margin: 0.2rem 0; max-width: 52rem; }
 
 dialog { border: 0; border-radius: 10px; padding: 1.6rem; max-width: 34rem; background: var(--carta); color: var(--granito); box-shadow: 0 20px 60px rgba(0, 20, 30, 0.35); }
@@ -196,26 +237,25 @@ dialog ul { padding-left: 1.2rem; }
 .richiesta .lavora { margin: 0; max-width: 22rem; color: var(--ambra); font-weight: 600; }
 .richiesta .lavora small { display: block; font-weight: 400; color: var(--ardesia); margin-top: 0.25rem; }
 .rifiutate .richiesta h3 { font-size: 1.2rem; }
-.schede { display: flex; gap: 1.8rem; margin: 1.4rem 0 0; border-bottom: 1px solid var(--nebbia); }
-.schede button { font: 600 1.05rem/1 var(--testo); background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 0.75rem 0 0.8rem; color: var(--ardesia); cursor: pointer; }
-.schede button[aria-selected="true"] { color: var(--lago); border-bottom-color: var(--lago); }
-.schede button span { font-weight: 400; margin-left: 0.35rem; font-variant-numeric: tabular-nums; }
-.radio-rete { padding: 1.6rem 0 0.5rem; }
-/* Copertura (dalla 1.14.0): la mappa e' chiara anche nel tema scuro, come le carte; i suoi comandi pure */
-.copertura { padding: 1.6rem 0 0.5rem; }
-.copertura .riassunto { font-size: 1.1rem; margin: 0 0 0.4rem; max-width: 52rem; }
-.spiega-copertura { margin: 0 0 1rem; max-width: 52rem; color: var(--ardesia); }
-.comandi-copertura { display: flex; flex-wrap: wrap; gap: 0.8rem 1.2rem; align-items: flex-end; margin: 0 0 1rem; }
-.comandi-copertura label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; font-size: 0.9rem; }
-.comandi-copertura select { font: 400 1rem/1.3 var(--testo); padding: 0.45rem 0.6rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); }
-.azioni-copertura { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-left: auto; }
-.legenda { list-style: none; display: flex; flex-wrap: wrap; gap: 0.45rem 1.3rem; padding: 0; margin: 0 0 0.7rem; font-size: 0.95rem; }
-.legenda li { display: flex; align-items: center; gap: 0.45rem; }
-.legenda i { width: 0.95rem; height: 0.95rem; border-radius: 3px; flex: none; }
+/* Mappa della rete (copertura dalla 1.14.0, in cima dalla 1.15.0): la mappa e' chiara anche nel tema scuro, come le
+   carte; i suoi comandi pure */
+.comandi-copertura { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; margin: 0 0 0.6rem; }
+.comandi-copertura label { display: flex; align-items: center; gap: 0.45rem; font-weight: 600; font-size: 0.9rem; }
+.comandi-copertura select { font: 400 0.95rem/1.3 var(--testo); padding: 0.4rem 0.55rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); max-width: 15rem; }
+.legenda { list-style: none; display: flex; flex-wrap: wrap; gap: 0.3rem 0.95rem; padding: 0; margin: 0.6rem 0 0; font-size: 0.85rem; }
+.legenda li { display: flex; align-items: center; gap: 0.4rem; }
+.legenda i { width: 0.9rem; height: 0.9rem; border-radius: 3px; flex: none; }
 .legenda i.segno-ripetuta { background: repeating-linear-gradient(45deg, #4f5a5f 0 1.5px, rgba(111, 123, 128, 0.3) 1.5px 5px); }
-.legenda i.segno-ponte { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: #0d4757; box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--nebbia); }
-.stato-copertura { margin: 0 0 0.6rem; min-height: 1.2em; color: var(--ardesia); }
-.mappa { position: relative; height: min(68vh, 640px); min-height: 22rem; overflow: hidden; border: 1px solid var(--nebbia); border-radius: 8px; background: #e4e9e6; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.legenda i.punto-gateway, .legenda i.punto-ripetitore { width: 0.75rem; height: 0.75rem; border-radius: 1px; background: #0d4757; box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--nebbia); }
+.legenda i.punto-ripetitore { border-radius: 50%; }
+.piede-mappa { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin: 0.6rem 0 0; }
+.piede-mappa .riassunto { margin: 0; flex: 1 1 18rem; }
+.azioni-copertura { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.stato-copertura { margin: 0.3rem 0 0; color: var(--ardesia); font-size: 0.92rem; }
+.stato-copertura:empty { display: none; }
+.gruppo-mappa { margin-top: 0.6rem; }
+.gruppo-mappa p { margin: 0.5rem 0 0; max-width: 52rem; color: var(--ardesia); font-size: 0.92rem; }
+.mappa { position: relative; height: min(64vh, 600px); min-height: 22rem; overflow: hidden; border: 1px solid var(--nebbia); border-radius: 8px; background: #e4e9e6; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
 .mappa:active { cursor: grabbing; }
 .mappa .tessere { position: absolute; inset: 0; }
 .mappa .tessere img { position: absolute; left: 0; top: 0; width: 256px; height: 256px; max-width: none; pointer-events: none; }
@@ -229,10 +269,19 @@ dialog ul { padding-left: 1.2rem; }
 .mappa .suggerimento { position: absolute; left: 0; top: 0; max-width: min(21rem, calc(100% - 2rem)); padding: 0.65rem 0.8rem; border-radius: 6px; background: #fff; color: #1f2d34; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28); font-size: 0.9rem; line-height: 1.4; pointer-events: none; }
 .mappa .suggerimento b { display: block; margin-bottom: 0.25rem; }
 .mappa .suggerimento span { display: block; }
-.ponti-copertura { list-style: none; padding: 0; margin: 1rem 0 0; max-width: 52rem; }
-.ponti-copertura li { padding: 0.6rem 0; border-top: 1px solid var(--nebbia); }
-.ponti-copertura small { display: block; color: var(--ardesia); margin-top: 0.15rem; }
-.radio-rete .riassunto { font-size: 1.1rem; margin: 0 0 0.8rem; max-width: 52rem; }
+.mappa .sfondi { position: absolute; top: 0.7rem; right: 0.7rem; display: flex; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.mappa .sfondi button { font: 600 0.85rem/1 var(--testo); padding: 0.55rem 0.7rem; border: 0; background: #fff; color: #1f2d34; cursor: pointer; }
+.mappa .sfondi button + button { border-left: 1px solid #d3dcd9; }
+.mappa .sfondi button[aria-pressed="true"] { background: #0d4757; color: #fff; }
+.radio-rete .riassunto { font-size: 1.05rem; margin: 0.6rem 0 0.6rem; max-width: 52rem; }
+/* in fondo, chiusi finche' non servono: aggiungere un gateway, avvisi per email, aggiornamenti */
+.gestione-rete > h2 { margin-bottom: 0.4rem; }
+.gestione-rete details.gruppo { border-top: 1px solid var(--nebbia); scroll-margin-top: 1rem; }
+.gestione-rete details.gruppo:last-child { border-bottom: 1px solid var(--nebbia); }
+.gestione-rete details.gruppo > summary { display: flex; align-items: baseline; gap: 0.8rem; padding: 0.85rem 0; cursor: pointer;
+  font: 700 1.2rem/1.2 var(--titoli); color: var(--granito); }
+.gestione-rete details.gruppo > summary small { font: 600 0.9rem/1.2 var(--testo); color: var(--ambra); }
+.gestione-rete details.gruppo > section { margin: 0 0 1.4rem; padding: 0; border: 0; }
 .avvisi { list-style: none; padding: 0; margin: 0 0 1rem; }
 .avvisi li { margin: 0.4rem 0; padding: 0.6rem 0.9rem; border-radius: 6px; background: var(--ambra-tenue); max-width: 52rem; }
 .avvisi li.grave { background: var(--soccorso-tenue); }
@@ -314,7 +363,7 @@ dialog ul { padding-left: 1.2rem; }
 .scelta-reimposta small { flex-basis: 100%; font-weight: 400; color: var(--ardesia); }
 
 @media (max-width: 760px) {
-  h1 { font-size: 2.1rem; }
+  h1 { font-size: 1.8rem; }
   .richiesta { grid-template-columns: 1fr; }
   .controllo { text-align: left; }
   .richiesta .pulsanti { justify-content: flex-start; }
@@ -333,12 +382,16 @@ dialog ul { padding-left: 1.2rem; }
   .riga { grid-template-columns: 1fr auto; grid-template-areas: "nome quando" "traccia traccia" "batteria salti"; row-gap: 0.35rem; }
   .riga .nome { grid-area: nome; } .riga .traccia { grid-area: traccia; } .riga .quando { grid-area: quando; }
   .riga .batteria { grid-area: batteria; text-align: left; color: var(--ardesia); } .riga .salti { grid-area: salti; color: var(--ardesia); }
-  .schede { gap: 1.2rem; overflow-x: auto; }
-  .schede button { white-space: nowrap; }
-  .comandi-copertura label { flex: 1 1 8rem; }
-  .comandi-copertura select { width: 100%; }
-  .azioni-copertura { margin-left: 0; width: 100%; }
-  .mappa { height: 62vh; min-height: 18rem; }
+  .comandi-copertura label { flex: 1 1 9rem; flex-direction: column; align-items: stretch; gap: 0.2rem; }
+  .comandi-copertura select { width: 100%; max-width: none; }
+  .mappa { height: 56vh; min-height: 18rem; }
+  .ponte h3, .ripetitore h3 { font-size: 1.35rem; }
+  .gruppo-rete, .radio-rete, .gestione-rete { margin-top: 2rem; }
+}
+@media (max-width: 900px) {
+  .panorama { grid-template-columns: 1fr; }
+  main { padding-left: 1rem; padding-right: 1rem; }
+  .testata .dentro { padding-left: 1rem; padding-right: 1rem; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .punto { transition: left 0.6s ease; }
@@ -361,8 +414,9 @@ dialog ul { padding-left: 1.2rem; }
   </svg>
   <div class="dentro">
     <h1>Rete Meshtastic</h1>
-    <p class="sintesi" id="sintesi">Carico lo stato dei ponti...</p>
+    <p class="sintesi" id="sintesi" role="status" data-livello="spento"><span class="semaforo" data-livello="spento"></span><span>Carico lo stato della rete...</span></p>
     <p class="aggiornato" id="aggiornato"></p>
+    <p class="messaggio" id="messaggio" role="status" hidden></p>
   </div>
 </header>
 
@@ -371,13 +425,13 @@ dialog ul { padding-left: 1.2rem; }
 </main>
 
 <footer>
-  <p>Ogni ponte porta al TAK Server le radio Meshtastic che sente. La pagina di gestione di un ponte apre il suo nodo come
-    dal Wi-Fi di casa: intanto quel ponte va in pausa e riprende da solo.</p>
+  <p>Ogni gateway porta al TAK Server le radio della squadra che sente, anche attraverso i ripetitori. Aprire la
+    gestione della radio di un gateway lo mette in pausa: riprende da solo.</p>
   <p id="versione"></p>
 </footer>
 
 <dialog id="conferma" aria-labelledby="conferma-titolo">
-  <h2 id="conferma-titolo">Gestire la radio del ponte?</h2>
+  <h2 id="conferma-titolo">Gestire la radio del gateway?</h2>
   <p id="conferma-testo"></p>
   <ul>
     <li>Riprende da solo <span id="conferma-chiusura">2 minuti</span> dopo che chiudi la pagina, al massimo dopo
@@ -395,7 +449,7 @@ dialog ul { padding-left: 1.2rem; }
   <h2 id="aggiorna-titolo"></h2>
   <p id="aggiorna-testo"></p>
   <label class="scelta-reimposta" id="aggiorna-radio" hidden><input type="checkbox" id="aggiorna-reimposta">
-    Rimetti anche la radio del ponte come all'installazione
+    Rimetti anche la radio del gateway come all'installazione
     <small>Di solito non serve: l'aggiornamento lascia la radio com'è, con quello che hai scelto dall'app o dalla
       pagina. Con questa scelta tornano regione, nome, ruolo, solo il canale della squadra e posizione fissa.</small></label>
   <div class="pulsanti">
@@ -428,7 +482,7 @@ dialog ul { padding-left: 1.2rem; }
 <dialog id="riprova" aria-labelledby="riprova-titolo">
   <h2 id="riprova-titolo">Riprovare l'installazione?</h2>
   <p id="riprova-testo"></p>
-  <p><label for="riprova-scheda">Radio del ponte</label><select id="riprova-scheda"></select></p>
+  <p><label for="riprova-scheda">Radio del gateway</label><select id="riprova-scheda"></select></p>
   <p><label for="riprova-posizione">Dove sta (coordinate, vuoto se la radio ha il suo GPS)</label><input id="riprova-posizione" autocomplete="off"></p>
   <div class="pulsanti">
     <button class="bottone secondario" type="button" id="riprova-annulla">Annulla</button>
@@ -437,12 +491,12 @@ dialog ul { padding-left: 1.2rem; }
 </dialog>
 
 <dialog id="togli" aria-labelledby="togli-titolo">
-  <h2 id="togli-titolo">Togliere il ponte dalla rete?</h2>
+  <h2 id="togli-titolo">Togliere il gateway dalla rete?</h2>
   <p id="togli-testo"></p>
   <ul>
     <li>Il Raspberry continua a portare le radio al TAK Server: si chiude solo l'accesso da internet.</li>
-    <li>Non rientra da solo. Per rimetterlo: in fondo a questa pagina, sotto "Ponti tolti e richieste rifiutate", premi
-      "Lascia rientrare".</li>
+    <li>Non rientra da solo. Per rimetterlo: in fondo a questa pagina, in "Aggiungere un gateway", sotto "Gateway tolti
+      e richieste rifiutate", premi "Lascia rientrare".</li>
   </ul>
   <div class="pulsanti">
     <button class="bottone secondario" type="button" id="togli-annulla">Annulla</button>
@@ -465,20 +519,22 @@ let riavvio = 0;                   // da quando l'API non risponde mentre un lav
 let erroreGiro = "";
 let daTogliere = null;
 const COMANDO_PI = "sudo bash installa-ponte-meshtastic.sh --accesso-esterno";
-const aperte = new Set();          // ponti con tutte le radio in vista
 const dettagliAperti = new Set();  // "Dettagli" aperti: restano aperti quando la pagina si aggiorna
+// Dalla 1.15.0 una pagina sola, dall'alto in basso: cosa non va, richieste e lavori, la mappa della rete con accanto
+// gateway e ripetitori, le loro schede, le radio della squadra e, chiusa in fondo, la gestione.
 const zona = document.getElementById("ponti");
-const zonaNovita = document.createElement("div");
-const zonaPonti = document.createElement("div");
-const schede = document.createElement("nav");
-const vistaPonti = document.createElement("div");
-const vistaRadio = document.createElement("div");
-const vistaCopertura = document.createElement("div");   // dalla 1.14.0
 const avvisoVersione = document.createElement("div");   // in cima: versione nuova o pagina da ricaricare
+const zonaStato = document.createElement("div");        // le cose da controllare, dalla piu' grave
+const zonaNovita = document.createElement("div");
+const panorama = document.createElement("section");     // mappa della rete ed elenco di gateway e ripetitori
+const vistaCopertura = document.createElement("div");   // la mappa (copertura dalla 1.14.0)
+const zonaPonti = document.createElement("section");    // schede dei gateway
+const zonaRipetitori = document.createElement("section");
+const vistaRadio = document.createElement("section");   // radio della squadra
+const zonaGestione = document.createElement("section");
 avvisoVersione.className = "avviso-versione";
 avvisoVersione.hidden = true;
-zona.append(avvisoVersione, zonaNovita, schede, vistaPonti, vistaRadio, vistaCopertura);
-vistaPonti.append(zonaPonti);
+zona.append(avvisoVersione, zonaStato, zonaNovita, panorama, zonaPonti, zonaRipetitori, vistaRadio, zonaGestione);
 const SILENZIO_S = 2 * 3600;       // una radio accesa si fa sentire almeno ogni mezz'ora (batteria e canale)
 
 function el(tag, classe, testo) {
@@ -491,6 +547,11 @@ function el(tag, classe, testo) {
 function maiuscola(s) {
   s = String(s || "");
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function minuscola(s) {          // solo la prima lettera: "TAK Server" resta com'e'
+  s = String(s || "");
+  return s.charAt(0).toLowerCase() + s.slice(1);
 }
 
 function dettagli(chiave, titolo, ...contenuto) {
@@ -514,10 +575,12 @@ const MODELLI = {TRACKER_T1000_E: "SenseCAP T1000-E", RAK4631: "RAK WisBlock 463
                  HELTEC_WIRELESS_TRACKER: "Heltec Wireless Tracker", HELTEC_WIRELESS_PAPER: "Heltec Wireless Paper",
                  TBEAM: "LilyGO T-Beam", LILYGO_TBEAM_S3_CORE: "LilyGO T-Beam S3", T_ECHO: "LilyGO T-Echo",
                  T_DECK: "LilyGO T-Deck", TLORA_V2_1_1P6: "LilyGO T-LoRa", STATION_G2: "Station G2",
-                 NANO_G2_ULTRA: "Nano G2 Ultra", SEEED_XIAO_S3: "Seeed XIAO S3", PORTDUINO: "Raspberry (meshtasticd)"};
+                 NANO_G2_ULTRA: "Nano G2 Ultra", SEEED_XIAO_S3: "Seeed XIAO S3", PORTDUINO: "Raspberry (meshtasticd)",
+                 HELTEC_MESH_SOLAR: "Heltec MeshSolar", SEEED_SOLAR_NODE: "SenseCAP Solar Node", T_ECHO_LITE: "LilyGO T-Echo Lite"};
 
 function nomeModello(m) {
   if (!m) return "";
+  if (/^THINKNODE_M\d+$/.test(m)) return "ThinkNode " + m.slice(10);     // Elecrow ThinkNode M1, M6...
   return MODELLI[m] || m.split("_").map(w => /\d/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
 }
 
@@ -572,7 +635,10 @@ async function prendi(url) {
     document.getElementById("sessione").hidden = false;
     throw new Error("sessione scaduta");
   }
-  if (!r.ok) throw new Error("risposta " + r.status);
+  if (!r.ok) {
+    await r.text().catch(() => "");      // una risposta lasciata a meta' tiene la richiesta aperta
+    throw new Error("risposta " + r.status);
+  }
   return r.json();
 }
 
@@ -640,16 +706,16 @@ function valuta(st) {
   if (d.pausa && d.pausa.attiva) {
     return {classe: "pausa", parole: "In pausa",
             spiega: "Nodo gestito " + (d.pausa.chi || "da qualcuno") + " dalle " + oraDi(d.pausa.dal) +
-                    ": le posizioni via radio non arrivano al TAK Server. Il ponte riprende da solo, al più tardi alle " +
+                    ": le posizioni via radio non arrivano al TAK Server. Il gateway riprende da solo, al più tardi alle " +
                     oraDi(d.pausa.fino_al_massimo) + "."};
   }
   if (!d.tak || !d.tak.collegato) {
     return {classe: "guasto", parole: "Non arriva al TAK Server",
-            spiega: (d.tak && d.tak.errore ? maiuscola(d.tak.errore) + ". " : "") + "Il ponte riprova da solo."};
+            spiega: (d.tak && d.tak.errore ? maiuscola(d.tak.errore) + ". " : "") + "Il gateway riprova da solo."};
   }
   if (!d.nodo.collegato) {
     return {classe: "guasto", parole: "Radio non collegata",
-            spiega: "Il ponte non parla con la sua radio e riprova da solo. Se dura, sul Raspberry: sudo mesh2tak-stato"};
+            spiega: "Il gateway non parla con la sua radio e riprova da solo. Se dura, sul Raspberry: sudo mesh2tak-stato"};
   }
   return {classe: "ok", parole: "In linea", spiega: ""};
 }
@@ -673,12 +739,12 @@ const PROTEZIONI = {watchdog: "riavvio automatico se si blocca", aggiornamenti: 
 function fattiRaspberry(dl, d) {
   const sis = d.sistema;
   if (!sis) {
-    fatto(dl, "Raspberry", "aggiorna il ponte alla 1.7 per vedere certificato, corrente e protezioni", "attenzione");
+    fatto(dl, "Raspberry", "aggiorna il gateway alla 1.7 per vedere certificato, corrente e protezioni", "attenzione");
     return;
   }
   const ag = sis.aggiornamento;
   if (ag && ag.versione && (ag.stato !== "fatto" || (ag.quando && d.ora - ag.quando < 7 * 86400))) {
-    if (ag.stato === "in_corso") fatto(dl, "Aggiornamento", "alla " + ag.versione + " in corso: il ponte si ferma per un paio di minuti", "attenzione");
+    if (ag.stato === "in_corso") fatto(dl, "Aggiornamento", "alla " + ag.versione + " in corso: il gateway si ferma per un paio di minuti", "attenzione");
     else if (ag.stato === "fatto") fatto(dl, "Aggiornamento", "alla " + ag.versione + ", " + giornoOra(ag.quando));
     else if (ag.stato === "ripristinato") fatto(dl, "Aggiornamento", maiuscola(ag.messaggio || "non riuscito, rimessa la versione di prima"), "attenzione");
     else fatto(dl, "Aggiornamento", "alla " + ag.versione + " non riuscito: " + (ag.messaggio || "errore"), "guasto");
@@ -708,7 +774,7 @@ function fattiRaspberry(dl, d) {
                             fa(d.ora - al.ultima) + ". Serve l'alimentatore da 5,1 V 2,5 A", "guasto");
     } else if (al.volte) {
       fatto(dl, "Corrente", "basta adesso; " + al.volte + (al.volte === 1 ? " calo" : " cali") +
-                            " da quando il ponte è acceso, l'ultimo " + giornoOra(al.ultima), "attenzione");
+                            " da quando il gateway è acceso, l'ultimo " + giornoOra(al.ultima), "attenzione");
     } else {
       fatto(dl, "Corrente", "sufficiente");
     }
@@ -719,7 +785,7 @@ function fattiRaspberry(dl, d) {
     fatto(dl, "Protezioni", maiuscola(PROTEZIONI.watchdog) + "; " + PROTEZIONI.aggiornamenti);
   } else {
     fatto(dl, "Protezioni", "manca: " + mancano.map(k => PROTEZIONI[k]).join(", ") +
-                            ". Rilancia l'installatore del ponte", "attenzione");
+                            ". Rilancia l'installatore del gateway", "attenzione");
   }
   if (sis.scorta && sis.scorta.quando) {
     const vecchia = d.ora - sis.scorta.quando > 180 * 86400;
@@ -744,48 +810,6 @@ function canali(d) {
   return c.map(x => x.nome + (x.privato ? " (squadra" + (x.inoltrato ? ", inoltrato" : "") + ")" : " (pubblico)")).join(", ");
 }
 
-function disegnaRadio(sez, p, d) {
-  const radio = Array.isArray(d.radio) ? d.radio : [];
-  const box = el("div", "radio");
-  const titolo = el("h3", null, "Radio sentite ");
-  titolo.append(el("span", null, radio.length ? "(" + radio.length + ", sulla mappa " + (d.radio_sulla_mappa || 0) + ")" : "(nessuna da quando il ponte è acceso)"));
-  box.append(titolo);
-  if (radio.length) {
-    const finestra = Math.max(5, Number(d.validita_min) || 90) * 60;
-    const scala = el("div", "scala");
-    const asse = el("div", "asse");
-    asse.append(el("span", null, Math.round(finestra / 60) + " min fa"), el("span", null, "adesso"));
-    scala.append(el("span"), asse, el("span", null, "ultimo segnale"), el("span", null, "batteria"), el("span", null, "salti radio"));
-    box.append(scala);
-    const ol = el("ol", "righe");
-    const tutte = aperte.has(p.nome);
-    radio.slice(0, tutte ? radio.length : MOSTRATE).forEach(r => {
-      const eta = Math.max(0, (d.ora || 0) - (r.ultimo_segnale || 0));
-      const li = el("li", "riga" + (r.sulla_mappa ? "" : " fuori"));
-      const nome = el("span", "nome", r.nome || r.id);
-      nome.title = r.nome || r.id;
-      nome.append(el("small", null, (r.id || "") + (r.app_tak ? ", app TAK" : "") + (r.canale ? ", " + r.canale : "")));
-      const traccia = el("span", "traccia");
-      const punto = el("span", "punto");
-      punto.style.setProperty("--pos", String(Math.max(0, 1 - eta / finestra)));
-      traccia.append(punto);
-      traccia.title = r.sulla_mappa ? "Sulla mappa del TAK" : "Fuori dalla mappa: non si sente da più di " + Math.round(finestra / 60) + " minuti";
-      li.append(nome, traccia, el("span", "quando", fa(eta)),
-                el("span", "batteria", r.batteria ? r.batteria + "%" : ""),
-                el("span", "salti", r.salti === 0 ? "diretta" : (r.salti ? r.salti + (r.salti === 1 ? " salto" : " salti") : "")));
-      ol.append(li);
-    });
-    box.append(ol);
-    if (radio.length > MOSTRATE) {
-      const b = el("button", "altre", tutte ? "Mostra solo le più recenti" : "Mostra tutte le " + radio.length + " radio");
-      b.type = "button";
-      b.addEventListener("click", () => { tutte ? aperte.delete(p.nome) : aperte.add(p.nome); disegna(); });
-      box.append(b);
-    }
-  }
-  sez.append(box);
-}
-
 function valutaPonte(p) {
   // come valuta(), ma sa che un ponte nuovo si sta ancora installando (dalla 1.10.0)
   const st = stati.get(p.nome);
@@ -803,7 +827,7 @@ function valutaPonte(p) {
             spiega: maiuscola(frase(ins.testo || "errore")) + " (" + fa(eta) + ")"};
   }
   if (ins.fase === "fatto") {
-    if (eta < 20 * 60) { v.parole = "Installato, in attesa del primo collegamento"; v.spiega = "Il ponte è installato: apre il tunnel da solo entro qualche minuto."; }
+    if (eta < 20 * 60) { v.parole = "Installato, in attesa del primo collegamento"; v.spiega = "Il gateway è installato: apre il tunnel da solo entro qualche minuto."; }
     return v;
   }
   if (d) return v;                       // risponde gia': quello che conta e' lo stato vero
@@ -812,47 +836,50 @@ function valutaPonte(p) {
                   "Raspberry si riavvia una volta." + (eta > 3600 ? " Nessuna notizia da più di un'ora: Raspberry spento o senza internet?" : "")};
 }
 
+// i fatti che stanno sempre in vista nella scheda di un gateway; gli altri vanno in "Altri dettagli", tranne quelli
+// che segnalano qualcosa da guardare
+const FATTI_IN_VISTA = new Set(["TAK Server", "Radio del gateway", "Sulla mappa TAK", "Canale radio", "Copertura",
+                                "Aggiornamento", "Ultimo comando"]);
+
 function disegnaPonte(p) {
   const st = stati.get(p.nome);
-  const v = valutaPonte(p);
+  const s = statoGateway(p), v = s.v;
   const d = st && st.dati;
   const sez = el("section", "ponte");
+  sez.id = "gateway-" + p.nome;
   sez.dataset.stato = v.classe;
   sez.setAttribute("aria-labelledby", "ponte-" + p.nome);
   const capo = el("div", "capo");
-  const h2 = el("h2", null, p.nome);
-  h2.id = "ponte-" + p.nome;
+  const testa = el("div");
+  const h3 = el("h3", null, p.nome);
+  h3.id = "ponte-" + p.nome;
   const chi = el("p", "chi", d ? [d.nome || "nodo senza nome", d.nome_breve ? "sigla " + d.nome_breve : "", d.id_nodo || ""].filter(Boolean).join(", ") : p.indirizzo.replace(/^https:\/\//, "").replace(/\/$/, ""));
   const stato = el("p", "stato");
-  stato.append(el("span", "segno"), el("span", null, v.parole));
-  capo.append(h2, chi, stato);
+  stato.dataset.livello = v.classe === "giu" ? "spento" : ["ok", "attenzione", "problema"][s.livello];
+  stato.append(segnoStato(s.livello, v.classe === "giu"), el("span", null, v.parole));
+  testa.append(h3, chi, stato);
+  capo.append(testa);
 
   const azione = el("div", "azione");
   const b = el("button", "bottone", "Gestisci la radio");
   b.type = "button";
   if (!d) {
     b.disabled = true;
-    azione.append(b, el("small", null, "Si apre quando il ponte è raggiungibile"));
+    azione.append(b, el("small", null, "Si apre quando il gateway è raggiungibile"));
   } else if (!d.gestione || !d.gestione.pagina) {
     b.disabled = true;
     azione.append(b, el("small", null, "Radio USB: si gestisce dall'app Meshtastic"));
   } else {
     b.addEventListener("click", () => chiediConferma(p, d));
-    azione.append(b, el("small", null, "Mentre è aperta il ponte è in pausa"));
+    azione.append(b, el("small", null, "Mentre è aperta il gateway è in pausa"));
   }
-  if (d && d.id_nodo && iconeAttive()) azione.append(bottoneIcona(d.id_nodo, "ponte " + p.nome, true));
   if (gestione && d && d.sistema && d.sistema.comandi) {     // dalla 1.13.0
     const r = el("button", "bottone secondario piccolo", "Gestisci il Raspberry");
     r.type = "button";
     r.addEventListener("click", () => apriRaspberry(p));
     azione.append(r);
   }
-  if (gestione) {
-    const t = el("button", "togli", "Togli dalla rete");
-    t.type = "button";
-    t.addEventListener("click", () => chiediTogli(p));
-    azione.append(t);
-  }
+  if (d && d.id_nodo && iconeAttive()) azione.append(bottoneIcona(d.id_nodo, "gateway " + p.nome, true));
   capo.append(azione);
   if (v.spiega) capo.append(el("p", "spiega", v.spiega));
   if (v.riprova && gestione) {
@@ -865,24 +892,45 @@ function disegnaPonte(p) {
   }
   sez.append(capo);
 
+  const altri = el("dl", "fatti");
   if (d) {
-    const dl = el("dl", "fatti");
+    const tutti = {voci: [], append(x) { this.voci.push(x); }};
     const tak = d.tak || {};
-    fatto(dl, "TAK Server", tak.collegato ? "collegato da " + durata(d.ora - tak.dal) : "non collegato");
-    fatto(dl, "Radio del ponte", (d.nodo.collegato ? "collegata, " : (d.pausa && d.pausa.attiva ? "lasciata alla gestione, " : "non collegata, ")) + (d.nodo.preset || ""));
-    fatto(dl, "Canali", canali(d));
-    const c = d.conteggi || {};
-    const finestra = d.ora - (d.conteggi_dal || d.avviato);
-    fatto(dl, !Number.isFinite(finestra) ? "Contatori" : finestra < 90 ? "Nell'ultimo minuto" : (finestra >= 3600 ? "Nell'ultima ora" : "Negli ultimi " + durata(finestra)), (c.inoltrate || 0) + " posizioni al TAK Server, " + (c.radio_al_server || 0) + " messaggi dalla radio, " + (c.radio_trasmessi || 0) + " alle radio");
-    fatto(dl, "Programma", "mesh2tak " + (d.versione || "?") + ", acceso da " + durata(d.ora - d.avviato));
+    fatto(tutti, "TAK Server", tak.collegato ? "collegato da " + durata(d.ora - tak.dal) : "non collegato", tak.collegato ? "" : "guasto");
+    fatto(tutti, "Radio del gateway", (d.nodo.collegato ? "collegata, " : (d.pausa && d.pausa.attiva ? "lasciata alla gestione, " : "non collegata, ")) + (d.nodo.preset || ""));
+    const sentite = Array.isArray(d.radio) ? d.radio.length : 0, sullaMappa = d.radio_sulla_mappa || 0;
+    fatto(tutti, "Sulla mappa TAK", sullaMappa + " radio adesso" +
+                                    (sentite > sullaMappa ? ", " + sentite + " da quando il gateway è acceso" : ""));
     const cr = d.canale_radio;
     if (cr && cr.occupato !== null && cr.occupato !== undefined) {
-      fatto(dl, "Canale radio", "occupato " + numIt(cr.occupato) + "% del tempo; il ponte trasmette " +
-                                numIt(cr.trasmesso, 2) + "% (limite 10%)");
+      fatto(tutti, "Canale radio", "occupato il " + numIt(cr.occupato) + "%; il gateway trasmette il " +
+                                   numIt(cr.trasmesso, 2) + "% (limite 10%)", cr.trasmesso >= 8 ? "attenzione" : "");
     }
-    fattiRaspberry(dl, d);
+    fatto(tutti, "Copertura", testoCopertura("g:" + p.nome));
+    fatto(tutti, "Canali", canali(d));
+    const c = d.conteggi || {};
+    const finestra = d.ora - (d.conteggi_dal || d.avviato);
+    fatto(tutti, !Number.isFinite(finestra) ? "Contatori" : finestra < 90 ? "Nell'ultimo minuto" : (finestra >= 3600 ? "Nell'ultima ora" : "Negli ultimi " + durata(finestra)), (c.inoltrate || 0) + " posizioni al TAK Server, " + (c.radio_al_server || 0) + " messaggi dalla radio, " + (c.radio_trasmessi || 0) + " alle radio");
+    fatto(tutti, "Programma", "mesh2tak " + (d.versione || "?") + ", acceso da " + durata(d.ora - d.avviato));
+    fattiRaspberry(tutti, d);
+    const dl = el("dl", "fatti");
+    for (const x of tutti.voci) {
+      (FATTI_IN_VISTA.has(x.firstChild.textContent) || x.className ? dl : altri).append(x);
+    }
     sez.append(dl);
-    disegnaRadio(sez, p, d);
+  }
+  const fondo = [];
+  if (altri.childElementCount) fondo.push(altri);
+  if (gestione) {
+    const t = el("button", "togli", "Togli il gateway dalla rete");
+    t.type = "button";
+    t.addEventListener("click", () => chiediTogli(p));
+    fondo.push(t);
+  }
+  if (fondo.length) {
+    const det = dettagli("altri:" + p.nome, "Altri dettagli", ...fondo);
+    det.className = "altri";
+    sez.append(det);
   }
   return sez;
 }
@@ -893,7 +941,7 @@ function disegnaRichiesta(r) {
   chi.append(el("h3", null, r.nome));
   chi.append(el("p", "da", "Raspberry " + (r.macchina || "?") + ", dall'indirizzo " + (r.ip || "?") + ", " +
                             giornoOra(r.arrivata) + (r.versione ? " (mesh2tak " + r.versione + ")" : "")));
-  if (r.sostituisce) chi.append(el("p", "avviso", "C'è già un ponte " + r.nome + " nella rete: un altro Raspberry, o questo reinstallato. " +
+  if (r.sostituisce) chi.append(el("p", "avviso", "C'è già un gateway " + r.nome + " nella rete: un altro Raspberry, o questo reinstallato. " +
                                                   "Sostituendo, questo Raspberry prende il suo posto e quello vecchio non entra più."));
   if (r.stesso_nome) chi.append(el("p", "avviso", "C'è un'altra richiesta con lo stesso nome: approva solo quella con il codice giusto."));
   const codice = el("div", "controllo");
@@ -908,8 +956,8 @@ function disegnaRichiesta(r) {
   if (r.stato !== "in_corso" && r.nuovo && !r.installa) {
     li.append(moduloInstalla(r));
   } else if (r.stato === "in_corso") {
-    const lav = el("p", "lavora", r.installa ? "Sto aggiungendo il ponte; poi il Raspberry si installa da solo." :
-                                                "Sto aggiungendo il ponte, ci vuole un paio di minuti.");
+    const lav = el("p", "lavora", r.installa ? "Sto aggiungendo il gateway; poi il Raspberry si installa da solo." :
+                                                "Sto aggiungendo il gateway, ci vuole un paio di minuti.");
     lav.append(el("small", null, r.fermo ? "Il server non ha ancora cominciato: se resta così, sul server  sudo bash rete-meshtastic.sh installa"
                                          : "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
     li.append(lav);
@@ -932,17 +980,17 @@ function disegnaRichiesta(r) {
   return li;
 }
 
-const PAROLE_AZIONE = {aggiungi: "Aggiunta del ponte ", rimuovi: "Rimozione del ponte "};
+const PAROLE_AZIONE = {aggiungi: "Aggiunta del gateway ", rimuovi: "Rimozione del gateway "};
 
 function cosaLavoro(l) {
   if (l.azione === "aggiorna-server") return "Aggiornamento del server alla " + (l.versione || "?");
-  if (l.azione === "aggiorna-ponti") return "Richiesta di aggiornamento " + (l.nome === "tutti" ? "ai ponti" : "al ponte " + l.nome) +
+  if (l.azione === "aggiorna-ponti") return "Richiesta di aggiornamento " + (l.nome === "tutti" ? "ai gateway" : "al gateway " + l.nome) +
                                             " alla " + (l.versione || "?") + (l.reimposta ? ", con la radio come all'installazione" : "");
-  if (l.azione === "impostazioni-nuovi") return "Certificato e canale per i ponti nuovi";
-  if (l.azione === "installa") return "Nuova installazione del ponte " + (l.nome || "?");
-  if (l.azione === "azione-ponte") return (NOMI_COMANDI[l.cosa] || "Comando") + " sul ponte " + (l.nome || "?");
-  if (l.azione === "certificato-ponte") return "Certificato nuovo per il ponte " + (l.nome || "?");
-  return (PAROLE_AZIONE[l.azione] || "Lavoro sul ponte ") + (l.nome || "?");
+  if (l.azione === "impostazioni-nuovi") return "Certificato e canale per i gateway nuovi";
+  if (l.azione === "installa") return "Nuova installazione del gateway " + (l.nome || "?");
+  if (l.azione === "azione-ponte") return (NOMI_COMANDI[l.cosa] || "Comando") + " sul gateway " + (l.nome || "?");
+  if (l.azione === "certificato-ponte") return "Certificato nuovo per il gateway " + (l.nome || "?");
+  return (PAROLE_AZIONE[l.azione] || "Lavoro sul gateway ") + (l.nome || "?");
 }
 
 function disegnaLavoro(l) {
@@ -956,7 +1004,7 @@ function disegnaLavoro(l) {
     else if (l.azione === "aggiorna-server") p.append(el("small", null, "Il servizio della pagina riparte: per circa un minuto la pagina può non rispondere, poi riprende da sola."));
   } else if (l.esito === "ok") {
     p.textContent = cosa + ": " + (l.azione === "impostazioni-nuovi" ? "salvati alle " : "fatta alle ") + oraDi(l.quando) + "." +
-                    (l.azione === "aggiorna-ponti" ? " I ponti si aggiornano da soli entro qualche minuto." : "") +
+                    (l.azione === "aggiorna-ponti" ? " I gateway si aggiornano da soli entro qualche minuto." : "") +
                     (l.azione === "installa" ? " Il Raspberry riparte da solo entro un paio di minuti." : "");
   } else {
     p.textContent = cosa + ": non riuscita alle " + oraDi(l.quando) + ".";
@@ -981,8 +1029,8 @@ function disegnaNovita() {
   sez.setAttribute("aria-live", "polite");
   const inAttesa = richieste.filter(r => r.stato === "attesa").length;
   if (richieste.length) {
-    sez.append(el("h2", null, inAttesa === 1 ? "Un ponte chiede di entrare" :
-                              (inAttesa ? inAttesa + " ponti chiedono di entrare" : "Ponti in arrivo")));
+    sez.append(el("h2", null, inAttesa === 1 ? "Un gateway chiede di entrare" :
+                              (inAttesa ? inAttesa + " gateway chiedono di entrare" : "Gateway in arrivo")));
     sez.append(el("p", "guida", "Approva solo se il codice di controllo è lo stesso che il Raspberry ha mostrato alla fine dell'installazione. Una richiesta che non riconosci, rifiutala."));
     const ul = el("ul", "righe");
     richieste.forEach(r => ul.append(disegnaRichiesta(r)));
@@ -1046,7 +1094,7 @@ function passiMicroSD(inv) {
     "Sul computer installa Raspberry Pi Imager (versione 2 o successiva) da https://www.raspberrypi.com/software/ e aprilo.",
     "Solo la prima volta: premi \"Opzioni app\" (in basso a sinistra), alla voce \"Repository dei contenuti\" premi \"Modifica\", scegli \"Usa URL personalizzato\", incolla questo indirizzo e premi \"Applica & Riavvia\":\n" + elencoImager,
     "Scegli il modello del Raspberry, poi il sistema \"Ponte Meshtastic (mesh2tak)\", poi la microSD.",
-    "Personalizzazione. Hostname: ponte-" + inv.nome + ". Localizzazione: Europe/Rome, tastiera it. Utente: un nome e una password a scelta (servono solo per la manutenzione). Wi-Fi: nome e password della rete del posto dove starà il ponte (con il cavo di rete si salta).",
+    "Personalizzazione. Hostname: ponte-" + inv.nome + ". Localizzazione: Europe/Rome, tastiera it. Utente: un nome e una password a scelta (servono solo per la manutenzione). Wi-Fi: nome e password della rete del posto dove starà il gateway (con il cavo di rete si salta).",
     "Accesso remoto: attiva \"Abilita SSH\", scegli \"Usa autenticazione con chiave pubblica\", incolla la chiave d'invito qui sotto e premi \"Add\". Senza questa chiave il Raspberry non sa a quale rete presentarsi.\n" + (inv.riga || ""),
     "Raspberry Pi Connect e Interfacce: vai avanti senza toccare nulla, poi scrivi la microSD.",
     "Metti la microSD nel Raspberry, collega la radio e l'antenna (mai accenderlo senza antenna) e l'alimentatore. Non serve altro: in 5-10 minuti compare sulla pagina della rete e si installa da solo in 30-60 minuti.",
@@ -1060,7 +1108,7 @@ function disegnaInvito(inv) {
                           ". Preparato da " + (inv.da || "?") + " " + giornoOra(inv.creato) + "."));
   if (inv.stato !== "attesa") {
     const ins = gestione.installazioni && gestione.installazioni[inv.nome];
-    li.append(el("p", "stato-invito", ins ? "Il Raspberry è arrivato: lo vedi tra i ponti qui sopra." :
+    li.append(el("p", "stato-invito", ins ? "Il Raspberry è arrivato: lo vedi tra i gateway qui sopra." :
                                             "Il Raspberry è arrivato " + giornoOra(inv.usato || inv.creato) + ": lo sto aggiungendo alla rete."));
     return li;
   }
@@ -1085,7 +1133,7 @@ function disegnaInvito(inv) {
   const riga = el("div", "riga-pulsanti");
   const tutte = el("button", "bottone piccolo", "Copia le istruzioni da mandare");
   tutte.type = "button";
-  tutte.addEventListener("click", () => copiaTesto(tutte, "Ponte Meshtastic \"" + inv.nome + "\": come preparare la microSD\n\n" +
+  tutte.addEventListener("click", () => copiaTesto(tutte, "Gateway Meshtastic \"" + inv.nome + "\": come preparare la microSD\n\n" +
     passi.map((t, i) => (i + 1) + ". " + t).join("\n\n") + "\n", "Copiate: incollale in un messaggio"));
   const annulla = el("button", "togli", "Annulla l'invito");
   annulla.type = "button";
@@ -1100,7 +1148,7 @@ function costruisciNuovi() {
   zona.append(el("h3", null, "Raspberry nuovo, preparato con Raspberry Pi Imager"));
   zona.append(el("p", null, "Chi ha il Raspberry scrive la microSD con Raspberry Pi Imager incollando una chiave d'invito preparata qui, " +
     "collega la radio e lo accende. Il Raspberry si presenta da solo a questa pagina, riceve certificato e canale, si installa e " +
-    "compare tra i ponti: nessun terminale, nessun file da copiare."));
+    "compare tra i gateway: nessun terminale, nessun file da copiare."));
   zonaStatoNuovi = el("p", "spiega");
   zona.append(zonaStatoNuovi);
 
@@ -1118,7 +1166,7 @@ function costruisciNuovi() {
   invia.type = "submit";
   const esito = el("p", "esito");
   esito.setAttribute("aria-live", "polite");
-  f.append(...campo("Pacchetto del certificato", file, "il file .zip che la console infra-TAK fa scaricare per il certificato del ponte"),
+  f.append(...campo("Pacchetto del certificato", file, "il file .zip che la console infra-TAK fa scaricare per il certificato del gateway"),
            ...campo("Password del certificato", password),
            ...campo("Indirizzo del TAK Server", host, "solo se il pacchetto non lo contiene"),
            ...campo("Nome del canale della squadra", canale),
@@ -1146,7 +1194,7 @@ function costruisciNuovi() {
     }
   });
   dettagliImpostazioni = el("details");
-  dettagliImpostazioni.append(el("summary", null, "Certificato e canale per i ponti nuovi"), f);
+  dettagliImpostazioni.append(el("summary", null, "Certificato e canale per i gateway nuovi"), f);
   zona.append(dettagliImpostazioni);
 
   // un invito per ogni Raspberry
@@ -1164,9 +1212,9 @@ function costruisciNuovi() {
   prepara.type = "submit";
   const esitoInvito = el("p", "esito");
   esitoInvito.setAttribute("aria-live", "polite");
-  moduloInvito.append(el("h4", null, "Prepara un ponte nuovo"),
-                      ...campo("Nome del ponte", nome, "diventa anche il nome sulla mappa: Gateway CNSAS Velate"),
-                      ...campo("Radio del ponte", scheda),
+  moduloInvito.append(el("h4", null, "Prepara un gateway nuovo"),
+                      ...campo("Nome del gateway", nome, "diventa anche il nome sulla mappa: Gateway CNSAS Velate"),
+                      ...campo("Radio del gateway", scheda),
                       ...campo("Dove sta", posizione, "coordinate copiate da Google Maps; vuoto se la radio ha il suo GPS"),
                       el("p"), prepara, esitoInvito);
   moduloInvito.addEventListener("submit", async ev => {
@@ -1195,14 +1243,14 @@ function aggiornaNuovi() {
   zonaStatoNuovi.parentNode.hidden = !gestione || !n;      // server piu' vecchio della 1.10.0: niente
   if (!gestione || !n) return;
   if (n.pronto) {
-    zonaStatoNuovi.textContent = "Per i ponti nuovi: certificato " + (n.certificato ? "\"" + n.certificato + "\"" : "caricato") +
+    zonaStatoNuovi.textContent = "Per i gateway nuovi: certificato " + (n.certificato ? "\"" + n.certificato + "\"" : "caricato") +
       (n.scade ? " (scade il " + new Date(n.scade * 1000).toLocaleDateString("it-IT") + ")" : "") + ", TAK Server " + (n.server || "?") +
-      ", canale " + n.canale + " (l'unico del nodo dei ponti). Caricati da " + (n.da || "?") + " " +
+      ", canale " + n.canale + " (l'unico del nodo dei gateway). Caricati da " + (n.da || "?") + " " +
       giornoOra(n.aggiornato) + ".";
     dettagliImpostazioni.firstChild.textContent = "Cambia certificato o canale";
   } else {
-    zonaStatoNuovi.textContent = "Prima, una volta sola: carica qui sotto il certificato e la chiave del canale che i ponti nuovi devono usare.";
-    dettagliImpostazioni.firstChild.textContent = "Certificato e canale per i ponti nuovi";
+    zonaStatoNuovi.textContent = "Prima, una volta sola: carica qui sotto il certificato e la chiave del canale che i gateway nuovi devono usare.";
+    dettagliImpostazioni.firstChild.textContent = "Certificato e canale per i gateway nuovi";
     if (!dettagliImpostazioni.dataset.aperto) { dettagliImpostazioni.open = true; dettagliImpostazioni.dataset.aperto = "1"; }
   }
   moduloInvito.hidden = !n.pronto;
@@ -1228,7 +1276,7 @@ function moduloInstalla(r) {
   si.type = "submit";
   const riga = el("div", "riga-pulsanti");
   riga.append(no, si);
-  f.append(...campo("Nome del ponte", nome), ...campo("Radio del ponte", scheda), ...campo("Dove sta", posizione, "vuoto se la radio ha il suo GPS"), riga);
+  f.append(...campo("Nome del gateway", nome), ...campo("Radio del gateway", scheda), ...campo("Dove sta", posizione, "vuoto se la radio ha il suo GPS"), riga);
   f.addEventListener("submit", ev => {
     ev.preventDefault();
     if (!window.confirm("Questo Raspberry non ha una chiave d'invito valida. Approvandolo riceve il certificato del TAK Server e la " +
@@ -1249,7 +1297,7 @@ let daRiprovare = null;
 
 function chiediRiprova(p, ins) {
   daRiprovare = p;
-  document.getElementById("riprova-testo").textContent = "Il Raspberry del ponte " + p.nome + " riscarica la configurazione (con il " +
+  document.getElementById("riprova-testo").textContent = "Il Raspberry del gateway " + p.nome + " riscarica la configurazione (con il " +
     "certificato e il canale salvati adesso) e rifà l'installazione da dove serve. Parte entro un paio di minuti.";
   const scelta = document.getElementById("riprova-scheda");
   if (!scelta.options.length) SCHEDE_RADIO.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; scelta.append(o); });
@@ -1272,12 +1320,10 @@ let sezAggiungi = null, zonaServizio = null, zonaModulo = null, zonaRifiutate = 
 function costruisciAggiungi() {
   // una volta sola: chi sta scrivendo nel modulo non perde nulla quando la pagina si aggiorna
   const sez = el("section", "aggiungi");
-  sez.id = "aggiungi";
-  sez.append(el("h2", null, "Aggiungere un ponte"));
   sez.append(costruisciNuovi());
   sez.append(el("h3", null, "Raspberry installato a mano, dal terminale"));
   const ol = el("ol");
-  const passo1 = el("li", null, "Sul Raspberry del nuovo ponte lancia:");
+  const passo1 = el("li", null, "Sul Raspberry del nuovo gateway lancia:");
   const riga = el("div", "comando");
   const codice = el("code", null, COMANDO_PI);
   const copia = el("button", "bottone secondario piccolo", "Copia");
@@ -1290,7 +1336,7 @@ function costruisciAggiungi() {
   riga.append(codice, copia);
   passo1.append(riga);
   ol.append(passo1);
-  ol.append(el("li", null, "Ti chiede il nome del ponte e alla fine mostra un codice di controllo (la procedura completa del Raspberry è nella guida)."));
+  ol.append(el("li", null, "Ti chiede il nome del gateway e alla fine mostra un codice di controllo (la procedura completa del Raspberry è nella guida)."));
   ol.append(el("li", null, "Entro un minuto la richiesta compare in cima a questa pagina: se il codice è lo stesso, approvala. Il resto lo fa il server."));
   sez.append(ol);
   zonaServizio = el("div");
@@ -1299,7 +1345,7 @@ function costruisciAggiungi() {
   const det = el("details");
   det.append(el("summary", null, "Il Raspberry non riesce a mandare la richiesta? Aggiungilo a mano"));
   const f = el("form");
-  const l1 = el("label", null, "Nome del ponte");
+  const l1 = el("label", null, "Nome del gateway");
   const nome = el("input");
   nome.name = "nome"; nome.required = true; nome.maxLength = 20; nome.pattern = "[a-z0-9]([a-z0-9\\-]{0,18}[a-z0-9])?";
   nome.placeholder = "es. sede";
@@ -1311,7 +1357,7 @@ function costruisciAggiungi() {
   chiave.name = "chiave"; chiave.required = true; chiave.placeholder = "ssh-ed25519 AAAA...";
   chiave.spellcheck = false;
   l2.htmlFor = chiave.id = "nuova-chiave";
-  const invia = el("button", "bottone", "Aggiungi il ponte");
+  const invia = el("button", "bottone", "Aggiungi il gateway");
   invia.type = "submit";
   const esito = el("p", "esito");
   esito.setAttribute("aria-live", "polite");
@@ -1322,7 +1368,7 @@ function costruisciAggiungi() {
     esito.textContent = "Mando...";
     try {
       await manda("aggiungi", {nome: nome.value.trim(), chiave: chiave.value.trim()});
-      esito.textContent = "Fatto: il server sta aggiungendo il ponte " + nome.value.trim() + " (lo vedi in cima alla pagina).";
+      esito.textContent = "Fatto: il server sta aggiungendo il gateway " + nome.value.trim() + " (lo vedi in cima alla pagina).";
       f.reset();
       await giro();
     } catch (e) {
@@ -1340,7 +1386,7 @@ function costruisciAggiungi() {
 function aggiornaAggiungi() {
   if (!sezAggiungi) {
     sezAggiungi = costruisciAggiungi();
-    vistaPonti.append(sezAggiungi);
+    gestioneDettagli.aggiungi.append(sezAggiungi);
   }
   zonaServizio.replaceChildren();
   if (!gestione) {
@@ -1372,26 +1418,35 @@ function versioniPonti() {
 }
 
 function note(testo) {               // le novita' della release: le righe "- ..." diventano un elenco
+  // una riga rientrata continua la voce di sopra (in NOVITA.md le voci lunghe vanno a capo)
   const box = el("div", "note");
-  let ul = null;
-  String(testo || "").split(/\r?\n/).map(r => r.trim()).filter(Boolean).forEach(r => {
-    if (/^#+\s/.test(r)) return;
+  let ul = null, voce = null, par = null;
+  for (const grezza of String(testo || "").split(/\r?\n/)) {
+    const r = grezza.trim();
+    if (!r) { par = null; continue; }
+    if (/^#+\s/.test(r)) continue;
     const pulita = r.replace(/\*\*/g, "").replace(/`/g, "");
     if (/^[-*]\s+/.test(r)) {
       if (!ul) { ul = el("ul"); box.append(ul); }
-      ul.append(el("li", null, pulita.replace(/^[-*]\s+/, "")));
+      voce = el("li", null, pulita.replace(/^[-*]\s+/, ""));
+      ul.append(voce);
+      par = null;
+    } else if (voce && /^\s/.test(grezza)) {
+      voce.textContent += " " + pulita;
+    } else if (par) {
+      par.textContent += " " + pulita;
     } else {
       ul = null;
-      box.append(el("p", null, pulita));
+      voce = null;
+      par = el("p", null, pulita);
+      box.append(par);
     }
-  });
+  }
   return box;
 }
 
 function costruisciAggiornamenti() {
   const sez = el("section", "aggiungi aggiornamenti");
-  sez.id = "aggiornamenti";
-  sez.append(el("h2", null, "Aggiornamenti"));
   zonaAggiornamenti = el("div");
   zonaAggiornamenti.setAttribute("aria-live", "polite");
   sez.append(zonaAggiornamenti);
@@ -1402,12 +1457,12 @@ function chiediAggiornamento(o) {
   daAggiornare = o;
   const server = o.azione === "aggiorna-server";
   document.getElementById("aggiorna-titolo").textContent = server ? "Aggiornare il server alla " + o.versione + "?" :
-    "Aggiornare " + (o.nomi.length === 1 ? "il ponte " + o.nomi[0] : "i ponti") + " alla " + o.versione + "?";
+    "Aggiornare " + (o.nomi.length === 1 ? "il gateway " + o.nomi[0] : "i gateway") + " alla " + o.versione + "?";
   document.getElementById("aggiorna-testo").textContent = server ?
     "Il server scarica la versione nuova da GitHub, la controlla e la installa. Per circa un minuto questa pagina non " +
-    "risponde; i ponti continuano a portare le radio al TAK Server. Se il server non riparte, torna da solo alla " +
+    "risponde; i gateway continuano a portare le radio al TAK Server. Se il server non riparte, torna da solo alla " +
     "versione di prima." :
-    "Ogni ponte scarica la versione nuova da GitHub entro un paio di minuti, la controlla e la installa: intanto si " +
+    "Ogni gateway scarica la versione nuova da GitHub entro un paio di minuti, la controlla e la installa: intanto si " +
     "ferma per un paio di minuti, quindi non farlo durante un intervento. Se non riparte, torna da solo alla versione " +
     "di prima.";
   // dalla 1.13.0 l'aggiornamento non cambia la radio; a richiesta la rimette come all'installazione
@@ -1419,10 +1474,11 @@ function chiediAggiornamento(o) {
 function aggiornaAggiornamenti() {
   if (!sezAggiornamenti) {
     sezAggiornamenti = costruisciAggiornamenti();
-    vistaPonti.append(sezAggiornamenti);
+    gestioneDettagli.aggiornamenti.append(sezAggiornamenti);
   }
   const r = gestione && gestione.rilasci;
-  sezAggiornamenti.hidden = !r;
+  gestioneDettagli.aggiornamenti.hidden = !r;
+  suggerimentoGestione("aggiornamenti", "");
   avvisoVersione.replaceChildren();
   avvisoVersione.hidden = true;
   if (!r) return;
@@ -1433,7 +1489,7 @@ function aggiornaAggiornamenti() {
   const u = r.ultima;
   const inCorso = a => (gestione.lavori || []).some(l => l.azione === a && (l.esito === "in_coda" || l.esito === "in_corso"));
   z.append(el("p", null, "Versioni: server " + r.installata + (ponti.length ? "; " +
-    ponti.map(p => "ponte " + p.nome + " " + (p.versione || "?")).join(", ") : "") + "."));
+    ponti.map(p => "gateway " + p.nome + " " + (p.versione || "?")).join(", ") : "") + "."));
   let banner = "";
   if (r.nuova && u) {
     z.append(el("p", "evidenza", "È uscita la versione " + u.versione +
@@ -1443,28 +1499,28 @@ function aggiornaAggiornamenti() {
     b.type = "button";
     b.disabled = inCorso("aggiorna-server");
     b.addEventListener("click", () => chiediAggiornamento({azione: "aggiorna-server", versione: u.versione}));
-    z.append(b, el("small", null, "Prima il server, poi i ponti. I ponti continuano a lavorare mentre il server si aggiorna."));
+    z.append(b, el("small", null, "Prima il server, poi i gateway. I gateway continuano a lavorare mentre il server si aggiorna."));
     banner = "È uscita la versione " + u.versione + ": aggiorna il server.";
   } else if (u && confronta(u.versione, r.installata) <= 0) {
     const vecchi = ponti.filter(p => p.versione && confronta(p.versione, u.versione) < 0);
     const daQui = vecchi.filter(p => p.aggiornabile && !(p.aggiornamento && p.aggiornamento.stato === "in_corso"));
     const aMano = vecchi.filter(p => !p.aggiornabile);
     if (daQui.length) {
-      z.append(el("p", "evidenza", (daQui.length === 1 ? "Il ponte " + daQui[0].nome + " ha" : daQui.length + " ponti hanno") +
+      z.append(el("p", "evidenza", (daQui.length === 1 ? "Il gateway " + daQui[0].nome + " ha" : daQui.length + " gateway hanno") +
                                    " una versione più vecchia della " + u.versione + "."));
       if (u.note) z.append(note(u.note));
       const b = el("button", "bottone", inCorso("aggiorna-ponti") ? "Richiesta in corso" :
-                   "Aggiorna " + (daQui.length === 1 ? "il ponte " + daQui[0].nome : "i ponti") + " alla " + u.versione);
+                   "Aggiorna " + (daQui.length === 1 ? "il gateway " + daQui[0].nome : "i gateway") + " alla " + u.versione);
       b.type = "button";
       b.disabled = inCorso("aggiorna-ponti");
       b.addEventListener("click", () => chiediAggiornamento({azione: "aggiorna-ponti", versione: u.versione, nomi: daQui.map(p => p.nome)}));
-      z.append(b, el("small", null, "Ogni ponte si ferma per un paio di minuti mentre si aggiorna: non farlo durante un intervento."));
-      banner = (daQui.length === 1 ? "Il ponte " + daQui[0].nome + " è" : daQui.length + " ponti sono") + " da aggiornare alla " + u.versione + ".";
+      z.append(b, el("small", null, "Ogni gateway si ferma per un paio di minuti mentre si aggiorna: non farlo durante un intervento."));
+      banner = (daQui.length === 1 ? "Il gateway " + daQui[0].nome + " è" : daQui.length + " gateway sono") + " da aggiornare alla " + u.versione + ".";
     } else if (!aMano.length && !vecchi.length) {
       z.append(el("p", "evidenza", "Tutto aggiornato all'ultima versione, la " + u.versione + "."));
     }
     if (aMano.length) {
-      z.append(el("p", "nota", aMano.map(p => "ponte " + p.nome).join(", ") + ": la sua versione non si aggiorna dalla " +
+      z.append(el("p", "nota", aMano.map(p => "gateway " + p.nome).join(", ") + ": la sua versione non si aggiorna dalla " +
                                "pagina. Aggiornalo un'ultima volta dal Raspberry, con l'installatore della " + u.versione + "."));
     }
   } else if (!u) {
@@ -1487,6 +1543,7 @@ function aggiornaAggiornamenti() {
   });
   riga.append(c);
   z.append(riga);
+  suggerimentoGestione("aggiornamenti", banner ? (r.nuova && u ? "versione " + u.versione + " disponibile" : "gateway da aggiornare") : "");
   // in cima: versione nuova, ponti da aggiornare, o pagina vecchia dopo l'aggiornamento del server
   if (versionePagina && gestione.versione && confronta(gestione.versione, versionePagina) !== 0) {
     const b = el("button", "bottone piccolo", "Ricarica la pagina");
@@ -1506,9 +1563,7 @@ let sezAvvisi = null, statoAvvisi = null;
 
 function costruisciAvvisi() {
   const sez = el("section", "aggiungi avvisi-email");
-  sez.id = "avvisi";
-  sez.append(el("h2", null, "Avvisi per email"));
-  sez.append(el("p", null, "Il server ti scrive quando un ponte non risponde, perde la radio o il TAK Server da 10 minuti, " +
+  sez.append(el("p", null, "Il server ti scrive quando un gateway non risponde, perde la radio o il TAK Server da 10 minuti, " +
                            "e quando torna a posto; quando la microSD è quasi piena, il certificato sta per scadere, " +
                            "la corrente non basta o un Raspberry si riavvia. Le email vanno agli indirizzi degli avvisi " +
                            "di infra-TAK (Guard Dog)."));
@@ -1537,10 +1592,10 @@ function costruisciAvvisi() {
 function aggiornaAvvisi() {
   if (!sezAvvisi) {
     sezAvvisi = costruisciAvvisi();
-    vistaPonti.append(sezAvvisi);
+    gestioneDettagli.avvisi.append(sezAvvisi);
   }
   const a = gestione && gestione.avvisi;
-  sezAvvisi.hidden = !a;
+  gestioneDettagli.avvisi.hidden = !a;
   if (!a) return;
   const u = a.ultimo;
   let testo;
@@ -1570,7 +1625,7 @@ function disegnaRifiutate(rif) {
     codice.append(el("small", null, "codice di controllo"), el("b", null, r.controllo || "?"));
     li.append(chi, codice);
     if (r.presente) {
-      li.append(el("p", "lavora", "Ora c'è un altro ponte " + r.nome + ": per farlo rientrare togli prima quello."));
+      li.append(el("p", "lavora", "Ora c'è un altro gateway " + r.nome + ": per farlo rientrare togli prima quello."));
     } else {
       const pulsanti = el("div", "pulsanti");
       const b = el("button", "bottone secondario piccolo", "Lascia rientrare");
@@ -1581,7 +1636,7 @@ function disegnaRifiutate(rif) {
     }
     ul.append(li);
   });
-  const det = dettagli("rifiutate", "Ponti tolti e richieste rifiutate (" + rif.length + ")",
+  const det = dettagli("rifiutate", "Gateway tolti e richieste rifiutate (" + rif.length + ")",
                        el("p", "nota", "Questi Raspberry non possono rientrare da soli, per 30 giorni. Se è stato un errore, lasciali rientrare."), ul);
   det.classList.add("rifiutate");
   return det;
@@ -1602,7 +1657,7 @@ let avviso = "";                   // esito dell'ultima azione, mostrato una vol
 
 function chiediTogli(p) {
   daTogliere = p;
-  document.getElementById("togli-testo").textContent = "Il ponte " + p.nome + " non sarà più raggiungibile da questa pagina e il suo indirizzo " +
+  document.getElementById("togli-testo").textContent = "Il gateway " + p.nome + " non sarà più raggiungibile da questa pagina e il suo indirizzo " +
     p.indirizzo.replace(/^https:\/\//, "").replace(/\/$/, "") + " smette di funzionare.";
   document.getElementById("togli").showModal();
 }
@@ -1634,6 +1689,7 @@ const CAMPI_IT = {
   "lora.override_duty_cycle": "Ignora il limite di tempo radio (non in Europa)",
   "bluetooth.enabled": "Bluetooth acceso", "bluetooth.mode": "Abbinamento", "bluetooth.fixed_pin": "PIN fisso",
   "display.screen_on_secs": "Schermo acceso per (secondi)",
+  "telemetry.device_telemetry_enabled": "Manda batteria e canale alla rete (Device Metrics)",
   "telemetry.device_update_interval": "Manda batteria e canale ogni (secondi)",
   "security.public_key": "Chiave pubblica della radio", "security.admin_key": "Chiavi amministratore",
   "security.is_managed": "Gestita solo da lontano", "security.serial_enabled": "Porta seriale attiva",
@@ -1660,7 +1716,7 @@ async function chiamaRadio(ponte, percorso, corpo) {
   if (r.type === "opaqueredirect") { document.getElementById("sessione").hidden = false; throw new Error("sessione scaduta: ricarica la pagina"); }
   let d = {};
   try { d = await r.json(); } catch (e) { d = {}; }
-  if (!r.ok) throw new Error(d.errore || (r.status === 502 ? "il ponte " + ponte + " non risponde" : "il ponte risponde " + r.status));
+  if (!r.ok) throw new Error(d.errore || (r.status === 502 ? "il gateway " + ponte + " non risponde" : "il gateway risponde " + r.status));
   return d;
 }
 
@@ -1676,7 +1732,7 @@ async function operazioneRadio(corpo, cosa) {
   if (a.occupata) { statoRadio("Aspetta che finisca l'operazione in corso.", "errore"); return null; }
   a.occupata = true;
   document.getElementById("radio-dentro").querySelectorAll("button").forEach(b => { b.disabled = true; });
-  statoRadio(cosa + ": mando la richiesta al ponte " + a.ponte + "...");
+  statoRadio(cosa + ": mando la richiesta al gateway " + a.ponte + "...");
   try {
     const {op} = await chiamaRadio(a.ponte, "/op", Object.assign({radio: a.v.id}, corpo));
     const inizio = Date.now();
@@ -1687,7 +1743,7 @@ async function operazioneRadio(corpo, cosa) {
       if (o.stato === "fatto") { statoRadio(cosa + ": " + ((o.risultato && o.risultato.messaggio) || "fatto."), "fatto"); return o; }
       if (o.stato === "errore") { a.parziale = o.risultato || {}; throw new Error(o.errore || "non riuscito"); }
       statoRadio(cosa + ": " + (o.passo || "in corso") + " (" + Math.round((Date.now() - inizio) / 1000) + " s)");
-      if (Date.now() - inizio > 12 * 60 * 1000) throw new Error("il ponte non ha finito in 12 minuti");
+      if (Date.now() - inizio > 12 * 60 * 1000) throw new Error("il gateway non ha finito in 12 minuti");
     }
   } catch (e) {
     statoRadio(cosa + " non riuscito: " + frase(e.message), "errore");
@@ -1788,11 +1844,11 @@ function moduloCanale(c, canaliPonte) {
   });
   ruolo.value = c.ruolo === "DISABLED" && c.indice ? "DISABLED" : (c.indice ? "SECONDARY" : "PRIMARY");
   const chiave = el("select"); chiave.id = p + "-chiave";
-  const descr = c.chiave.tipo === "privata" ? "privata" + (c.chiave.come_ponte ? ", uguale a quella del canale " + c.chiave.come_ponte + " del ponte" : ", diversa da quelle del ponte")
+  const descr = c.chiave.tipo === "privata" ? "privata" + (c.chiave.come_ponte ? ", uguale a quella del canale " + c.chiave.come_ponte + " del gateway" : ", diversa da quelle del gateway")
               : (c.chiave.tipo === "predefinita" ? "quella pubblica nota a tutti" : "nessuna (in chiaro)");
   const scelte = [];
   if (c.ruolo !== "DISABLED" || c.indice === 0) scelte.push(["tieni", "Lascia la chiave com'è (" + descr + ")"]);
-  canaliPonte.filter(x => x.privato).forEach(x => scelte.push(["ponte:" + x.indice, "Stessa chiave del canale " + x.nome + " del ponte"]));
+  canaliPonte.filter(x => x.privato).forEach(x => scelte.push(["ponte:" + x.indice, "Stessa chiave del canale " + x.nome + " del gateway"]));
   scelte.push(["predefinita", "Chiave pubblica nota a tutti (come LongFast)"], ["nuova", "Un'altra chiave, la scrivo io"]);
   scelte.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; chiave.append(o); });
   const nuova = el("input"); nuova.id = p + "-nuova"; nuova.type = "password"; nuova.autocomplete = "off"; nuova.hidden = true;
@@ -1844,13 +1900,13 @@ function apriGestioneRadio(v) {
     const copia = el("button", "bottone secondario piccolo", "Copia");
     copia.type = "button";
     copia.addEventListener("click", () => copiaTesto(copia, d.chiave_pubblica || ""));
-    chiaveAdmin.replaceChildren(el("code", null, d.chiave_pubblica || "il ponte non l'ha ancora letta dal suo nodo: riprova tra un minuto"), copia);
+    chiaveAdmin.replaceChildren(el("code", null, d.chiave_pubblica || "il gateway non l'ha ancora letta dal suo nodo: riprova tra un minuto"), copia);
   }
   scelta.addEventListener("change", mostraChiave);
   mostraChiave();
   spiegaChiave.append(el("p", null, "La radio accetta comandi solo da chi ha messo tra le sue \"chiavi amministratore\". Va fatto una volta, da vicino, " +
     "con il telefono: app Meshtastic collegata a quella radio, Impostazioni, Sicurezza, Chiave amministratore: incolla la chiave qui sotto " +
-    "(è la chiave pubblica del nodo del ponte) e salva. Serve il firmware 2.5 o successivo. Ogni ponte ha la sua: una radio ne tiene fino a tre."), chiaveAdmin);
+    "(è la chiave pubblica del nodo del gateway) e salva. Serve il firmware 2.5 o successivo. Ogni gateway ha la sua: una radio ne tiene fino a tre."), chiaveAdmin);
 
   const stato = el("p", "stato-op", "Ogni operazione è un messaggio radio che va e torna: può volerci da qualche secondo a più di un minuto.");
   stato.id = "radio-stato";
@@ -1919,7 +1975,7 @@ function apriGestioneRadio(v) {
   const leggiCanali = el("button", "bottone piccolo", "Leggi i canali dalla radio");
   leggiCanali.type = "button";
   const elencoCanali = el("div");
-  zonaCanali.append(el("h3", null, "Canali"), el("p", "da", "Le chiavi non escono mai dal ponte: qui vedi solo se sono uguali a quelle del ponte."), leggiCanali, elencoCanali);
+  zonaCanali.append(el("h3", null, "Canali"), el("p", "da", "Le chiavi non escono mai dal gateway: qui vedi solo se sono uguali a quelle del gateway."), leggiCanali, elencoCanali);
   leggiCanali.addEventListener("click", async () => {
     const o = await operazioneRadio({azione: "leggi", sezioni: ["canali"]}, "Lettura dei canali");
     if (!o || !o.risultato || !o.risultato.canali) return;
@@ -1941,7 +1997,7 @@ function apriGestioneRadio(v) {
   chiudi.addEventListener("click", () => document.getElementById("radio").close());
   const fondo = el("div", "pulsanti");
   fondo.append(chiudi);
-  dentro.replaceChildren(titolo, chi, ...campo("Attraverso il ponte", scelta),
+  dentro.replaceChildren(titolo, chi, ...campo("Attraverso il gateway", scelta),
                          dettagli("radio-chiave", "La prima volta: la chiave di amministrazione da mettere sulla radio", spiegaChiave),
                          zonaNome, zonaPos, zonaSez, zonaCanali, zonaRiavvia, stato, fondo);
   document.getElementById("radio").showModal();
@@ -1950,92 +2006,28 @@ function apriGestioneRadio(v) {
       if (!schemaRadio) schemaRadio = await chiamaRadio(a.ponte, "/schema");
       schemaRadio.sezioni.forEach(s => { const o = el("option", null, SEZIONI_IT[s.nome] || s.nome); o.value = s.nome; sceltaSez.append(o); });
     } catch (e) {
-      statoRadio("Non riesco a parlare con il ponte " + a.ponte + ": " + frase(e.message), "errore");
+      statoRadio("Non riesco a parlare con il gateway " + a.ponte + ": " + frase(e.message), "errore");
     }
   })();
 }
 
 document.getElementById("radio").addEventListener("close", () => { radioAperta = null; });
 
-let schedaPonti = null, schedaRadio = null;
 let riassuntoRadio = null, avvisiRadio = null, cercaRadio = null, testaVoci = null, elencoRadio = null;
-
-function costruisciSchede() {
-  schede.className = "schede";
-  schede.setAttribute("role", "tablist");
-  schede.setAttribute("aria-label", "Cosa mostrare");
-  const scheda = (nome, titolo) => {
-    const b = el("button", null, titolo);
-    b.type = "button";
-    b.id = "scheda-" + nome;
-    b.setAttribute("role", "tab");
-    b.setAttribute("aria-controls", "vista-" + nome);
-    b.conteggio = el("span");
-    b.append(b.conteggio);
-    b.addEventListener("click", () => mostraVista(nome, true));
-    schede.append(b);
-    return b;
-  };
-  schedaPonti = scheda("ponti", "Ponti");
-  schedaRadio = scheda("radio", "Radio della rete");
-  schedaCopertura = scheda("copertura", "Copertura");
-  schede.addEventListener("keydown", ev => {
-    if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
-    const tutte = [schedaPonti, schedaRadio, schedaCopertura];
-    const i = tutte.indexOf(document.activeElement);
-    const altra = tutte[(Math.max(0, i) + (ev.key === "ArrowRight" ? 1 : tutte.length - 1)) % tutte.length];
-    altra.focus();
-    altra.click();
-    ev.preventDefault();
-  });
-  for (const [v, nome] of [[vistaPonti, "ponti"], [vistaRadio, "radio"], [vistaCopertura, "copertura"]]) {
-    v.id = "vista-" + nome;
-    v.setAttribute("role", "tabpanel");
-    v.setAttribute("aria-labelledby", "scheda-" + nome);
-  }
-  // la vista delle radio si costruisce una volta: la ricerca non si perde quando la pagina si aggiorna
-  const sez = el("section", "radio-rete");
-  riassuntoRadio = el("p", "riassunto");
-  riassuntoRadio.setAttribute("aria-live", "polite");
-  avvisiRadio = el("ul", "avvisi");
-  const cerca = el("div", "cerca");
-  const etichetta = el("label", null, "Cerca");
-  cercaRadio = el("input");
-  cercaRadio.type = "search";
-  cercaRadio.placeholder = "nome, sigla o modello";
-  cercaRadio.autocomplete = "off";
-  etichetta.htmlFor = cercaRadio.id = "cerca-radio";
-  cercaRadio.addEventListener("input", () => disegnaRadioRete());
-  cerca.append(etichetta, cercaRadio);
-  testaVoci = el("div", "testa-voci");
-  ["Radio", "Batteria", "Ultimo segnale", "Chi la sente"].forEach(x => testaVoci.append(el("span", null, x)));
-  elencoRadio = el("ol", "voci");
-  sez.append(riassuntoRadio, avvisiRadio, cerca, testaVoci, elencoRadio,
-             el("p", "nota", "Le radio compaiono quando trasmettono sul canale della squadra: nome e modello circa ogni " +
-                             "tre ore, batteria ogni mezz'ora. I ponti ascoltano soltanto: per questo elenco non " +
-                             "trasmettono nulla e non chiedono nulla alle radio."));
-  vistaRadio.append(sez);
-  costruisciCopertura();
-  mostraVista(location.hash.slice(1), false);
-  window.addEventListener("hashchange", () => mostraVista(location.hash.slice(1), false));
-}
-
-function mostraVista(nome, daClic) {
-  const viste = {ponti: [schedaPonti, vistaPonti], radio: [schedaRadio, vistaRadio],
-                 copertura: [schedaCopertura, vistaCopertura]};
-  if (!viste[nome]) nome = "ponti";
-  for (const [chiave, [scheda, vista]] of Object.entries(viste)) {
-    scheda.setAttribute("aria-selected", String(chiave === nome));
-    scheda.tabIndex = chiave === nome ? 0 : -1;
-    vista.hidden = chiave !== nome;
-  }
-  if (daClic) history.replaceState(null, "", nome === "ponti" ? location.pathname + location.search : "#" + nome);
-  if (nome === "copertura") apriCopertura();
-}
+let cacheRete = null;              // radioDellaRete() fino al prossimo disegno: gli stati non cambiano nel frattempo
+let elencoRete = null, costruita = false;
+const gestioneDettagli = {};
+const LIVELLI = {ok: 0, attenzione: 1, problema: 2};
+const NOMI_LIVELLI = ["ok", "attenzione", "problema"];
+// Un ripetitore con ruolo Router manda il nome ogni 3 ore, posizione e batteria ogni 12 (le impostazioni di fabbrica):
+// se nessuno trasmette, non ha niente da ripetere e lo si sente solo cosi'
+const RIPETITORE_ATTENZIONE_S = 6 * 3600;
+const RIPETITORE_SPENTO_S = 12 * 3600;
 
 function radioDellaRete() {
-  // le radio sentite da tutti i ponti, unite: i dati piu' recenti vincono. Le eta' si calcolano con
-  // l'orologio di ogni ponte (d.ora), cosi' un orologio sbagliato non confonde nulla.
+  // le radio sentite da tutti i gateway, unite: i dati piu' recenti vincono. Le eta' si calcolano con
+  // l'orologio di ogni gateway (d.ora), cosi' un orologio sbagliato non confonde nulla.
+  if (cacheRete) return cacheRete;
   const tutte = new Map(), ponteDi = new Map(), vecchi = [], canali = [];
   let raggiunti = 0;
   for (const p of elenco) {
@@ -2053,7 +2045,11 @@ function radioDellaRete() {
       if (!r || typeof r.id !== "string") continue;
       const eta = Math.max(0, (d.ora || 0) - (r.ultimo || 0));
       let v = tutte.get(r.id);
-      if (!v) { v = {id: r.id, eta: Infinity, etaMetriche: Infinity, ponti: []}; tutte.set(r.id, v); }
+      if (!v) {
+        v = {id: r.id, eta: Infinity, etaMetriche: Infinity, etaRipetuto: Infinity, ripetuti: 0, fisso: false,
+             posizione_fissa: false, ponti: []};
+        tutte.set(r.id, v);
+      }
       const piuRecente = eta < v.eta;
       if (piuRecente) v.eta = eta;
       for (const k of ["nome", "nome_breve", "modello", "ruolo"]) if (r[k] && (piuRecente || !v[k])) v[k] = r[k];
@@ -2065,6 +2061,11 @@ function radioDellaRete() {
           v.acceso = (r.acceso_s === null || r.acceso_s === undefined) ? null : r.acceso_s + em;
         }
       }
+      // dalla 1.15.0: nodi fissi (ripetitori) e messaggi degli altri che hanno ripetuto verso il gateway
+      if (r.fisso) v.fisso = true;
+      if (r.posizione_fissa) v.posizione_fissa = true;
+      if (Number.isFinite(r.ripetuti)) v.ripetuti += r.ripetuti;
+      if (r.ultimo_ripetuto) v.etaRipetuto = Math.min(v.etaRipetuto, Math.max(0, (d.ora || 0) - r.ultimo_ripetuto));
       v.ponti.push({ponte: p.nome, eta, salti: r.salti, snr: r.snr, rssi: r.rssi});
     }
   }
@@ -2072,7 +2073,29 @@ function radioDellaRete() {
     v.ponte = ponteDi.get(v.id) || "";
     v.ponti.sort((a, b) => a.eta - b.eta);
   }
-  return {radio: [...tutte.values()], vecchi, canali, raggiunti};
+  return (cacheRete = {radio: [...tutte.values()], vecchi, canali, raggiunti});
+}
+
+function eRipetitore(v) {
+  // un nodo fisso che ripete gli altri (ruolo da ripetitore o posizione impostata a mano), che non e' un gateway
+  return !!v.fisso && !v.ponte && v.ruolo !== "CLIENT_MUTE" && v.ruolo !== "CLIENT_HIDDEN";
+}
+
+function ripetitoriDellaRete() {
+  return radioDellaRete().radio.filter(eRipetitore)
+    .sort((a, b) => nomeRipetitore(a).localeCompare(nomeRipetitore(b), "it"));
+}
+
+function radioDellaSquadra() {
+  return radioDellaRete().radio.filter(v => !eRipetitore(v) && !v.ponte);
+}
+
+function nomeRipetitore(v) {
+  return v.nome || "Ripetitore " + v.id;
+}
+
+function idRipetitore(id) {
+  return "ripetitore-" + String(id).replace(/^!/, "");
 }
 
 function problemi(v) {
@@ -2087,6 +2110,423 @@ function problemi(v) {
   return p;
 }
 
+// ---- stato della rete (dalla 1.15.0): per ogni gateway e ripetitore le cose da guardare, dalla piu' grave ----
+
+function statoGateway(p) {
+  const v = valutaPonte(p), st = stati.get(p.nome), d = st && st.dati, avvisi = [];
+  if (v.classe === "giu") avvisi.push(["problema", "non risponde"]);
+  else if (v.classe === "guasto") avvisi.push(["problema", minuscola(v.parole)]);
+  else if (v.classe === "pausa") avvisi.push(["attenzione", minuscola(v.parole)]);
+  if (d) {
+    const c = d.certificato;
+    if (c && c.scade) {
+      const giorni = Math.floor((c.scade - d.ora) / 86400);
+      if (c.scade <= d.ora) avvisi.push(["problema", "certificato TAK scaduto"]);
+      else if (giorni < 30) avvisi.push(["attenzione", "il certificato TAK scade tra " + Math.max(1, giorni) + (giorni === 1 ? " giorno" : " giorni")]);
+    }
+    const sis = d.sistema || {};
+    if (sis.disco && sis.disco.libero_mb < 500) avvisi.push(["problema", "microSD quasi piena"]);
+    if (sis.alimentazione && sis.alimentazione.ultima && d.ora - sis.alimentazione.ultima < 3600) {
+      avvisi.push(["problema", "la corrente non basta"]);
+    }
+    const ag = sis.aggiornamento;
+    if (ag && ag.versione && ag.quando && d.ora - ag.quando < 86400 && ["errore", "ripristinato"].includes(ag.stato)) {
+      avvisi.push(["attenzione", "aggiornamento alla " + ag.versione + " non riuscito"]);
+    }
+    const cr = d.canale_radio;
+    if (cr && cr.trasmesso >= 8) avvisi.push(["attenzione", "trasmette il " + numIt(cr.trasmesso, 2) + "% del tempo (limite 10%)"]);
+  }
+  return {livello: avvisi.reduce((m, a) => Math.max(m, LIVELLI[a[0]]), 0), avvisi, v};
+}
+
+function etaRipetitore(v) {
+  // acceso se si fa sentire o se ripete i messaggi degli altri verso un gateway
+  return Math.min(v.eta, v.etaRipetuto);
+}
+
+function statoRipetitore(v) {
+  const avvisi = [], eta = etaRipetitore(v);
+  if (eta >= RIPETITORE_SPENTO_S) avvisi.push(["problema", "non si sente da " + durata(eta)]);
+  else if (eta >= RIPETITORE_ATTENZIONE_S) avvisi.push(["attenzione", "non si sente da " + durata(eta)]);
+  if (v.batteria !== null && v.batteria !== undefined && v.batteria <= 100 && v.etaMetriche < 24 * 3600) {
+    if (v.batteria <= 20) avvisi.push(["problema", "batteria al " + v.batteria + "%"]);
+    else if (v.batteria <= 40) avvisi.push(["attenzione", "batteria al " + v.batteria + "%"]);
+  }
+  return {livello: avvisi.reduce((m, a) => Math.max(m, LIVELLI[a[0]]), 0), avvisi,
+          spento: eta >= RIPETITORE_SPENTO_S};
+}
+
+function segnoStato(livello, spento) {
+  // forma e colore insieme: cerchio a posto, rombo da guardare, triangolo problema, anello spento
+  const s = el("span", "semaforo");
+  s.dataset.livello = spento ? "spento" : NOMI_LIVELLI[livello];
+  s.setAttribute("aria-hidden", "true");
+  return s;
+}
+
+function problemiDellaRete() {
+  const voci = [];
+  const attesa = gestione ? (gestione.richieste || []).filter(r => r.stato === "attesa").length : 0;
+  if (attesa) {
+    voci.push({livello: 1, testo: attesa === 1 ? "Un gateway chiede di entrare nella rete: controlla il codice e approvalo"
+                                               : attesa + " gateway chiedono di entrare nella rete", dove: "richieste"});
+  }
+  for (const p of elenco) {
+    statoGateway(p).avvisi.forEach(([l, t]) => voci.push({livello: LIVELLI[l], testo: "Gateway " + p.nome + ": " + t,
+                                                          dove: "gateway-" + p.nome}));
+  }
+  for (const v of ripetitoriDellaRete()) {
+    statoRipetitore(v).avvisi.forEach(([l, t]) => voci.push({livello: LIVELLI[l], testo: nomeRipetitore(v) + ": " + t,
+                                                             dove: idRipetitore(v.id)}));
+  }
+  for (const v of radioDellaSquadra()) {
+    if (problemi(v).some(x => x[0].startsWith("batteria"))) {
+      voci.push({livello: 1, testo: (v.nome || v.id) + ": batteria quasi scarica", dove: "squadra"});
+    }
+  }
+  return voci.sort((a, b) => b.livello - a.livello);
+}
+
+function disegnaStatoRete() {
+  const sintesi = document.getElementById("sintesi");
+  const voci = problemiDellaRete();
+  const peggiore = voci.reduce((m, x) => Math.max(m, x.livello), 0);
+  let livello = NOMI_LIVELLI[peggiore], testo;
+  if (erroreGiro === "sessione scaduta") {
+    livello = "spento";
+    testo = "Sessione scaduta";
+  } else if (erroreGiro && !ultimoElenco) {
+    livello = "spento";
+    testo = "Stato non disponibile";
+  } else if (!elenco.length) {
+    livello = "spento";
+    testo = "Nessun gateway nella rete";
+  } else if (!voci.length) {
+    testo = "Tutto a posto";
+  } else {
+    const gravi = voci.filter(x => x.livello === 2).length, altre = voci.length - gravi;
+    testo = gravi ? (gravi === 1 ? "1 problema" : gravi + " problemi") + (altre ? ", " + altre + " da controllare" : "")
+                  : (altre === 1 ? "1 cosa da controllare" : altre + " cose da controllare");
+  }
+  sintesi.dataset.livello = livello;
+  const segno = el("span", "semaforo");
+  segno.dataset.livello = livello;
+  sintesi.replaceChildren(segno, el("span", null, testo));
+  zonaStato.replaceChildren();
+  if (!voci.length || livello === "spento") return;
+  const ul = el("ul", "problemi-rete");
+  ul.setAttribute("aria-label", "Da controllare");
+  voci.slice(0, 6).forEach(x => {
+    const li = el("li");
+    li.dataset.livello = NOMI_LIVELLI[x.livello];
+    const a = el("a", null, x.testo);
+    a.href = "#" + x.dove;
+    li.append(segnoStato(x.livello), a);
+    ul.append(li);
+  });
+  if (voci.length > 6) ul.append(el("li", "altre-voci", "e altre " + (voci.length - 6) + ", nelle schede qui sotto"));
+  zonaStato.append(ul);
+}
+
+function vaiA(id) {
+  // i vecchi indirizzi delle schede (fino alla 1.14.0) portano ancora nel punto giusto
+  id = {radio: "squadra", ponti: "gateway", copertura: "mappa"}[id] || id;
+  const dove = id === "gateway" ? zonaPonti : document.getElementById(id);
+  if (!dove || dove.tagName === "DIALOG") return;
+  if (dove.tagName === "DETAILS") dove.open = true;
+  dove.scrollIntoView({block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+}
+
+function voceRete(tipo, nome, livello, spento, righe, id, punto) {
+  const li = el("li", "voce-rete");
+  li.dataset.tipo = tipo;
+  const b = el("button", "centra");
+  b.type = "button";
+  const testa = el("span", "testa-voce");
+  testa.append(segnoStato(livello, spento), el("b", null, nome));
+  b.append(testa, ...righe.filter(Boolean).map((r, i) => el("span", i ? "riga-voce secondaria" : "riga-voce", r)));
+  if (punto) {
+    b.title = "Mostra sulla mappa";
+    b.addEventListener("click", () => mappaCopertura && mappaCopertura.centra(punto.lat, punto.lon, punto.chiave));
+  } else {
+    b.disabled = true;
+    b.title = "Posizione non nota: non è sulla mappa";
+  }
+  const a = el("a", "dettagli-voce", "Dettagli");
+  a.href = "#" + id;
+  a.setAttribute("aria-label", "Dettagli di " + nome);
+  li.append(b, a);
+  return li;
+}
+
+function puntiDellaRete() {
+  // dove stanno gateway e ripetitori (dalla copertura, che i gateway danno solo dietro Authentik) e come stanno
+  const punti = [];
+  for (const p of elenco) {
+    const c = copertura.get(p.nome), pos = c && c.dati && c.dati.ponte;
+    if (!pos || !Number.isFinite(pos.lat) || !Number.isFinite(pos.lon)) continue;
+    const s = statoGateway(p);
+    punti.push({tipo: "gateway", chiave: "g:" + p.nome, nome: p.nome, lat: pos.lat, lon: pos.lon, livello: s.livello,
+                spento: s.v.classe === "giu", righe: ["Gateway " + p.nome + ": " + minuscola(s.v.parole),
+                                                      ...s.avvisi.filter(a => a[1] !== minuscola(s.v.parole)).map(a => maiuscola(a[1]))]});
+  }
+  const ripetitori = new Map(ripetitoriDellaRete().map(v => [v.id, v]));
+  const visti = new Set();
+  for (const [, c] of copertura) {
+    for (const r of (c.dati && c.dati.ripetitori) || []) {
+      if (!r || visti.has(r.id) || !Number.isFinite(r.lat) || !Number.isFinite(r.lon)) continue;
+      visti.add(r.id);
+      const v = ripetitori.get(r.id);
+      const s = v ? statoRipetitore(v) : {livello: 0, avvisi: [], spento: false};
+      punti.push({tipo: "ripetitore", chiave: "r:" + r.id, nome: r.nome || r.id, lat: r.lat, lon: r.lon, livello: s.livello,
+                  spento: s.spento, righe: [(v ? nomeRipetitore(v) : r.nome || r.id) + ": " +
+                                            (v ? "attivo " + fa(etaRipetitore(v)) : "ripetitore"),
+                                            ...s.avvisi.map(a => maiuscola(a[1]))]});
+    }
+  }
+  return punti;
+}
+
+function testoBatteria(v) {
+  if (v.batteria === null || v.batteria === undefined) return "batteria non inviata";
+  return v.batteria > 100 ? "alimentato dalla rete" : "batteria " + v.batteria + "%";
+}
+
+function disegnaElencoRete() {
+  const punti = puntiDellaRete();
+  const dove = chiave => punti.find(x => x.chiave === chiave);
+  const voci = [];
+  for (const p of elenco) {
+    const s = statoGateway(p), st = stati.get(p.nome), d = st && st.dati;
+    const righe = [s.v.parole];
+    if (d && d.tak && d.nodo && s.v.classe === "ok") righe.push((d.radio_sulla_mappa || 0) + " radio sulla mappa TAK");
+    const altri = s.avvisi.filter(a => a[1] !== minuscola(s.v.parole));
+    if (altri.length) righe.push(maiuscola(altri[0][1]));
+    voci.push(voceRete("gateway", "Gateway " + p.nome, s.livello, s.v.classe === "giu", righe, "gateway-" + p.nome,
+                       dove("g:" + p.nome)));
+  }
+  for (const v of ripetitoriDellaRete()) {
+    const s = statoRipetitore(v);
+    voci.push(voceRete("ripetitore", nomeRipetitore(v), s.livello, s.spento,
+                       ["attivo " + fa(etaRipetitore(v)), testoBatteria(v)], idRipetitore(v.id), dove("r:" + v.id)));
+  }
+  const radio = radioDellaSquadra();
+  const accese = radio.filter(v => v.eta < SILENZIO_S).length;
+  const li = el("li", "voce-rete voce-radio");
+  const a = el("a", null, "Radio della squadra");
+  a.href = "#squadra";
+  li.append(a, el("span", "riga-voce", radio.length ? accese + (accese === 1 ? " accesa" : " accese") + " su " + radio.length
+                                                    : "nessuna sentita finora"));
+  voci.push(li);
+  elencoRete.replaceChildren(...voci);
+}
+
+function testoCopertura(chiave) {
+  // quanti quadretti della mappa vengono da questo gateway (sentiti diretti o tramite altri) o da questo ripetitore
+  const ripetitore = chiave.startsWith("r:") ? chiave.slice(2) : "";
+  let celle = 0;
+  const conta = new Map();
+  for (const [nome, c] of copertura) {
+    if (!c.dati || (!ripetitore && "g:" + nome !== chiave)) continue;
+    const limite = Number.isFinite(c.dati.limite_snr) ? c.dati.limite_snr : -17.5;
+    for (const q of c.dati.celle || []) {
+      if (!Array.isArray(q)) continue;
+      const via = q[8] && typeof q[8] === "object" ? q[8] : {};
+      if (ripetitore) {
+        if (via[ripetitore]) celle++;
+        continue;
+      }
+      celle++;
+      const k = q[2] > 0 && q[3] !== null ? classeCopertura(q[3] - limite)
+                                          : (Object.keys(via).length ? VIA_RIPETITORE : RIPETUTA);
+      conta.set(k, (conta.get(k) || 0) + 1);
+    }
+  }
+  if (!ripetitore) {
+    const c = copertura.get(chiave.slice(2));
+    const st = stati.get(chiave.slice(2)), ver = st && st.dati && st.dati.versione;
+    if (!c) return "in caricamento";
+    if (c.errore === "vecchio") return "si raccoglie dalla 1.14.0: aggiorna il gateway" + (ver ? " (è alla " + ver + ")" : "");
+    if (!c.dati) return c.errore === "giu" ? "non letta: il gateway non risponde" : "non letta (" + c.errore + ")";
+  }
+  if (!celle) return ripetitore ? "nessun quadretto finora" : "nessun quadretto finora: si riempie quando le radio mandano la posizione";
+  const parti = [...CLASSI_COPERTURA, VIA_RIPETITORE, RIPETUTA].filter(k => conta.get(k))
+    .map(k => k.breve + " " + conta.get(k));
+  if (ripetitore) return celle + (celle === 1 ? " quadretto raggiunto" : " quadretti raggiunti") + " tramite questo ripetitore";
+  return celle + (celle === 1 ? " quadretto" : " quadretti") + ": " + parti.join(", ");
+}
+
+function disegnaRipetitore(v) {
+  const s = statoRipetitore(v), eta = etaRipetitore(v);
+  const sez = el("section", "ripetitore");
+  sez.id = idRipetitore(v.id);
+  const capo = el("div", "capo"), testa = el("div");
+  const h3 = el("h3", null, nomeRipetitore(v));
+  h3.id = "titolo-" + sez.id;
+  sez.setAttribute("aria-labelledby", h3.id);
+  const chi = [v.nome_breve ? "sigla " + v.nome_breve : "", nomeModello(v.modello),
+               v.ruolo ? "ruolo " + (RUOLI[v.ruolo] || v.ruolo.toLowerCase()) : "", v.id].filter(Boolean).join(", ");
+  const stato = el("p", "stato");
+  stato.dataset.livello = s.spento ? "spento" : NOMI_LIVELLI[s.livello];
+  stato.append(segnoStato(s.livello, s.spento), el("span", null, s.avvisi.length ? maiuscola(s.avvisi[0][1]) : "Acceso"));
+  testa.append(h3, el("p", "chi", chi), stato);
+  capo.append(testa);
+  const azione = el("div", "azione");
+  if (pontiCheGestiscono(v).length) {
+    const g = el("button", "bottone secondario piccolo gestisci", "Gestisci da lontano");
+    g.type = "button";
+    g.addEventListener("click", () => apriGestioneRadio(v));
+    azione.append(g);
+  }
+  if (iconeAttive()) azione.append(bottoneIcona(v.id, nomeRipetitore(v), false));
+  if (azione.childElementCount) capo.append(azione);
+  sez.append(capo);
+  const dl = el("dl", "fatti");
+  const bat = el("div", v.batteria !== null && v.batteria !== undefined && v.batteria <= 40 && v.etaMetriche < 24 * 3600 ?
+                        (v.batteria <= 20 ? "guasto" : "attenzione") : null);
+  const dd = el("dd");
+  if (v.batteria === null || v.batteria === undefined) {
+    dd.append("non la manda");
+    dd.append(el("small", "suggerimento-batteria", "Si attiva sul ripetitore: app Meshtastic, Telemetria, «Device " +
+                                                    "Metrics» acceso, intervallo 1800 secondi."));
+  } else {
+    dd.append(v.batteria > 100 ? "alimentato dalla rete" : v.batteria + "%" + (v.tensione ? ", " + numIt(v.tensione, 2) + " V" : ""));
+    if (v.etaMetriche >= 3600) dd.append(el("small", "suggerimento-batteria", "letta " + fa(v.etaMetriche)));
+  }
+  bat.append(el("dt", null, "Batteria"), dd);
+  dl.append(bat);
+  fatto(dl, "Si è fatto sentire", fa(v.eta), s.spento ? "guasto" : "");
+  fatto(dl, "Ha ripetuto verso il gateway", Number.isFinite(v.etaRipetuto) ? "l'ultima volta " + fa(v.etaRipetuto) + "; " +
+        v.ripetuti + (v.ripetuti === 1 ? " messaggio" : " messaggi") + " da quando il gateway è acceso" : "nessun messaggio finora");
+  fatto(dl, "Col gateway", v.ponti.map(x => x.ponte + ": " + (x.salti === 0 ? "diretto" + (qualita(x.snr, x.rssi) ? ", segnale " + qualita(x.snr, x.rssi) : "")
+                                                                  : (x.salti > 0 ? "tramite " + (x.salti === 1 ? "1 radio" : x.salti + " radio") : "sentito"))).join("; "));
+  fatto(dl, "Copertura", testoCopertura("r:" + v.id));
+  if (v.acceso !== null && v.acceso !== undefined && v.etaMetriche < 24 * 3600) fatto(dl, "Acceso da", durata(v.acceso));
+  if (v.occupato !== null && v.occupato !== undefined && v.etaMetriche < 24 * 3600) {
+    fatto(dl, "Canale radio", "occupato il " + numIt(v.occupato) + "%" + (v.trasmesso !== null && v.trasmesso !== undefined ?
+                              "; trasmette il " + numIt(v.trasmesso, 2) + "%" : ""));
+  }
+  if (!puntiDellaRete().some(x => x.chiave === "r:" + v.id)) {
+    fatto(dl, "Sulla mappa", "non ancora: compare quando il ripetitore manda la sua posizione (con ruolo Router ogni 12 ore)");
+  }
+  sez.append(dl);
+  return sez;
+}
+
+function disegnaSchede() {
+  const sezioni = [];
+  for (const p of elenco) {
+    // uno stato strano di un gateway non deve fermare il resto della pagina
+    try {
+      sezioni.push(disegnaPonte(p));
+    } catch (e) {
+      console.error("gateway " + p.nome + ": " + e);
+      const sez = el("section", "ponte");
+      sez.id = "gateway-" + p.nome;
+      sez.dataset.stato = "guasto";
+      sez.append(el("h3", null, p.nome), el("p", "spiega", "Lo stato mandato da questo gateway non si legge: aggiornalo all'ultima versione."));
+      sezioni.push(sez);
+    }
+  }
+  if (!sezioni.length) {
+    const vuoto = el("p", "vuoto", "Nessun gateway nella rete. Per aggiungerne uno apri ");
+    const a = el("a", null, "Aggiungere un gateway");
+    a.href = "#aggiungi";
+    vuoto.append(a, ", in fondo alla pagina.");
+    sezioni.push(vuoto);
+  }
+  zonaPonti.replaceChildren(el("h2", null, "Gateway"), ...sezioni);
+  const ripetitori = ripetitoriDellaRete().map(v => {
+    try {
+      return disegnaRipetitore(v);
+    } catch (e) {
+      console.error("ripetitore " + v.id + ": " + e);
+      return el("p", "vuoto", nomeRipetitore(v) + ": dati non leggibili.");
+    }
+  });
+  zonaRipetitori.replaceChildren(el("h2", null, "Ripetitori"), ...(ripetitori.length ? ripetitori :
+    [el("p", "vuoto", "Nessun ripetitore sentito finora. Un ripetitore compare qui quando trasmette sul canale della " +
+                      "squadra e ha il ruolo da ripetitore (Router, Repeater) o una posizione fissa.")]));
+}
+
+function suggerimentoGestione(chiave, testo) {
+  const det = gestioneDettagli[chiave];
+  if (!det) return;
+  const s = det.querySelector("summary");
+  let piccolo = s.querySelector("small");
+  if (!testo) { if (piccolo) piccolo.remove(); return; }
+  if (!piccolo) s.append(piccolo = el("small"));
+  piccolo.textContent = testo;
+}
+
+function costruisciRadio() {
+  // le radio della squadra si costruiscono una volta: la ricerca non si perde quando la pagina si aggiorna
+  vistaRadio.className = "radio-rete";
+  vistaRadio.id = "squadra";
+  vistaRadio.setAttribute("aria-labelledby", "titolo-squadra");
+  const h2 = el("h2", null, "Radio della squadra");
+  h2.id = "titolo-squadra";
+  riassuntoRadio = el("p", "riassunto");
+  riassuntoRadio.setAttribute("aria-live", "polite");
+  avvisiRadio = el("ul", "avvisi");
+  const cerca = el("div", "cerca");
+  const etichetta = el("label", null, "Cerca");
+  cercaRadio = el("input");
+  cercaRadio.type = "search";
+  cercaRadio.placeholder = "nome, sigla o modello";
+  cercaRadio.autocomplete = "off";
+  etichetta.htmlFor = cercaRadio.id = "cerca-radio";
+  cercaRadio.addEventListener("input", () => disegnaRadioRete());
+  cerca.append(etichetta, cercaRadio);
+  testaVoci = el("div", "testa-voci");
+  ["Radio", "Batteria", "Ultimo segnale", "Chi la sente"].forEach(x => testaVoci.append(el("span", null, x)));
+  elencoRadio = el("ol", "voci");
+  vistaRadio.append(h2, riassuntoRadio, avvisiRadio, cerca, testaVoci, elencoRadio,
+                    el("p", "nota", "Compaiono le radio che trasmettono sul canale della squadra. La batteria solo se la " +
+                                    "radio la manda (app Meshtastic: Telemetria, «Device Metrics»). I gateway ascoltano " +
+                                    "soltanto: non chiedono nulla alle radio."));
+}
+
+function costruisciPagina() {
+  costruita = true;
+  // in alto: la mappa della rete e, accanto, gateway e ripetitori con il loro stato
+  panorama.className = "panorama";
+  panorama.id = "mappa";
+  panorama.setAttribute("aria-label", "Mappa della rete");
+  const lato = el("aside", "rete");
+  lato.setAttribute("aria-labelledby", "titolo-rete");
+  const h2 = el("h2", null, "La rete");
+  h2.id = "titolo-rete";
+  elencoRete = el("ul", "elenco-rete");
+  lato.append(h2, elencoRete);
+  vistaCopertura.className = "pannello-mappa";
+  panorama.append(vistaCopertura, lato);
+  costruisciCopertura();
+  zonaPonti.className = "gruppo-rete";
+  zonaPonti.setAttribute("aria-label", "Gateway");
+  zonaRipetitori.className = "gruppo-rete";
+  zonaRipetitori.id = "ripetitori";
+  zonaRipetitori.setAttribute("aria-label", "Ripetitori");
+  costruisciRadio();
+  // in fondo, chiusa: aggiungere un gateway, avvisi per email, aggiornamenti
+  zonaGestione.className = "gestione-rete";
+  zonaGestione.id = "gestione";
+  zonaGestione.setAttribute("aria-labelledby", "titolo-gestione");
+  const h2g = el("h2", null, "Gestione");
+  h2g.id = "titolo-gestione";
+  zonaGestione.append(h2g);
+  for (const [chiave, titolo] of [["aggiungi", "Aggiungere un gateway"], ["avvisi", "Avvisi per email"],
+                                  ["aggiornamenti", "Aggiornamenti"]]) {
+    const det = el("details", "gruppo");
+    det.id = chiave;
+    det.append(el("summary", null, titolo));
+    gestioneDettagli[chiave] = det;
+    zonaGestione.append(det);
+  }
+  window.addEventListener("hashchange", () => vaiA(location.hash.slice(1)));
+  if (location.hash.length > 1) setTimeout(() => vaiA(location.hash.slice(1)), 300);
+}
+
 function disegnaVoce(v) {
   const li = el("li", "voce");
   const silenziosa = v.eta >= SILENZIO_S;
@@ -2095,8 +2535,7 @@ function disegnaVoce(v) {
   const nome = el("div", "nome");
   nome.append(el("b", null, v.nome || "Radio " + v.id));
   nome.append(el("small", null, [v.nome_breve, v.id].filter(Boolean).join(", ")));
-  const cosa = [nomeModello(v.modello), v.ruolo ? (RUOLI[v.ruolo] || v.ruolo.toLowerCase()) : "",
-                v.ponte ? "è il ponte " + v.ponte : ""].filter(Boolean).join(", ");
+  const cosa = [nomeModello(v.modello), v.ruolo ? (RUOLI[v.ruolo] || v.ruolo.toLowerCase()) : ""].filter(Boolean).join(", ");
   if (cosa) nome.append(el("small", null, cosa));
   if (pr.length) {
     const box = el("div", "problemi");
@@ -2140,32 +2579,31 @@ function disegnaVoce(v) {
     }
     ponti.append(s);
   });
-  if (!v.ponte && pontiCheGestiscono(v).length) {
+  if (pontiCheGestiscono(v).length) {
     const g = el("button", "bottone secondario piccolo gestisci", "Gestisci da lontano");
     g.type = "button";
     g.addEventListener("click", () => apriGestioneRadio(v));
     ponti.append(g);
   }
-  if (iconeAttive()) ponti.append(bottoneIcona(v.id, v.ponte ? "ponte " + v.ponte : (v.nome || "radio " + v.id), !!v.ponte));
+  if (iconeAttive()) ponti.append(bottoneIcona(v.id, v.nome || "radio " + v.id, false));
   li.append(nome, bat, quando, ponti);
   return li;
 }
 
 function disegnaRadioRete() {
-  const {radio, vecchi, canali, raggiunti} = radioDellaRete();
-  schedaPonti.conteggio.textContent = elenco.length ? String(elenco.length) : "";
-  schedaRadio.conteggio.textContent = radio.length ? String(radio.length) : "";
+  const {vecchi, canali, raggiunti} = radioDellaRete();
+  const radio = radioDellaSquadra();
   const attive = radio.filter(v => v.eta < 3600).length;
   const silenziose = radio.filter(v => v.eta >= SILENZIO_S).length;
   const scariche = radio.filter(v => problemi(v).some(x => x[0].startsWith("batteria"))).length;
   const chiacchierone = radio.filter(v => problemi(v).some(x => x[0].startsWith("trasmette")));
   if (!radio.length) {
     riassuntoRadio.textContent = raggiunti ? "Nessuna radio della squadra sentita finora." :
-                                 "Nessun ponte raggiungibile: l'elenco delle radio arriva dai ponti.";
+                                 "Nessun gateway raggiungibile: l'elenco delle radio arriva dai gateway.";
   } else {
     const parti = [attive + " sentit" + (attive === 1 ? "a" : "e") + " nell'ultima ora"];
     if (silenziose) parti.push(silenziose + " silenzios" + (silenziose === 1 ? "a" : "e") + " da più di 2 ore");
-    riassuntoRadio.textContent = (radio.length === 1 ? "1 radio della squadra" : radio.length + " radio della squadra") +
+    riassuntoRadio.textContent = (radio.length === 1 ? "1 radio" : radio.length + " radio") +
       ": " + parti.join(", ") + "." + (scariche ? " " + (scariche === 1 ? "Una ha" : scariche + " hanno") +
       " la batteria quasi scarica." : "") + (chiacchierone.length ? " " + (chiacchierone.length === 1 ? "Una trasmette" :
       chiacchierone.length + " trasmettono") + " troppo spesso." : "");
@@ -2175,18 +2613,14 @@ function disegnaRadioRete() {
     if (c.eta !== null && c.eta > 3600) return;
     if (c.occupato >= 25) {
       avvisiRadio.append(el("li", c.occupato >= 40 ? "grave" : null, "Canale radio " + (c.occupato >= 40 ? "saturo" : "affollato") +
-        " vicino al ponte " + c.ponte + ": occupato il " + numIt(c.occupato) + "% del tempo. Le radio rimandano le " +
+        " vicino al gateway " + c.ponte + ": occupato il " + numIt(c.occupato) + "% del tempo. Le radio rimandano le " +
         "trasmissioni non urgenti (posizioni, batteria)."));
-    }
-    if (c.trasmesso >= 8) {
-      avvisiRadio.append(el("li", "grave", "Il ponte " + c.ponte + " ha trasmesso il " + numIt(c.trasmesso, 2) +
-        "% del tempo nell'ultima ora: il limite di legge è il 10%."));
     }
   });
   chiacchierone.slice(0, 3).forEach(v => avvisiRadio.append(el("li", null, (v.nome || v.id) + " occupa la radio il " +
     numIt(v.trasmesso) + "% del tempo (di solito meno dell'1%) e rallenta le altre: probabilmente manda la posizione " +
     "troppo spesso. Controlla nell'app Meshtastic di quella radio: Impostazioni, Posizione.")));
-  vecchi.forEach(n => avvisiRadio.append(el("li", null, "Il ponte " + n + " ha una versione di mesh2tak che non manda " +
+  vecchi.forEach(n => avvisiRadio.append(el("li", null, "Il gateway " + n + " ha una versione di mesh2tak che non manda " +
     "l'elenco delle radio: aggiornalo sul Raspberry (dalla 1.6.0).")));
   const filtro = cercaRadio.value.trim().toLowerCase();
   const visibili = radio.filter(v => !filtro || [v.nome, v.nome_breve, v.id, v.modello, nomeModello(v.modello)]
@@ -2202,52 +2636,31 @@ function disegnaRadioRete() {
 }
 
 function disegna() {
-  const sintesi = document.getElementById("sintesi");
-  if (!schedaPonti) costruisciSchede();
+  if (!costruita) costruisciPagina();
+  cacheRete = null;
   const attivo = document.activeElement;
   if (!(attivo && zonaNovita.contains(attivo) && ["INPUT", "SELECT", "TEXTAREA"].includes(attivo.tagName))) {
     const novita = disegnaNovita();
+    if (novita) novita.id = "richieste";
     zonaNovita.replaceChildren(...(novita ? [novita] : []));
   }
-  zonaPonti.replaceChildren();
-  if (!elenco.length) {
-    sintesi.textContent = "Nessun ponte nella rete per ora.";
-  } else {
-    const conta = {ok: 0, pausa: 0, guasto: 0, giu: 0};
-    elenco.forEach(p => {
-      // uno stato strano di un ponte non deve fermare il resto della pagina
-      try {
-        conta[valutaPonte(p).classe]++;
-        zonaPonti.append(disegnaPonte(p));
-      } catch (e) {
-        console.error("ponte " + p.nome + ": " + e);
-        conta.guasto++;
-        const sez = el("section", "ponte");
-        sez.dataset.stato = "guasto";
-        sez.append(el("h2", null, p.nome), el("p", "spiega", "Lo stato mandato da questo ponte non si legge: " +
-                                                     "aggiornalo all'ultima versione."));
-        zonaPonti.append(sez);
-      }
-    });
-    const n = elenco.length;
-    const parti = [];
-    if (conta.ok) parti.push(conta.ok === n ? (n === 1 ? "in linea" : "tutti in linea") : conta.ok + " in linea");
-    if (conta.pausa) parti.push(conta.pausa + " in pausa o in installazione");
-    if (conta.guasto) parti.push(conta.guasto + " con un problema");
-    if (conta.giu) parti.push(conta.giu + " non raggiungibil" + (conta.giu === 1 ? "e" : "i"));
-    sintesi.textContent = (n === 1 ? "1 ponte" : n + " ponti") + ": " + parti.join(", ") + ".";
-  }
-  const attesa = gestione ? (gestione.richieste || []).filter(r => r.stato === "attesa").length : 0;
-  if (attesa) sintesi.textContent += " " + (attesa === 1 ? "Una richiesta" : attesa + " richieste") + " da approvare.";
+  disegnaStatoRete();
+  disegnaElencoRete();
+  disegnaSchede();
+  // sotto il titolo: l'esito dell'ultima azione e i problemi della pagina stessa
+  const messaggi = [];
+  if (avviso) { messaggi.push(avviso); avviso = ""; }
   if (erroreGiro === "sessione scaduta") {
-    sintesi.textContent = "Sessione scaduta: ricarica la pagina.";
+    messaggi.push("La sessione è scaduta: ricarica la pagina.");
   } else if (riavvio) {
-    sintesi.textContent = "Authentik si sta riavviando per il lavoro in corso: la pagina torna da sola tra circa un minuto.";
+    messaggi.push("Authentik si sta riavviando per il lavoro in corso: la pagina torna da sola tra circa un minuto.");
   } else if (erroreGiro) {
-    sintesi.textContent = (ultimoElenco ? "Ultimo aggiornamento non riuscito" : "Elenco dei ponti non disponibile") +
-                          " (" + erroreGiro + "): riprovo da solo.";
+    messaggi.push((ultimoElenco ? "Ultimo aggiornamento non riuscito" : "Elenco dei gateway non disponibile") +
+                  " (" + erroreGiro + "): riprovo da solo.");
   }
-  if (avviso) { sintesi.textContent = avviso + " " + sintesi.textContent; avviso = ""; }
+  const messaggio = document.getElementById("messaggio");
+  messaggio.textContent = messaggi.join(" ");
+  messaggio.hidden = !messaggi.length;
   aggiornaAggiungi();
   aggiornaAvvisi();
   aggiornaAggiornamenti();
@@ -2259,7 +2672,7 @@ function disegna() {
 function chiediConferma(p, d) {
   const dlg = document.getElementById("conferma");
   const g = d.gestione || {};
-  let testo = "Mentre la pagina di gestione è aperta il ponte " + p.nome + " non porta le posizioni delle radio al TAK Server.";
+  let testo = "Mentre la pagina di gestione è aperta il gateway " + p.nome + " non porta le posizioni delle radio al TAK Server.";
   if (d.pausa && d.pausa.attiva) testo = "Il nodo è già gestito " + (d.pausa.chi || "da qualcuno") + " dalle " + oraDi(d.pausa.dal) + ". Aprendo anche tu, la pausa continua.";
   document.getElementById("conferma-testo").textContent = testo;
   document.getElementById("conferma-chiusura").textContent = durata(g.chiusura_s || 120);
@@ -2309,6 +2722,8 @@ async function caricaIconeMappa() {
     if (r.ok) {
       const d = await r.json();
       if (d && Array.isArray(d.icone)) iconeMappa = {lista: d.icone, per: new Map(d.icone.map(x => [x.chiave, x]))};
+    } else {
+      await r.text().catch(() => "");
     }
   } catch (e) {
     // server di prima della 1.11.0: la scelta delle icone non c'e'
@@ -2350,7 +2765,7 @@ function apriIcone(id, chi, ponte) {
   iconaAperta = {id, chi, ponte};
   document.getElementById("icone-titolo").textContent = "Icona di " + chi + " sulla mappa";
   document.getElementById("icone-esito").textContent = "";
-  document.getElementById("icone-spiega").textContent = "Come compare " + (ponte ? "il ponte" : "la radio") +
+  document.getElementById("icone-spiega").textContent = "Come compare " + (ponte ? "il gateway" : "la radio") +
     " su ATAK e TAK Aware. Le app che non hanno queste icone mostrano il simbolo militare più vicino" +
     (ponte ? "." : "; le radio abbinate a un telefono con l'app TAK compaiono come le mostra l'app.");
   disegnaIcone();
@@ -2499,7 +2914,7 @@ async function seguiComando(a, id, azione, cosa, limiteS) {
     let dove;
     if (x) dove = x.messaggio || "in corso";
     else if (!d) dove = azione === "riavvia-raspberry" ? "il Raspberry si sta riavviando" :
-                        (azione === "registro" ? "il ponte non risponde adesso" : "il ponte riparte");
+                        (azione === "registro" ? "il gateway non risponde adesso" : "il gateway riparte");
     else dove = notizia ? notizia.replace(/^chiesto al ponte: /, "") : "lo passo al Raspberry";
     statoRaspberry(cosa + ": " + dove + " (" + durata((Date.now() - inizio) / 1000) + ")");
     if (Date.now() - inizio > limiteS * 1000) {
@@ -2550,7 +2965,10 @@ async function leggiRegistroPonte(nome) {
   const r = await fetch("registro/" + encodeURIComponent(nome) + ".txt", {cache: "no-store", redirect: "manual",
                                                                           credentials: "same-origin"});
   if (r.type === "opaqueredirect") { document.getElementById("sessione").hidden = false; throw new Error("sessione scaduta: ricarica la pagina"); }
-  if (!r.ok) throw new Error(r.status === 502 ? "il ponte " + nome + " non risponde" : "il ponte risponde " + r.status);
+  if (!r.ok) {
+    await r.text().catch(() => "");
+    throw new Error(r.status === 502 ? "il gateway " + nome + " non risponde" : "il gateway risponde " + r.status);
+  }
   return r.text();
 }
 
@@ -2593,7 +3011,7 @@ function moduloImpostazioniPonte(a, d) {
            ponte.l, invio.l,
            ...campo("Tempo radio massimo per gli invii alle radio (%)", tempo,
                     "la legge permette al massimo il 10%: il resto serve alla squadra"),
-           ...campo("Pausa massima del ponte quando si gestisce la radio dal browser (minuti)", pausa),
+           ...campo("Pausa massima del gateway quando si gestisce la radio dal browser (minuti)", pausa),
            el("p"), salva);
   f.addEventListener("submit", ev => {
     ev.preventDefault();
@@ -2602,7 +3020,7 @@ function moduloImpostazioniPonte(a, d) {
                    tempo_radio_percento: Number(tempo.value), pausa_massima_min: Number(pausa.value)};
     const cambiati = Object.fromEntries(Object.entries(nuovi).filter(([k, v]) => v !== imp[k]));
     if (!Object.keys(cambiati).length) { statoRaspberry("Niente da salvare: le impostazioni sono già queste.", "fatto"); return; }
-    if (!window.confirm("Il programma del ponte riparte con le impostazioni nuove: circa mezzo minuto. Se non riparte, " +
+    if (!window.confirm("Il programma del gateway riparte con le impostazioni nuove: circa mezzo minuto. Se non riparte, " +
                         "il Raspberry rimette da solo quelle di prima.\n\nSalvo?")) return;
     comandoRaspberry("impostazioni", "Impostazioni",
                      () => manda("gestisci-ponte", {nome: a.p.nome, azione: "impostazioni", valori: cambiati}), 7 * 60);
@@ -2622,14 +3040,14 @@ function moduloCertificatoPonte(a, d) {
   const salva = el("button", "bottone piccolo", "Sostituisci il certificato");
   salva.type = "submit";
   f.append(el("p", "spiegazione", adesso),
-           ...campo("Pacchetto del ponte", file, "il .zip scaricato dalla console infra-TAK per questo ponte, o il suo .p12"),
+           ...campo("Pacchetto del gateway", file, "il .zip scaricato dalla console infra-TAK per questo gateway, o il suo .p12"),
            ...campo("Password del certificato", password, "quella mostrata nella console infra-TAK"), el("p"), salva);
   f.addEventListener("submit", async ev => {
     ev.preventDefault();
     const scelto = file.files && file.files[0];
     if (!scelto) return;
     if (scelto.size > 256 * 1024) { statoRaspberry("Il file è troppo grande: serve il pacchetto della console infra-TAK.", "errore"); return; }
-    if (!window.confirm("Il Raspberry installa il certificato nuovo come fa l'installatore: il ponte si ferma per qualche " +
+    if (!window.confirm("Il Raspberry installa il certificato nuovo come fa l'installatore: il gateway si ferma per qualche " +
                         "minuto. Se il pacchetto o la password non vanno, resta il certificato di prima.\n\nProcedo?")) return;
     let pacchetto;
     try { pacchetto = await fileInBase64(scelto); } catch (e) { statoRaspberry(maiuscola(frase(e.message)), "errore"); return; }
@@ -2645,7 +3063,7 @@ function apriRaspberry(p) {
   if (!d) return;
   const a = raspberryAperto = {p, occupato: false};
   const dentro = document.getElementById("raspberry-dentro");
-  const titolo = el("h2", null, "Raspberry del ponte " + p.nome);
+  const titolo = el("h2", null, "Raspberry del gateway " + p.nome);
   titolo.id = "raspberry-titolo";
   const chi = el("p", "da", [d.nome, "mesh2tak " + (d.versione || "?"),
                              d.sistema && d.sistema.acceso_dal ? "acceso da " + durata(d.ora - d.sistema.acceso_dal) : ""]
@@ -2655,11 +3073,11 @@ function apriRaspberry(p) {
 
   const riavvii = el("div", "riga-pulsanti");
   riavvii.append(comandoSemplice("riavvia-programma", "Riavvia il programma",
-                                 "Il ponte si ferma per circa mezzo minuto e riparte. Riavvio il programma?", 5 * 60),
+                                 "Il gateway si ferma per circa mezzo minuto e riparte. Riavvio il programma?", 5 * 60),
                  comandoSemplice("riavvia-radio", "Riavvia la radio",
-                                 "La radio del ponte riparte; il ponte si ricollega da solo entro un minuto. Riavvio la radio?", 5 * 60),
+                                 "La radio del gateway riparte; il gateway si ricollega da solo entro un minuto. Riavvio la radio?", 5 * 60),
                  comandoSemplice("riavvia-raspberry", "Riavvia il Raspberry",
-                                 "Il Raspberry si spegne e si riaccende: il ponte torna in linea in 2-3 minuti. Riavvio il Raspberry?", 10 * 60));
+                                 "Il Raspberry si spegne e si riaccende: il gateway torna in linea in 2-3 minuti. Riavvio il Raspberry?", 10 * 60));
   const zonaRiavvii = el("div");
   zonaRiavvii.append(el("h3", null, "Riavvia"), el("p", "spiegazione", "Se qualcosa non va prova prima il programma, " +
                      "poi la radio, poi tutto il Raspberry."), riavvii);
@@ -2689,18 +3107,18 @@ function apriRaspberry(p) {
                       "degli aggiornamenti e dell'installazione. Chiavi e password sono tolte."), leggi, testoRegistro);
 
   const zonaImpostazioni = el("div");
-  zonaImpostazioni.append(el("h3", null, "Impostazioni del ponte"), moduloImpostazioniPonte(a, d));
+  zonaImpostazioni.append(el("h3", null, "Impostazioni del gateway"), moduloImpostazioniPonte(a, d));
 
   const zonaCertificato = el("div");
   zonaCertificato.append(el("h3", null, "Certificato del TAK Server"), moduloCertificatoPonte(a, d));
 
   const zonaRadio = el("div");
-  zonaRadio.append(el("h3", null, "Radio del ponte"),
+  zonaRadio.append(el("h3", null, "Radio del gateway"),
                    el("p", "spiegazione", "Gli aggiornamenti lasciano la radio com'è. Questo la rimette come la prepara " +
                       "l'installatore: regione EU 868, nome e sigla dell'installatore, ruolo, solo il canale della squadra " +
                       "(la sua chiave resta) e posizione fissa. Il resto scelto dall'app non cambia."),
                    comandoSemplice("reimposta-radio", "Reimposta la radio",
-                                   "Rimetto la radio del ponte come all'installazione? Il ponte si ferma per un paio di minuti; " +
+                                   "Rimetto la radio del gateway come all'installazione? Il gateway si ferma per un paio di minuti; " +
                                    "eventuali canali secondari accesi dall'app si spengono.", 20 * 60));
 
   const zonaComandi = el("div");
@@ -2727,29 +3145,33 @@ document.getElementById("raspberry").addEventListener("close", () => {
   raspberryAperto = null;
 });
 
-// ---- Copertura (dalla 1.14.0): con che segnale i ponti hanno sentito le radio della squadra, quadretto per quadretto.
-// Ogni ponte raccoglie i suoi quadretti (zoom 17, circa 200 m); la pagina li unisce e li disegna su una mappa fatta qui,
-// senza librerie esterne: da fuori arrivano solo le immagini della mappa di sfondo.
-const CLASSI_COPERTURA = [   // margine (dB) sopra il minimo che la radio decifra; colori di stato (buono -> critico)
-  {chiave: "buono", nome: "Buono", colore: "#0ca30c", da: 10, spiega: "i messaggi arrivano sicuri"},
-  {chiave: "discreto", nome: "Discreto", colore: "#fab219", da: 5, spiega: "arrivano quasi sempre"},
-  {chiave: "debole", nome: "Debole", colore: "#ec835a", da: 2, spiega: "qualcuno si può perdere"},
-  {chiave: "limite", nome: "Al limite", colore: "#d03b3b", da: -Infinity, spiega: "arrivano a fatica"}];
-const RIPETUTA = {chiave: "ripetuta", nome: "Solo tramite un'altra radio", colore: "#6f7b80",
-                  spiega: "il ponte non la sentiva diretta"};
+// ---- Mappa della rete. Copertura (dalla 1.14.0): con che segnale i gateway hanno sentito le radio della squadra,
+// quadretto per quadretto; dalla 1.15.0 anche i quadretti raggiunti tramite un ripetitore fisso, e sopra gateway e
+// ripetitori con il loro stato. Ogni gateway raccoglie i suoi quadretti (zoom 17, circa 200 m); la pagina li unisce e
+// li disegna su una mappa fatta qui, senza librerie esterne: da fuori arrivano solo le immagini della mappa di sfondo.
+const CLASSI_COPERTURA = [   // margine (dB) sopra il minimo che la radio decifra; dal verde al rosso
+  {chiave: "buono", nome: "Buono", breve: "buono", colore: "#0ca30c", da: 10, spiega: "i messaggi arrivano sicuri"},
+  {chiave: "discreto", nome: "Discreto", breve: "discreto", colore: "#fab219", da: 5, spiega: "arrivano quasi sempre"},
+  {chiave: "debole", nome: "Debole", breve: "debole", colore: "#e5622f", da: 2, spiega: "qualcuno si può perdere"},
+  {chiave: "limite", nome: "Al limite", breve: "al limite", colore: "#a82533", da: -Infinity, spiega: "arrivano a fatica"}];
+const VIA_RIPETITORE = {chiave: "ripetitore", nome: "Tramite un ripetitore", breve: "tramite ripetitore", colore: "#2a78d6",
+                        spiega: "un ripetitore della rete l'ha portata al gateway"};
+const RIPETUTA = {chiave: "ripetuta", nome: "Tramite altre radio", breve: "tramite altre radio", colore: "#6f7b80",
+                  spiega: "il gateway non la sentiva diretta"};
 const SFONDI = {
-  topo: {max: 17, url: (z, x, y) => "https://" + "abc"[(x + y) % 3] + ".tile.opentopomap.org/" + z + "/" + x + "/" + y + ".png",
+  topo: {nome: "Topografica", max: 17,
+         url: (z, x, y) => "https://" + "abc"[(x + y) % 3] + ".tile.opentopomap.org/" + z + "/" + x + "/" + y + ".png",
          crediti: [["Dati © ", ""], ["OpenStreetMap", "https://www.openstreetmap.org/copyright"], [", SRTM. Mappa © ", ""],
                    ["OpenTopoMap", "https://opentopomap.org/about"], [" (CC-BY-SA)", ""]]},
-  strade: {max: 19, url: (z, x, y) => "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png",
+  strade: {nome: "Stradale", max: 19, url: (z, x, y) => "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png",
            crediti: [["© ", ""], ["OpenStreetMap", "https://www.openstreetmap.org/copyright"]]}};
+const COLORI_PUNTI = {ok: "#0d4757", attenzione: "#995700", problema: "#b0261e"};
 const COPERTURA_OGNI_S = 60;
-const copertura = new Map();     // ponte -> {dati, errore, quando}
-const sceltaCopertura = {ponte: "", periodo: "0", sfondo: "topo"};
+const copertura = new Map();     // gateway -> {dati, errore, quando}
+const sceltaCopertura = {mostra: "", periodo: "0", sfondo: "topo"};   // mostra: "", "g:nome" o "r:!id"
 let ultimaCopertura = 0;
-let mappaCopertura = null, schedaCopertura = null;
-let selPonteCopertura = null, riassuntoCopertura = null, statoCopertura = null, elencoCopertura = null,
-    bottoneAzzera = null;
+let mappaCopertura = null;
+let selMostra = null, riassuntoCopertura = null, statoCopertura = null, bottoneAzzera = null;
 
 function classeCopertura(margine) {
   if (margine === null || margine === undefined || !Number.isFinite(margine)) return RIPETUTA;
@@ -2777,23 +3199,41 @@ function mondoY(lat, z) {
   return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * 2 ** z;
 }
 
+function nomiDeiRipetitori() {
+  const nomi = new Map();
+  for (const [, c] of copertura) for (const r of (c.dati && c.dati.ripetitori) || []) if (r && r.id) nomi.set(r.id, r.nome || r.id);
+  for (const v of ripetitoriDellaRete()) nomi.set(v.id, nomeRipetitore(v));
+  return nomi;
+}
+
 function quadrettiCopertura() {
-  // i quadretti (zoom 17) del ponte scelto, o di tutti, nel periodo scelto. Per ogni quadretto conta il ponte che lo
-  // sente meglio: da li' una radio arriva alla rete attraverso quel ponte.
+  // i quadretti (zoom 17) di tutta la rete, di un gateway o di un ripetitore, nel periodo scelto. Il colore e' il
+  // segnale migliore con cui un gateway ha sentito diretta una radio li'; se nessuno la sentiva diretta, il ripetitore
+  // che l'ha portata a un gateway; altrimenti vuol dire solo che da li' si arriva alla rete passando da altre radio.
   let dal = 0;
   if (sceltaCopertura.periodo !== "0") {
     const d = new Date();
     d.setDate(d.getDate() - (Number(sceltaCopertura.periodo) - 1));
     dal = giornoNumero(d);
   }
+  const scelta = sceltaCopertura.mostra;
+  const gateway = scelta.startsWith("g:") ? scelta.slice(2) : "";
+  const ripetitore = scelta.startsWith("r:") ? scelta.slice(2) : "";
   const celle = new Map();
   for (const [nome, c] of copertura) {
-    if (!c.dati || (sceltaCopertura.ponte && sceltaCopertura.ponte !== nome)) continue;
+    if (!c.dati || (gateway && gateway !== nome)) continue;
     const limite = Number.isFinite(c.dati.limite_snr) ? c.dati.limite_snr : -17.5;
     for (const q of c.dati.celle || []) {
       if (!Array.isArray(q) || q.length < 8 || !(q[7] >= dal)) continue;
       const [x, y, n, media, migliore, , rip, giorno] = q;
-      const voce = {ponte: nome, n, media, migliore, rip, giorno, margine: n > 0 && media !== null ? media - limite : null};
+      const via = q[8] && typeof q[8] === "object" && !Array.isArray(q[8]) ? q[8] : {};
+      let voce;
+      if (ripetitore) {
+        if (!(via[ripetitore] > 0)) continue;
+        voce = {ponte: nome, n: 0, media: null, migliore: null, rip: 0, via: {[ripetitore]: via[ripetitore]}, giorno, margine: null};
+      } else {
+        voce = {ponte: nome, n, media, migliore, rip, via, giorno, margine: n > 0 && media !== null ? media - limite : null};
+      }
       const k = x + "," + y;
       let cella = celle.get(k);
       if (!cella) celle.set(k, cella = {x, y, voci: []});
@@ -2802,14 +3242,16 @@ function quadrettiCopertura() {
   }
   const risultato = [];
   for (const c of celle.values()) {
-    let margine = null, n = 0, rip = 0, giorno = 0;
+    let margine = null, n = 0, rip = 0, tramite = 0, giorno = 0;
     for (const v of c.voci) {
       if (v.margine !== null && (margine === null || v.margine > margine)) margine = v.margine;
       n += v.n;
       rip += v.rip;
+      for (const k of Object.keys(v.via)) tramite += Number(v.via[k]) || 0;
       giorno = Math.max(giorno, v.giorno);
     }
-    risultato.push(Object.assign(c, {margine, n, rip, giorno, classe: classeCopertura(margine)}));
+    risultato.push(Object.assign(c, {margine, n, rip, tramite, giorno,
+                                     classe: margine !== null ? classeCopertura(margine) : (tramite ? VIA_RIPETITORE : RIPETUTA)}));
   }
   return risultato;
 }
@@ -2822,10 +3264,11 @@ function raggruppaQuadretti(celle, livello) {
   for (const c of celle) {
     const k = (c.x >> s) + "," + (c.y >> s);
     let g = gruppi.get(k);
-    if (!g) gruppi.set(k, g = {lx: c.x >> s, ly: c.y >> s, quanti: 0, n: 0, rip: 0, giorno: 0, somma: 0, pesi: 0});
+    if (!g) gruppi.set(k, g = {lx: c.x >> s, ly: c.y >> s, quanti: 0, n: 0, rip: 0, tramite: 0, giorno: 0, somma: 0, pesi: 0});
     g.quanti++;
     g.n += c.n;
     g.rip += c.rip;
+    g.tramite += c.tramite;
     g.giorno = Math.max(g.giorno, c.giorno);
     if (c.margine !== null) {
       const peso = Math.max(1, c.n);
@@ -2834,22 +3277,30 @@ function raggruppaQuadretti(celle, livello) {
     }
   }
   return [...gruppi.values()].map(g => Object.assign(g, {margine: g.pesi ? g.somma / g.pesi : null,
-                                                         classe: classeCopertura(g.pesi ? g.somma / g.pesi : null)}));
+    classe: g.pesi ? classeCopertura(g.somma / g.pesi) : (g.tramite ? VIA_RIPETITORE : RIPETUTA)}));
 }
 
 function righeQuadretto(q) {
   const righe = [];
   if (q.quanti > 1) {
     righe.push(q.quanti + " quadretti insieme: avvicina la mappa per vederli uno per uno.");
-    righe.push(q.n ? "Sentite dirette " + volte(q.n) + (q.rip ? ", tramite altre radio " + volte(q.rip) : "") + "."
-                   : "Arrivate solo tramite altre radio, " + volte(q.rip) + ".");
+    const parti = [];
+    if (q.n) parti.push("sentite dirette " + volte(q.n));
+    if (q.tramite) parti.push("tramite ripetitori " + volte(q.tramite));
+    if (q.rip) parti.push("tramite altre radio " + volte(q.rip));
+    righe.push(maiuscola(parti.join(", ")) + ".");
   } else {
+    const nomi = nomiDeiRipetitori();
     const voci = [...q.voci].sort((a, b) => (b.margine === null ? -999 : b.margine) - (a.margine === null ? -999 : a.margine));
     for (const v of voci) {
-      righe.push("Ponte " + v.ponte + ": " + (v.n
-        ? classeCopertura(v.margine).nome.toLowerCase() + ", segnale medio " + numIt(v.media) + " dB (migliore " +
-          numIt(v.migliore) + " dB), sentita diretta " + volte(v.n) + (v.rip ? " e tramite altre radio " + volte(v.rip) : "")
-        : "solo tramite altre radio, " + volte(v.rip)) + ".");
+      const parti = [];
+      if (v.n) {
+        parti.push(classeCopertura(v.margine).breve + ", segnale medio " + numIt(v.media) + " dB (migliore " +
+                   numIt(v.migliore) + " dB), sentita diretta " + volte(v.n));
+      }
+      for (const [id, k] of Object.entries(v.via)) parti.push("tramite " + (nomi.get(id) || "il ripetitore " + id) + " " + volte(k));
+      if (v.rip) parti.push("tramite altre radio " + volte(v.rip));
+      righe.push("Gateway " + v.ponte + ": " + parti.join("; ") + ".");
     }
   }
   righe.push("Ultimo dato: " + testoGiorno(q.giorno) + ".");
@@ -2862,7 +3313,7 @@ class MappaCopertura {
     e.id = "mappa-copertura";
     e.tabIndex = 0;
     e.setAttribute("role", "application");
-    e.setAttribute("aria-label", "Mappa della copertura. Trascina per spostarla; rotella, + e - per avvicinare e allontanare.");
+    e.setAttribute("aria-label", "Mappa della rete. Trascina per spostarla; rotella, + e - per avvicinare e allontanare.");
     this.tessere = el("div", "tessere");
     this.tela = document.createElement("canvas");
     this.suggerimento = el("div", "suggerimento");
@@ -2875,18 +3326,30 @@ class MappaCopertura {
       b.addEventListener("click", () => this.zoom(d));
       zoom.append(b);
     }
+    // mappa di sfondo: topografica o stradale, come nelle app di mappe
+    this.sfondi = el("div", "sfondi");
+    this.sfondi.setAttribute("role", "group");
+    this.sfondi.setAttribute("aria-label", "Mappa di sfondo");
+    for (const [chiave, s] of Object.entries(SFONDI)) {
+      const b = el("button", null, s.nome);
+      b.type = "button";
+      b.dataset.sfondo = chiave;
+      b.addEventListener("click", () => { sceltaCopertura.sfondo = chiave; this.sfondo(chiave); });
+      this.sfondi.append(b);
+    }
     this.crediti = el("div", "crediti");
-    e.append(this.tessere, this.tela, zoom, this.crediti, this.suggerimento);
+    e.append(this.tessere, this.tela, zoom, this.sfondi, this.crediti, this.suggerimento);
     this.z = 6;
     this.cx = mondoX(12.5, 6);
     this.cy = mondoY(42.5, 6);
     this.w = this.h = 0;
     this.celle = [];
-    this.ponti = [];
+    this.punti = [];
     this.mostrati = [];
     this.dove = new Map();
     this.adattata = false;
     this.fisso = false;
+    this.evidenza = null;           // il punto scelto dall'elenco, cerchiato per qualche secondo
     this.vive = new Map();          // immagini della mappa di sfondo in pagina
     this.ultimoZoom = 0;
     this.sfondo("topo");
@@ -2901,6 +3364,7 @@ class MappaCopertura {
   sfondo(chiave) {
     this.chiaveSfondo = chiave;
     this.s = SFONDI[chiave];
+    for (const b of this.sfondi.children) b.setAttribute("aria-pressed", String(b.dataset.sfondo === chiave));
     for (const img of this.vive.values()) img.remove();
     this.vive.clear();
     this.crediti.replaceChildren();
@@ -2916,10 +3380,11 @@ class MappaCopertura {
     else this.ridisegna();
   }
 
-  dati(celle, ponti) {
+  dati(celle, punti) {
     this.celle = celle;
-    this.ponti = ponti;
+    this.punti = punti;
     this.e.dataset.quadretti = String(celle.length);
+    this.e.dataset.punti = String(punti.length);
     if (!this.adattata) this.adatta();
     else this.ridisegna();
   }
@@ -2934,14 +3399,14 @@ class MappaCopertura {
   }
 
   adatta() {
-    // tutti i quadretti e i ponti in vista, non piu' vicino di zoom 15
+    // tutti i quadretti, i gateway e i ripetitori in vista, non piu' vicino di zoom 15
     if (!this.w || !this.h) return;
     let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
     const aggiungi = (x, y) => {
       minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y);
     };
     for (const c of this.celle) aggiungi((c.x + 0.5) / 2 ** 17, (c.y + 0.5) / 2 ** 17);
-    for (const p of this.ponti) aggiungi(mondoX(p.lon, 0) / 256, mondoY(p.lat, 0) / 256);
+    for (const p of this.punti) aggiungi(mondoX(p.lon, 0) / 256, mondoY(p.lat, 0) / 256);
     if (minx === Infinity) {
       this.ridisegna();
       return;
@@ -2953,6 +3418,21 @@ class MappaCopertura {
     this.cy = (miny + maxy) / 2 * 256 * 2 ** this.z;
     this.adattata = true;
     this.ridisegna();
+  }
+
+  centra(lat, lon, chiave) {
+    // dall'elenco accanto alla mappa: il punto al centro, abbastanza vicino da vedere i quadretti intorno
+    this.z = Math.min(this.s.max, Math.max(this.z, 13));
+    this.cx = mondoX(lon, this.z);
+    this.cy = mondoY(lat, this.z);
+    this.adattata = true;
+    this.nascondi();
+    this.evidenza = chiave || null;
+    clearTimeout(this.timerEvidenza);
+    this.timerEvidenza = setTimeout(() => { this.evidenza = null; this.ridisegna(); }, 4000);
+    this.ridisegna();
+    const r = this.e.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight) this.e.scrollIntoView({block: "center"});
   }
 
   zoom(d, sx, sy) {
@@ -3062,23 +3542,47 @@ class MappaCopertura {
       }
     }
     this.e.dataset.disegnati = String(disegnati);
+    // gateway (quadrati) e ripetitori (cerchi): blu scuro se a posto, ambra o rosso se c'e' da guardare, vuoti se spenti
     ctx.font = "600 13px " + getComputedStyle(this.e).fontFamily;
     ctx.lineJoin = "round";
-    for (const p of this.ponti) {
+    this.posti = [];
+    const ordinati = [...this.punti].sort((a, b) => (a.tipo === "gateway") - (b.tipo === "gateway"));
+    for (const p of ordinati) {
       const x = mondoX(p.lon, this.z) - sx, y = mondoY(p.lat, this.z) - sy;
       if (x < -60 || y < -20 || x > this.w + 20 || y > this.h + 20) continue;
+      this.posti.push({p, x, y});
+      if (this.evidenza === p.chiave) {
+        ctx.beginPath();
+        ctx.arc(x, y, 17, 0, 2 * Math.PI);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#0d4757";
+        ctx.stroke();
+      }
       ctx.beginPath();
-      ctx.arc(x, y, 7, 0, 2 * Math.PI);
-      ctx.fillStyle = "#0d4757";
+      if (p.tipo === "gateway") ctx.rect(x - 7, y - 7, 14, 14);
+      else ctx.arc(x, y, 7, 0, 2 * Math.PI);
+      ctx.fillStyle = p.spento ? "#ffffff" : COLORI_PUNTI[NOMI_LIVELLI[p.livello]];
       ctx.fill();
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle = p.spento ? "#55646b" : "#ffffff";
       ctx.stroke();
+      if (!p.spento) {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(31, 45, 52, 0.55)";
+        ctx.beginPath();
+        if (p.tipo === "gateway") ctx.rect(x - 8.75, y - 8.75, 17.5, 17.5);
+        else ctx.arc(x, y, 8.75, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+      const nome = p.nome.length > 22 ? p.nome.slice(0, 21) + "…" : p.nome;
       ctx.lineWidth = 4;
       ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-      ctx.strokeText(p.nome, x + 12, y + 4.5);
+      ctx.strokeText(nome, x + 13, y + 4.5);
       ctx.fillStyle = "#1f2d34";
-      ctx.fillText(p.nome, x + 12, y + 4.5);
+      ctx.fillText(nome, x + 13, y + 4.5);
     }
   }
 
@@ -3090,13 +3594,21 @@ class MappaCopertura {
   indica(ev, fisso) {
     const r = this.e.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
     const sx = this.cx - this.w / 2, sy = this.cy - this.h / 2;
-    const q = this.lato ? this.dove.get(Math.floor((px + sx) / this.lato) + "," + Math.floor((py + sy) / this.lato)) : null;
-    if (!q) {
-      if (fisso || !this.fisso) this.nascondi();
-      return;
-    }
     const s = this.suggerimento;
-    s.replaceChildren(el("b", null, q.classe.nome + ": " + q.classe.spiega), ...righeQuadretto(q).map(t => el("span", null, t)));
+    // prima gateway e ripetitori (il bersaglio e' piu' largo del segno), poi i quadretti
+    const vicino = (this.posti || []).filter(o => Math.hypot(o.x - px, o.y - py) <= 13)
+      .sort((a, b) => Math.hypot(a.x - px, a.y - py) - Math.hypot(b.x - px, b.y - py))[0];
+    if (vicino) {
+      const [primo, ...altre] = vicino.p.righe;
+      s.replaceChildren(el("b", null, primo), ...altre.map(t => el("span", null, t)));
+    } else {
+      const q = this.lato ? this.dove.get(Math.floor((px + sx) / this.lato) + "," + Math.floor((py + sy) / this.lato)) : null;
+      if (!q) {
+        if (fisso || !this.fisso) this.nascondi();
+        return;
+      }
+      s.replaceChildren(el("b", null, q.classe.nome + ": " + q.classe.spiega), ...righeQuadretto(q).map(t => el("span", null, t)));
+    }
     s.hidden = false;
     const x = px + 16 + s.offsetWidth > this.w ? px - 16 - s.offsetWidth : px + 16;
     const y = py + 16 + s.offsetHeight > this.h ? Math.max(4, py - 16 - s.offsetHeight) : py + 16;
@@ -3162,10 +3674,12 @@ class MappaCopertura {
       rotella = 0;
     }, {passive: false});
     e.addEventListener("dblclick", ev => {
+      if (ev.target.closest("button, a")) return;
       const r = e.getBoundingClientRect();
       this.zoom(1, ev.clientX - r.left, ev.clientY - r.top);
     });
     e.addEventListener("keydown", ev => {
+      if (ev.target !== e) return;
       const passi = {ArrowLeft: [-100, 0], ArrowRight: [100, 0], ArrowUp: [0, -100], ArrowDown: [0, 100]};
       if (ev.key === "+" || ev.key === "=") this.zoom(1);
       else if (ev.key === "-" || ev.key === "_") this.zoom(-1);
@@ -3178,9 +3692,7 @@ class MappaCopertura {
 }
 
 function costruisciCopertura() {
-  const sez = el("section", "copertura");
-  riassuntoCopertura = el("p", "riassunto");
-  riassuntoCopertura.setAttribute("aria-live", "polite");
+  const sez = vistaCopertura;
   const comandi = el("div", "comandi-copertura");
   const scelta = (etichetta, opzioni, chiave, cambia) => {
     const l = el("label", null, etichetta);
@@ -3196,14 +3708,29 @@ function costruisciCopertura() {
     comandi.append(l);
     return s;
   };
-  selPonteCopertura = scelta("Ponte", [["", "Tutti i ponti"]], "ponte", () => {
+  selMostra = scelta("Mostra", [["", "Tutta la rete"]], "mostra", () => {
     mappaCopertura.adattata = false;
     disegnaCopertura();
   });
   scelta("Periodo", [["0", "Tutto"], ["30", "Ultimi 30 giorni"], ["7", "Ultimi 7 giorni"], ["1", "Oggi"]], "periodo",
          () => disegnaCopertura());
-  scelta("Mappa", [["topo", "Topografica"], ["strade", "Stradale"]], "sfondo",
-         () => mappaCopertura.sfondo(sceltaCopertura.sfondo));
+  mappaCopertura = new MappaCopertura();
+  const legenda = el("ul", "legenda");
+  legenda.setAttribute("aria-label", "Legenda della mappa");
+  for (const c of [...CLASSI_COPERTURA, VIA_RIPETITORE, RIPETUTA]) {
+    const li = el("li");
+    const segno = el("i", "segno-" + c.chiave);
+    if (c !== RIPETUTA) segno.style.background = c.colore;
+    li.append(segno, el("span", null, c.nome));
+    legenda.append(li);
+  }
+  for (const [classe, nome] of [["punto-gateway", "Gateway"], ["punto-ripetitore", "Ripetitore"]]) {
+    const li = el("li");
+    li.append(el("i", classe), el("span", null, nome));
+    legenda.append(li);
+  }
+  riassuntoCopertura = el("p", "riassunto");
+  riassuntoCopertura.setAttribute("aria-live", "polite");
   const kml = el("button", "bottone secondario piccolo", "Scarica per ATAK");
   kml.type = "button";
   kml.addEventListener("click", scaricaCoperturaKml);
@@ -3212,38 +3739,28 @@ function costruisciCopertura() {
   bottoneAzzera.addEventListener("click", azzeraCopertura);
   const azioni = el("div", "azioni-copertura");
   azioni.append(kml, bottoneAzzera);
-  comandi.append(azioni);
-  const legenda = el("ul", "legenda");
-  legenda.setAttribute("aria-label", "Legenda");
-  for (const c of [...CLASSI_COPERTURA, RIPETUTA]) {
-    const li = el("li");
-    const segno = el("i", "segno-" + c.chiave);
-    if (c !== RIPETUTA) segno.style.background = c.colore;
-    li.append(segno, el("span", null, c.nome));
-    legenda.append(li);
-  }
-  const ponte = el("li");
-  ponte.append(el("i", "segno-ponte"), el("span", null, "Ponte"));
-  legenda.append(ponte);
+  const piede = el("div", "piede-mappa");
+  piede.append(riassuntoCopertura, azioni);
   statoCopertura = el("p", "stato-copertura");
   statoCopertura.setAttribute("aria-live", "polite");
-  mappaCopertura = new MappaCopertura();
-  elencoCopertura = el("ul", "ponti-copertura");
-  sez.append(riassuntoCopertura,
-             el("p", "spiega-copertura", "Ogni quadretto è largo circa 200 metri. Il colore dice con che segnale un " +
-                "ponte ha sentito le radio della squadra che erano lì: è una misura, non una stima. Un quadretto " +
-                "vuoto vuol dire che lì non è passata nessuna radio, non che manca il segnale."),
-             comandi, legenda, statoCopertura, mappaCopertura.e, elencoCopertura,
-             el("p", "nota", "Buono, discreto, debole e al limite dicono di quanto il segnale medio sta sopra il " +
-                "minimo che la radio riesce a decifrare (−17,5 dB con LongFast): più di 10 dB, da 5 a 10, da 2 a 5, " +
-                "meno di 2. Ogni ponte tiene solo quadretto, segnale e giorno: non quale radio né a che ora. " +
-                "Dopo aver spostato l'antenna di un ponte scegli quel ponte e premi Azzera."));
-  vistaCopertura.append(sez);
+  const come = dettagli("come-mappa", "Come leggere la mappa",
+    el("p", null, "Ogni quadretto è largo circa 200 metri. Il colore dice con che segnale un gateway ha sentito le radio " +
+                  "della squadra che erano lì: è una misura, non una stima. Un quadretto vuoto vuol dire che lì non è " +
+                  "passata nessuna radio, non che manca il segnale."),
+    el("p", null, "Buono, discreto, debole e al limite dicono di quanto il segnale medio sta sopra il minimo che la radio " +
+                  "riesce a decifrare (−17,5 dB con LongFast): più di 10 dB, da 5 a 10, da 2 a 5, meno di 2."),
+    el("p", null, "Blu: la radio arrivava al gateway grazie a un ripetitore fisso della rete. Il segnale tra la radio e " +
+                  "il ripetitore non si conosce, ma da lì la rete arriva. A righe grigie: arrivava passando da altre " +
+                  "radio della squadra."),
+    el("p", null, "Ogni gateway tiene solo quadretto, segnale e giorno: non quale radio né a che ora. Dopo aver " +
+                  "spostato l'antenna di un gateway, sceglilo in «Mostra» e premi Azzera."));
+  come.classList.add("gruppo-mappa");
+  sez.append(comandi, mappaCopertura.e, legenda, piede, statoCopertura, come);
 }
 
 async function caricaCopertura(forza) {
   const mancano = elenco.some(p => !copertura.has(p.nome));
-  if (!elenco.length || (!forza && !mancano && Date.now() - ultimaCopertura < COPERTURA_OGNI_S * 1000)) return;
+  if (!elenco.length || (!forza && !mancano && Date.now() - ultimaCopertura < COPERTURA_OGNI_S * 1000)) return false;
   ultimaCopertura = Date.now();
   await Promise.all(elenco.map(async p => {
     const prima = copertura.get(p.nome);
@@ -3254,7 +3771,10 @@ async function caricaCopertura(forza) {
         document.getElementById("sessione").hidden = false;
         throw new Error("sessione scaduta");
       }
-      if (!r.ok) throw Object.assign(new Error("risposta " + r.status), {stato: r.status});
+      if (!r.ok) {
+        await r.text().catch(() => "");    // una risposta lasciata a meta' tiene la richiesta aperta
+        throw Object.assign(new Error("risposta " + r.status), {stato: r.status});
+      }
       const d = await r.json();
       if (!d || !Array.isArray(d.celle)) throw new Error("dati non validi");
       copertura.set(p.nome, {dati: d, errore: "", quando: Date.now()});
@@ -3264,73 +3784,42 @@ async function caricaCopertura(forza) {
     }
   }));
   for (const n of [...copertura.keys()]) if (!elenco.some(p => p.nome === n)) copertura.delete(n);
+  return true;
 }
 
 function disegnaCopertura() {
   if (!mappaCopertura) return;
-  // elenco dei ponti nella scelta, tenendo quella fatta
-  const nomi = elenco.map(p => p.nome);
-  const attuali = [...selPonteCopertura.options].slice(1).map(o => o.value);
-  if (nomi.join("\n") !== attuali.join("\n")) {
-    selPonteCopertura.replaceChildren(selPonteCopertura.options[0]);
-    for (const n of nomi) {
-      const o = el("option", null, n);
-      o.value = n;
-      selPonteCopertura.append(o);
-    }
-    if (!nomi.includes(sceltaCopertura.ponte)) sceltaCopertura.ponte = "";
-    selPonteCopertura.value = sceltaCopertura.ponte;
+  // le scelte di "Mostra": tutta la rete, ogni gateway, ogni ripetitore; quella fatta resta
+  const nomi = nomiDeiRipetitori();
+  const scelte = [["", "Tutta la rete"], ...elenco.map(p => ["g:" + p.nome, "Gateway " + p.nome]),
+                  ...[...nomi].sort((a, b) => a[1].localeCompare(b[1], "it")).map(([id, nome]) => ["r:" + id, nome])];
+  const attuali = [...selMostra.options].map(o => o.value + "\t" + o.textContent);
+  if (scelte.map(x => x.join("\t")).join("\n") !== attuali.join("\n")) {
+    selMostra.replaceChildren(...scelte.map(([v, t]) => {
+      const o = el("option", null, t);
+      o.value = v;
+      return o;
+    }));
+    if (!scelte.some(x => x[0] === sceltaCopertura.mostra)) sceltaCopertura.mostra = "";
+    selMostra.value = sceltaCopertura.mostra;
   }
-  bottoneAzzera.hidden = !sceltaCopertura.ponte;
-  bottoneAzzera.textContent = "Azzera la copertura di " + (sceltaCopertura.ponte || "un ponte");
+  const gateway = sceltaCopertura.mostra.startsWith("g:") ? sceltaCopertura.mostra.slice(2) : "";
+  bottoneAzzera.hidden = !gateway;
+  bottoneAzzera.textContent = "Azzera la copertura di " + (gateway || "un gateway");
   const celle = quadrettiCopertura();
-  const ponti = [];
-  for (const [nome, c] of copertura) {
-    if (c.dati && c.dati.ponte && (!sceltaCopertura.ponte || sceltaCopertura.ponte === nome)) {
-      ponti.push({nome, lat: c.dati.ponte.lat, lon: c.dati.ponte.lon});
-    }
-  }
-  mappaCopertura.dati(celle, ponti);
+  mappaCopertura.dati(celle, puntiDellaRete());
   const conDati = [...copertura.values()].filter(c => c.dati).length;
-  if (!copertura.size) riassuntoCopertura.textContent = "Carico la copertura dei ponti...";
+  if (!elenco.length) riassuntoCopertura.textContent = "";
+  else if (!copertura.size) riassuntoCopertura.textContent = "Carico la copertura dei gateway...";
   else if (!celle.length) {
-    riassuntoCopertura.textContent = (conDati ? "Nessun quadretto" + (sceltaCopertura.periodo !== "0" ? " in questo periodo" : "") +
-      ": la mappa si riempie quando le radio della squadra mandano la loro posizione." : "Nessun ponte dà la copertura.");
+    riassuntoCopertura.textContent = conDati ? "Nessun quadretto" + (sceltaCopertura.periodo !== "0" ? " in questo periodo" : "") +
+      ": la mappa si riempie quando le radio della squadra mandano la loro posizione." : "Nessun gateway dà la copertura.";
   } else {
-    const dirette = celle.filter(c => c.classe !== RIPETUTA).length;
-    riassuntoCopertura.textContent = "Copertura misurata in " + celle.length + (celle.length === 1 ? " quadretto" : " quadretti") +
-      (dirette < celle.length ? " (" + (celle.length - dirette) + " solo tramite altre radio)" : "") + ".";
+    const conta = new Map();
+    for (const c of celle) conta.set(c.classe, (conta.get(c.classe) || 0) + 1);
+    riassuntoCopertura.textContent = celle.length + (celle.length === 1 ? " quadretto" : " quadretti") + ": " +
+      [...CLASSI_COPERTURA, VIA_RIPETITORE, RIPETUTA].filter(k => conta.get(k)).map(k => k.breve + " " + conta.get(k)).join(", ") + ".";
   }
-  // per ogni ponte: quanti quadretti per classe (la stessa informazione della mappa, da leggere)
-  const voci = [];
-  for (const p of elenco) {
-    if (sceltaCopertura.ponte && sceltaCopertura.ponte !== p.nome) continue;
-    const c = copertura.get(p.nome), li = el("li");
-    li.append(el("b", null, p.nome + ": "));
-    const st = stati.get(p.nome), v = st && st.dati && st.dati.versione;
-    if (!c) li.append("in caricamento.");
-    else if (c.errore === "vecchio") li.append("il ponte" + (v ? " è alla " + v + ":" : "") + " la copertura si raccoglie dalla 1.14.0. Aggiornalo dalla scheda Ponti.");
-    else if (!c.dati) li.append(c.errore === "giu" ? "non risponde adesso." : "copertura non letta (" + c.errore + ").");
-    else {
-      const sue = celle.filter(q => q.voci.some(x => x.ponte === p.nome)).map(q => q.voci.find(x => x.ponte === p.nome));
-      const conta = new Map();
-      for (const x of sue) {
-        const k = classeCopertura(x.margine);
-        conta.set(k, (conta.get(k) || 0) + 1);
-      }
-      const parti = [...CLASSI_COPERTURA, RIPETUTA].filter(k => conta.get(k)).map(k => k.nome.toLowerCase() + " " + conta.get(k));
-      li.append(sue.length ? sue.length + (sue.length === 1 ? " quadretto" : " quadretti") + ": " + parti.join(", ") + "." : "nessun quadretto" + (sceltaCopertura.periodo !== "0" ? " in questo periodo." : " ancora."));
-      if (c.dati.dal) li.append(el("small", null, "Raccolta iniziata: " + giorno(c.dati.dal) + (c.errore === "giu" ? ". Adesso non risponde: dati dell'ultima lettura." : ".")));
-    }
-    voci.push(li);
-  }
-  elencoCopertura.replaceChildren(...voci);
-}
-
-function apriCopertura() {
-  requestAnimationFrame(() => mappaCopertura.misura());
-  disegnaCopertura();
-  caricaCopertura(true).then(disegnaCopertura);
 }
 
 function scaricaCoperturaKml() {
@@ -3343,7 +3832,7 @@ function scaricaCoperturaKml() {
   const colore = (hex, alfa) => alfa + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);   // KML: aabbggrr
   const n = 2 ** 17, lon = x => (x / n * 360 - 180).toFixed(6);
   const lat = y => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI).toFixed(6);
-  const stili = [...CLASSI_COPERTURA, RIPETUTA].map(c => "<Style id=\"" + c.chiave + "\"><LineStyle><color>" +
+  const stili = [...CLASSI_COPERTURA, VIA_RIPETITORE, RIPETUTA].map(c => "<Style id=\"" + c.chiave + "\"><LineStyle><color>" +
     colore(c.colore, "cc") + "</color><width>1</width></LineStyle><PolyStyle><color>" +
     colore(c.colore, c === RIPETUTA ? "55" : "99") + "</color></PolyStyle></Style>").join("\n");
   const posti = celle.map(c => {
@@ -3354,13 +3843,15 @@ function scaricaCoperturaKml() {
       [[o, s], [e, s], [e, no], [o, no], [o, s]].map(p => p.join(",")).join(" ") +
       "</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>";
   }).join("\n");
-  const titolo = "Copertura Meshtastic, " + (sceltaCopertura.ponte ? "ponte " + sceltaCopertura.ponte : "tutti i ponti");
+  const scelta = selMostra.options[selMostra.selectedIndex];
+  const titolo = "Copertura Meshtastic, " + (sceltaCopertura.mostra ? scelta.textContent : "tutta la rete");
   const kml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document><name>" +
     esc(titolo) + "</name>\n" + stili + "\n" + posti + "\n</Document></kml>\n";
   const url = URL.createObjectURL(new Blob([kml], {type: "application/vnd.google-earth.kml+xml"}));
   const a = el("a");
   a.href = url;
-  a.download = "copertura-" + (sceltaCopertura.ponte || "tutti") + "-" + giornoNumero(new Date()) + ".kml";
+  const chi = sceltaCopertura.mostra ? sceltaCopertura.mostra.slice(2).replace(/^!/, "").replace(/[^A-Za-z0-9_-]+/g, "-") : "rete";
+  a.download = "copertura-" + chi + "-" + giornoNumero(new Date()) + ".kml";
   document.body.append(a);
   a.click();
   a.remove();
@@ -3369,9 +3860,9 @@ function scaricaCoperturaKml() {
 }
 
 async function azzeraCopertura() {
-  const nome = sceltaCopertura.ponte;
-  if (!nome || !window.confirm("Cancello la copertura raccolta dal ponte " + nome + "? Serve dopo aver spostato " +
-                               "l'antenna o il ponte: la mappa di quel ponte ricomincia da zero.")) return;
+  const nome = sceltaCopertura.mostra.startsWith("g:") ? sceltaCopertura.mostra.slice(2) : "";
+  if (!nome || !window.confirm("Cancello la copertura raccolta dal gateway " + nome + "? Serve dopo aver spostato " +
+                               "l'antenna o il gateway: la mappa di quel gateway ricomincia da zero.")) return;
   try {
     const r = await fetch("copertura/" + encodeURIComponent(nome) + ".json",
                           {method: "POST", cache: "no-store", redirect: "manual", credentials: "same-origin",
@@ -3383,9 +3874,9 @@ async function azzeraCopertura() {
     }
     let d = {};
     try { d = await r.json(); } catch (e) { d = {}; }
-    if (!r.ok) throw new Error(d.errore || ("il ponte risponde " + r.status));
+    if (!r.ok) throw new Error(d.errore || ("il gateway risponde " + r.status));
     copertura.set(nome, {dati: d, errore: "", quando: Date.now()});
-    statoCopertura.textContent = "Copertura del ponte " + nome + " azzerata: ricomincia da adesso.";
+    statoCopertura.textContent = "Copertura del gateway " + nome + " azzerata: ricomincia da adesso.";
   } catch (e) {
     statoCopertura.textContent = "Non azzerata: " + frase(e.message);
   }
@@ -3407,10 +3898,9 @@ async function giro() {
   disegna();
   if (iconaAperta) disegnaIconePonti();
   if (raspberryAperto) disegnaComandi();
-  if (mappaCopertura && !vistaCopertura.hidden) {
-    await caricaCopertura(false);
-    disegnaCopertura();
-  }
+  // la copertura (e la posizione di gateway e ripetitori) si rilegge ogni minuto: quando cambia, si ridisegna tutto
+  if (await caricaCopertura(false)) disegna();
+  disegnaCopertura();
 }
 
 giro();

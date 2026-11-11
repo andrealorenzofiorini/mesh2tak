@@ -369,12 +369,18 @@ def test_radio_estranee_ricordate_dal_nodo_non_entrano(ponte):  # noqa: F811
                      "position": {"latitudeI": 458100000, "longitudeI": 88100000}},
         0x33333333: {"lastHeard": ora - 60, "user": {"longName": "08-ROSSI", "shortName": "08RO"},
                      "position": {"latitudeI": 458200000, "longitudeI": 88200000, "time": ora - 60}},
+        # 1.15.0: col nome e il canale 0 come una radio della squadra, ma sentita quando il primario del nodo era
+        # ancora il pubblico: il ponte non l'ha mai sentita sul canale della squadra
+        0x55555555: {"lastHeard": ora - 60, "user": {"longName": "Estranea di prima", "shortName": "ESTR"},
+                     "position": {"latitudeI": 458300000, "longitudeI": 88300000, "time": ora - 60}},
     })
     p = ponte()
+    p.squadra.segna(0x33333333, ora - 60)        # questa il ponte l'ha sentita davvero sul canale della squadra
     p.collega(iface)
     s = p.istantanea()
-    assert [r["id"] for r in s["radio_rete"] if r["id"] in ("!11111111", "!22222222", "!33333333")] == ["!33333333"]
-    assert "!11111111" not in [r["id"] for r in s["radio"]] and "!22222222" not in [r["id"] for r in s["radio"]]
+    tutte = ("!11111111", "!22222222", "!33333333", "!55555555")
+    assert [r["id"] for r in s["radio_rete"] if r["id"] in tutte] == ["!33333333"]
+    assert [r["id"] for r in s["radio"] if r["id"] in tutte] == ["!33333333"], "al TAK solo quella della squadra"
     # un messaggio diretto cifrato (canale 0 per forza) di uno sconosciuto non lo fa entrare
     p.su_pacchetto(pacchetto(0x44444444, m.PORTA_NODEINFO, utente("Sconosciuto", "SCON"), canale=0,
                              pkiEncrypted=True), iface)

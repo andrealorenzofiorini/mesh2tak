@@ -1,11 +1,13 @@
 // Radio della squadra gestite da lontano (1.10.0) nel browser: dalla scheda "Radio" alla radio finta dietro il
 // ponte (Caddy, Authentik, tunnel, nodo). Legge nome e sezione, ne cambia una, legge i canali. Stampa in JSON.
 const { chromium } = require('playwright');
+const { sfondoFinto } = require('./pagina_comune');
 (async () => {
   const [url, foto] = process.argv.slice(2);
   const b = await chromium.launch({args: ['--host-resolver-rules=MAP *.prova.lan 127.0.0.1', '--no-proxy-server']});
   const ctx = await b.newContext({ignoreHTTPSErrors: true, viewport: {width: 1280, height: 900}, deviceScaleFactor: 1});
   await ctx.addCookies([{name: 'ak_finto', value: 'andrea', domain: 'meshtastic.prova.lan', path: '/'}]);
+  await sfondoFinto(ctx);
   const p = await ctx.newPage();
   const errori = [], finestre = [];
   p.on('console', m => { if (m.type() === 'error') errori.push(m.text()); });

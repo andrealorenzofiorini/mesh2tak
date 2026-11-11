@@ -500,7 +500,7 @@ assert chiedi(\"/mesh2tak/registro\")[0] == 403
 s, t = chiedi(\"/mesh2tak/registro\", **{\"X-Authentik-Username\": \"andrea\"})
 assert s == 200 and b\"Registro del ponte\" in t
 "'
-controlla "mappa della copertura (1.14.0): solo dal tunnel, per gli amministratori" 'python3 -c "
+controlla "mappa della copertura (1.14.0; formato 2 con i ripetitori dalla 1.15.0): solo dal tunnel, per gli amministratori" 'python3 -c "
 import json, ssl, urllib.error, urllib.request
 c = ssl._create_unverified_context()
 def chiedi(**testate):
@@ -512,7 +512,8 @@ def chiedi(**testate):
         return e.code, None
 assert chiedi()[0] == 403
 s, d = chiedi(**{\"X-Authentik-Username\": \"andrea\"})
-assert s == 200 and d[\"formato\"] == 1 and d[\"zoom\"] == 17 and isinstance(d[\"celle\"], list), d
+assert s == 200 and d[\"formato\"] == 2 and d[\"zoom\"] == 17 and isinstance(d[\"celle\"], list), d
+assert isinstance(d[\"ripetitori\"], list), d
 assert d[\"preset\"] == \"LONG_FAST\" and d[\"limite_snr\"] == -17.5, d
 "'
 : > "$STUB/chiamate.log"

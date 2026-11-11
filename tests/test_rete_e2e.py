@@ -171,6 +171,9 @@ class Rete:
         self.ponte = m.Ponte(self.cfg, tak=None, sdk=None)
         self.ponte.icone = m.IconeMappa(str(cartella / "pi" / "icone.json"))
         self.g.icone = self.ponte.imposta_icone
+        # copertura (1.14.0), vuota: dalla 1.15.0 la pagina la legge appena si apre, come dal Raspberry vero
+        self.ponte.copertura = m.Copertura(str(cartella / "pi" / "copertura-vuota.json"))
+        self.g.copertura = self.ponte.copertura_per_la_pagina
         self.ponte.mio_num, self.ponte.nodo_nome, self.ponte.nodo_nome_breve = 0x11111111, "Ponte di prova", "PROV"
         self.ponte.canali = {0: m.Canale(0, "CNSAS-VA", True), 1: m.Canale(1, "Public", False)}
         self.ponte.canali_ok = {0}
@@ -469,12 +472,13 @@ def test_5c_la_scheda_delle_radio_nel_browser(rete):
     r = json.loads(p.stdout.strip().splitlines()[-1])
     assert "errore" not in r, r
     assert r["errori"] == [] and r["finestre"] == [] and r["immagini"] == 0      # CSP rispettata, niente codice dai nomi
-    assert r["visibili"] == [True, False]
+    assert r["visibili"] == [True, True]            # il vecchio indirizzo #radio porta alle radio; la mappa resta
     assert r["ordine"] == ["<img src=x onerror=alert(1)>", "07-BIANCHI"]          # prima chi ha un problema
     assert "batteria quasi scarica" in r["voci"][0] and "casa: passando da 2 radio" in r["voci"][0]
     assert "SenseCAP T1000-E, con ATAK" in r["voci"][1] and "casa: diretta, segnale buono" in r["voci"][1]
-    assert r["riassunto"].startswith("2 radio della squadra: 2 sentite nell'ultima ora.")
-    assert r["cerca"] == ["07-BIANCHI"] and r["ponti"] == [True, False]
+    assert r["riassunto"].startswith("2 radio: 2 sentite nell'ultima ora.")
+    assert r["cerca"] == ["07-BIANCHI"] and r["ponti"] == [True, True]
+    assert r["ripetitori"].startswith("Ripetitori") and "Nessun ripetitore sentito finora." in r["ripetitori"], r["ripetitori"]
 
 
 def oggetti_email(rete):
@@ -581,7 +585,7 @@ def test_5g_versione_nuova_nella_pagina_e_aggiornamento_del_server(rete):
     il lavoro; il server scarica da GitHub e, se il file non e' quello pubblicato, non lo installa e lo dice."""
     n = [int(x) for x in m.VERSIONE.split(".")]
     nuova = f"{n[0]}.{n[1] + 1}.0"
-    pubblica_release(rete, nuova, "- una novita' di prova\n- un'altra")
+    pubblica_release(rete, nuova, "- una novita' di prova\n  che va a capo\n- un'altra")
     base = f"/{REPO}/releases/download/v{nuova}"
     rete.github.risposte[f"{base}/rete-meshtastic.sh"] = b"#!/bin/bash\necho manomesso\n"
     rete.github.risposte[f"{base}/SHA256SUMS"] = somme({"rete-meshtastic.sh": b"quello pubblicato"})
@@ -591,8 +595,8 @@ def test_5g_versione_nuova_nella_pagina_e_aggiornamento_del_server(rete):
     r = json.loads(p.stdout.strip().splitlines()[-1])
     assert "errore" not in r, r
     assert r["errori"] == [] and r["finestre"] == []
-    assert f"È uscita la versione {nuova}" in r["sezione"] and "una novita' di prova" in r["sezione"], r["sezione"]
-    assert f"Aggiorna il server alla {nuova}" in r["sezione"] and "Prima il server, poi i ponti" in r["sezione"]
+    assert f"È uscita la versione {nuova}" in r["sezione"] and "una novita' di prova che va a capo" in r["sezione"], r["sezione"]
+    assert f"Aggiorna il server alla {nuova}" in r["sezione"] and "Prima il server, poi i gateway" in r["sezione"]
     assert f"È uscita la versione {nuova}: aggiorna il server." in r["in_cima"]
     assert r["domanda"] == f"Aggiornare il server alla {nuova}?"
     assert f"Aggiornamento del server alla {nuova}: non riuscita" in r["lavoro"], r["lavoro"]
@@ -777,7 +781,7 @@ def test_6f_icona_scelta_dal_browser(rete):
     assert r["sceltaPrima"] == "Predefinita"
     assert r["esito"].startswith("Icona salvata") and r["sceltaDopo"] == "Unità cinofila"
     assert r["bottoneDopo"] == "Icona: Unità cinofila" and r["figuraNelBottone"].endswith("icone/cinofilo.png")
-    assert r["titoloPonte"] == "Icona di ponte casa sulla mappa" and r["predefinitaPonte"] == "Traliccio (predefinita)"
+    assert r["titoloPonte"] == "Icona di gateway casa sulla mappa" and r["predefinitaPonte"] == "Traliccio (predefinita)"
     assert rete.stato_api()["icone"]["scelte"]["!7c3a91e2"]["icona"] == "cinofilo"
     assert aspetta(lambda: rete.ponte.icone.di("!7c3a91e2") == ("a-f-G-U-C-I", CANE), 30)
     rete.api("POST", "/api/icona", {"radio": "!7c3a91e2", "icona": ""})
@@ -913,9 +917,9 @@ def test_6h_gestisci_il_raspberry_dal_browser(rete):
     r = json.loads(p.stdout.strip().splitlines()[-1])
     assert "errore" not in r, (r, rete.esiti_lavora[-2:])
     assert r["errori"] == [], r["errori"]
-    assert r["titolo"] == "Raspberry del ponte casa"
-    assert r["sezioni"] == ["Riavvia", "Registro", "Impostazioni del ponte", "Certificato del TAK Server",
-                            "Radio del ponte", "Ultimi comandi"]
+    assert r["titolo"] == "Raspberry del gateway casa"
+    assert r["sezioni"] == ["Riavvia", "Registro", "Impostazioni del gateway", "Certificato del TAK Server",
+                            "Radio del gateway", "Ultimi comandi"]
     assert (r["squadra"], r["validita"], r["invio"]) == ("Cyan", "90", True)
     assert "valido fino al" in r["certificato"]
     assert "Registro del ponte" in r["registro"] and r["scarica"].startswith("registro-casa-")
@@ -928,10 +932,21 @@ def test_6h_gestisci_il_raspberry_dal_browser(rete):
     assert "squadra = Red" in (pi / "mesh2tak.conf").read_text()
 
 
+RIPETITORE = 0x3333CCCC
+
+
 def prepara_copertura(rete):
     """1.14.0: la mappa della copertura del ponte casa, con cinque quadretti: vicino al ponte buono, poi discreto,
-    debole e al limite, e uno arrivato solo tramite un'altra radio."""
+    debole e al limite, e uno arrivato solo tramite un'altra radio. Dalla 1.15.0 anche un ripetitore fisso della
+    squadra (ruolo Router, posizione impostata) con un sesto quadretto raggiunto tramite lui."""
     p = rete.ponte
+    ora = time.time()
+    p.squadra.segna(RIPETITORE, ora)
+    with p._lock:
+        v = p._vista_di(RIPETITORE)
+        v.nome, v.nome_breve, v.modello, v.ruolo = "Ripetitore Velate", "RVEL", "THINKNODE_M6", "ROUTER"
+        v.ultimo, v.lat, v.lon, v.posizione_fissa = ora - 600, 45.875, 8.805, True
+        v.ripetuti, v.ultimo_ripetuto = 2, ora - 60
     p.copertura = m.Copertura(str(rete.c / "pi" / "copertura.json"))
     rete.g.copertura = p.copertura_per_la_pagina
     if p.iface is None:
@@ -942,6 +957,8 @@ def prepara_copertura(rete):
         for _ in range(3):
             p.copertura.annota(45.8206 + dlat, 8.8281, 0, snr, -100, oggi)
     p.copertura.annota(45.8406, 8.8251, 2, None, None, oggi)
+    for _ in range(2):
+        p.copertura.annota(45.8606, 8.8051, 1, None, None, oggi, via=RIPETITORE)
     return oggi
 
 
@@ -952,7 +969,9 @@ def test_6i_la_copertura_dalla_pagina(rete):
     assert stato == 200, corpo
     d = json.loads(corpo)
     assert d["ponte"] == {"lat": 45.8206, "lon": 8.8251} and d["limite_snr"] == -17.5 and d["preset"] == "LONG_FAST"
-    assert sorted(q[3] for q in d["celle"] if q[3] is not None) == [-16.5, -14.0, -9.0, 6.0] and len(d["celle"]) == 5
+    assert sorted(q[3] for q in d["celle"] if q[3] is not None) == [-16.5, -14.0, -9.0, 6.0] and len(d["celle"]) == 6
+    assert [q[8] for q in d["celle"] if q[8]] == [{"!3333cccc": 2}] and d["formato"] == 2
+    assert d["ripetitori"] == [{"id": "!3333cccc", "nome": "Ripetitore Velate", "nome_breve": "RVEL", "lat": 45.875, "lon": 8.805}]
     assert intestazioni.get("Content-Type", "").startswith("application/json")
     assert "Access-Control-Allow-Origin" not in intestazioni and intestazioni.get("Cache-Control") == "no-store"
     assert rete.chiedi(f"{RETE}/copertura/casa.json", cookie=None)[0] == 302, "senza Authentik: al login"
@@ -961,7 +980,7 @@ def test_6i_la_copertura_dalla_pagina(rete):
     assert rete.api("POST", "/copertura/casa.json", {"azzera": True},
                     intestazioni={"Origin": "https://cattivo.example"})[0] == 403
     assert rete.api("POST", "/copertura/casa.json", {"azzera": False})[0] == 400
-    assert len(rete.ponte.copertura.dati()["celle"]) == 5, "niente azzerato"
+    assert len(rete.ponte.copertura.dati()["celle"]) == 6, "niente azzerato"
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
@@ -975,28 +994,44 @@ def test_6j_la_copertura_nel_browser(rete):
     r = json.loads(p.stdout.strip().splitlines()[-1])
     assert "errore" not in r, r
     assert r["errori"] == [], r["errori"]
-    assert r["indirizzo"] == "copertura"
-    assert r["riassunto"] == "Copertura misurata in 5 quadretti (1 solo tramite altre radio).", r["riassunto"]
-    assert r["legenda"] == ["Buono", "Discreto", "Debole", "Al limite", "Solo tramite un'altra radio", "Ponte"]
-    assert r["ponti"][0].startswith("casa: 5 quadretti: buono 1, discreto 1, debole 1, al limite 1, solo tramite "
-                                    "un'altra radio 1."), r["ponti"]
+    assert r["prima"] is True, "la mappa sta prima delle schede"
+    assert r["riassunto"] == ("6 quadretti: buono 1, discreto 1, debole 1, al limite 1, tramite ripetitore 1, "
+                              "tramite altre radio 1."), r["riassunto"]
+    assert r["legenda"] == ["Buono", "Discreto", "Debole", "Al limite", "Tramite un ripetitore", "Tramite altre radio",
+                            "Gateway", "Ripetitore"]
+    assert r["rete"][0].startswith("Gateway casa ") and re.match(r"Ripetitore Velate attivo \d+ min fa", r["rete"][1]), r["rete"]
+    assert "batteria non inviata" in r["rete"][1] and r["rete"][2].startswith("Radio della squadra"), r["rete"]
+    assert r["coperturaGateway"] == ("6 quadretti: buono 1, discreto 1, debole 1, al limite 1, tramite ripetitore 1, "
+                                     "tramite altre radio 1"), r["coperturaGateway"]
+    assert "ThinkNode M6, ruolo ripetitore, !3333cccc" in r["ripetitore"] and "Acceso" in r["ripetitore"], r["ripetitore"]
+    assert "non la manda" in r["ripetitore"] and "Device Metrics" in r["ripetitore"], r["ripetitore"]
+    assert "1 quadretto raggiunto tramite questo ripetitore" in r["ripetitore"], r["ripetitore"]
+    assert r["mostra"] == [["", "Tutta la rete"], ["g:casa", "Gateway casa"], ["r:!3333cccc", "Ripetitore Velate"]], r["mostra"]
     # la mappa di sfondo: la pagina la puo' caricare (CSP) e dice solo da che sito arriva, non quale pagina
     assert r["sfondo"] and all("tile.opentopomap.org/" in x["url"] for x in r["sfondo"]), r["sfondo"]
     assert all(x["referer"] == RETE + "/" for x in r["sfondo"]), r["sfondo"]
     assert r["sfondoCaricato"] > 0 and "OpenTopoMap" in r["crediti"] and "OpenStreetMap" in r["crediti"]
     assert r["buono"].startswith("Buono: i messaggi arrivano sicuri"), r["buono"]
-    assert "Ponte casa: buono, segnale medio 6 dB (migliore 6 dB), sentita diretta 3 volte." in r["buono"]
-    assert r["ripetuta"].startswith("Solo tramite un'altra radio"), r["ripetuta"]
-    assert "Ponte casa: solo tramite altre radio, 1 volta." in r["ripetuta"]
-    assert r["zoomLontano"] == r["zoom"] - 3 and 1 <= r["disegnatiLontano"] <= 5 and r["zoomTastiera"] == r["zoom"] - 2
-    assert r["kmlNome"] == f"copertura-tutti-{oggi}.kml" and r["statoKml"].startswith("Scaricato copertura-tutti-")
-    assert r["kml"].count("<Placemark>") == 5 and "<name>Copertura Meshtastic, tutti i ponti</name>" in r["kml"]
+    assert "Gateway casa: buono, segnale medio 6 dB (migliore 6 dB), sentita diretta 3 volte." in r["buono"]
+    assert r["ripetuta"].startswith("Tramite altre radio: il gateway non la sentiva diretta"), r["ripetuta"]
+    assert "Gateway casa: tramite altre radio 1 volta." in r["ripetuta"]
+    assert r["viaRipetitore"].startswith("Tramite un ripetitore: un ripetitore della rete l'ha portata al gateway")
+    assert "Gateway casa: tramite Ripetitore Velate 2 volte." in r["viaRipetitore"], r["viaRipetitore"]
+    assert re.match(r"Ripetitore Velate: attivo \d+ min fa", r["segnoRipetitore"]), r["segnoRipetitore"]
+    assert r["centrato"]["zoom"] >= 13 and abs(r["centrato"]["dx"]) <= 2 and abs(r["centrato"]["dy"]) <= 2, r["centrato"]
+    assert r["zoomLontano"] == r["zoomAdattata"] - 3 and 1 <= r["disegnatiLontano"] <= 6
+    assert r["zoomTastiera"] == r["zoomAdattata"] - 2
+    assert r["kmlNome"] == f"copertura-rete-{oggi}.kml" and r["statoKml"].startswith("Scaricato copertura-rete-")
+    assert r["kml"].count("<Placemark>") == 6 and "<name>Copertura Meshtastic, tutta la rete</name>" in r["kml"]
     assert '<Style id="buono">' in r["kml"] and "<color>990ca30c</color>" in r["kml"]
+    assert '<Style id="ripetitore">' in r["kml"] and "<styleUrl>#ripetitore</styleUrl>" in r["kml"]
     assert re.search(r"<coordinates>8\.82\d+,45\.82\d+ ", r["kml"]), "longitudine, latitudine"
-    assert r["oggi"] == "5" and "OpenStreetMap" in r["creditiStrade"] and "OpenTopoMap" not in r["creditiStrade"]
+    assert r["oggi"] == "6" and "OpenStreetMap" in r["creditiStrade"] and "OpenTopoMap" not in r["creditiStrade"]
+    assert r["sfondoScelto"] == ["false", "true"]
+    assert r["soloRipetitore"] == ["1", "1 quadretto: tramite ripetitore 1.", False], r["soloRipetitore"]
     assert r["azzeraPrima"] is False and r["azzeraBottone"] == "Azzera la copertura di casa"
-    assert len(r["finestre"]) == 1 and r["finestre"][0].startswith("Cancello la copertura raccolta dal ponte casa?")
-    assert r["statoAzzera"] == "Copertura del ponte casa azzerata: ricomincia da adesso."
+    assert len(r["finestre"]) == 1 and r["finestre"][0].startswith("Cancello la copertura raccolta dal gateway casa?")
+    assert r["statoAzzera"] == "Copertura del gateway casa azzerata: ricomincia da adesso."
     assert r["riassuntoDopo"].startswith("Nessun quadretto") and rete.ponte.copertura.dati()["celle"] == []
 
 
@@ -1014,12 +1049,12 @@ def test_7_un_altro_raspberry_approvato_dal_browser(rete, tmp_path):
                         foto.replace(".png", "") if foto else ""], capture_output=True, text=True, timeout=240, env=senza_proxy)
     r = json.loads(p.stdout.strip().splitlines()[-1])
     assert "errore" not in r, (r, rete.esiti_lavora)
-    assert r["codice"] == a.controllo and r["titolo"] == "Un ponte chiede di entrare"
+    assert r["codice"] == a.controllo and r["titolo"] == "Un gateway chiede di entrare"
     assert f"Raspberry {a.macchina}, dall'indirizzo 127.0.0.1" in r["testoRichiesta"]
     assert r["errori"] == [] and r["finestre"] == [] and r["ponti"] == ["altro", "casa"]
     assert r["modulo"] == {"nome": "Prova!", "chiave": "ssh-ed25519 AAAA", "cursore": "nuova-chiave", "nomeValido": False}
     assert any(u.endswith("/api/approva") and h == "1" for u, h, _ in r["chiamate"])
-    assert "Aggiunta del ponte altro: fatta alle" in r["testo"]
+    assert "Aggiunta del gateway altro: fatta alle" in r["testo"]
     assert aspetta(lambda: a.stato()["collegato"], 60), a.stato()
     with socket.create_connection(("127.0.0.1", 19444), timeout=5):
         pass

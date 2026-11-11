@@ -48,9 +48,18 @@ def per_uid(eventi):
     return d
 
 
+def squadra_gia_sentita(tmp_path, *numeri):
+    """Dalla 1.15.0 all'avvio il ponte riprende dal database del nodo solo le radio gia' sentite sul canale della
+    squadra (registro su file): qui quelle del nodo finto sul canale 1, come un ponte che riparte."""
+    import json
+    (tmp_path / "stato" / "radio-squadra.json").write_text(
+        json.dumps({"formato": 1, "radio": {f"!{n:08x}": time.time() - 60 for n in numeri}}))
+
+
 def test_scenario_completo(pki, tmp_path, tak_finto, nodo_finto):
     tak = tak_finto()
     conf = scrivi_config(tmp_path / "m.conf", pki, tak.porta, nodo_finto, f"{SDK}/dictionaries")
+    squadra_gia_sentita(tmp_path, 0x1111AAAA, 0x3333CCCC, 0x4444DDDD, 0x5555EEEE, 0x7777AAAA, 0x8888BBBB, 0x9999CCCC)
     ponte = avvia_ponte(conf)
     time.sleep(11)
     ponte.send_signal(signal.SIGTERM)

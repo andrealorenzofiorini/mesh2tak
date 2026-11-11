@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-VERSIONE = "1.14.0"
+VERSIONE = "1.15.0"
 CONFIG_PREDEFINITA = "/etc/mesh2tak/mesh2tak.conf"
 
 log = logging.getLogger("mesh2tak")
@@ -1209,6 +1209,20 @@ class RadioVista:
     snr: Optional[float] = None         # ultimo pacchetto sentito direttamente
     rssi: Optional[int] = None
     diretto: Optional[float] = None     # quando e' stata sentita direttamente l'ultima volta
+    posizione_fissa: bool = False       # dalla 1.15.0: manda una posizione impostata a mano (LOC_MANUAL)
+    lat: Optional[float] = None         # ultima posizione (in memoria; esce solo per i ripetitori fissi)
+    lon: Optional[float] = None
+    ripetuti: int = 0                   # pacchetti di altri che il ponte ha ricevuto ripetuti da questa radio
+    ultimo_ripetuto: Optional[float] = None
+
+    @property
+    def fisso(self) -> bool:
+        """Un ripetitore fisso: ruolo da infrastruttura o posizione impostata a mano."""
+        return self.ruolo in RUOLI_FISSI or self.posizione_fissa
+
+
+# Ruoli Meshtastic dei nodi fissi che fanno da ripetitore (ROUTER_CLIENT e' il vecchio nome)
+RUOLI_FISSI = frozenset({"ROUTER", "ROUTER_LATE", "ROUTER_CLIENT", "REPEATER", "CLIENT_BASE"})
 
 
 RE_ENUM = re.compile(r"^[A-Z][A-Z0-9_]{0,39}$")
@@ -1397,7 +1411,9 @@ class Copertura:
     non diventa lo storico degli spostamenti dei volontari.
 
     Su file ogni quadretto e' [x, y, dirette, somma dei segnali, segnale migliore, potenza migliore, tramite altre
-    radio, giorno AAAAMMGG]; alla pagina va la media al posto della somma."""
+    radio, giorno AAAAMMGG, {ripetitore: volte}]; alla pagina va la media al posto della somma. Dalla 1.15.0 i
+    pacchetti arrivati con un salto da un ripetitore fisso contano per quel ripetitore (formato 2; il formato 1,
+    senza i ripetitori, si legge ancora)."""
 
     ZOOM = 17
     MASSIMO = 20000                 # quadretti tenuti (qualche centinaio di kB): oltre, escono i piu' vecchi
@@ -1429,7 +1445,7 @@ class Copertura:
         return min(n - 1, max(0, x)), min(n - 1, max(0, y))
 
     def _carica(self, d) -> None:
-        if not isinstance(d, dict) or d.get("formato") != 1 or d.get("zoom") != self.ZOOM:
+        if not isinstance(d, dict) or d.get("formato") not in (1, 2) or d.get("zoom") != self.ZOOM:
             raise ValueError("formato sconosciuto")
         n = 1 << self.ZOOM
 
@@ -1441,31 +1457,40 @@ class Copertura:
         for c in d.get("celle") or []:
             if len(self.celle) >= self.MASSIMO:
                 break
-            if (not isinstance(c, list) or len(c) != 8 or not intero(c[0], 0, n - 1) or not intero(c[1], 0, n - 1)
-                    or not intero(c[2], 0, 10 ** 9) or not segnale(c[3], -40.0 * 10 ** 9, 40.0 * 10 ** 9)
-                    or not segnale(c[4], -40, 40) or not segnale(c[5], -200, 0) or not intero(c[6], 0, 10 ** 9)
+            if (not isinstance(c, list) or len(c) not in (8, 9) or not intero(c[0], 0, n - 1)
+                    or not intero(c[1], 0, n - 1) or not intero(c[2], 0, 10 ** 9)
+                    or not segnale(c[3], -40.0 * 10 ** 9, 40.0 * 10 ** 9) or not segnale(c[4], -40, 40)
+                    or not segnale(c[5], -200, 0) or not intero(c[6], 0, 10 ** 9)
                     or not intero(c[7], 19700101, 29991231) or (c[2] > 0) != (c[4] is not None)):
                 continue
-            self.celle[(c[0], c[1])] = [c[2], float(c[3] or 0.0), c[4], c[5], c[6], c[7]]
+            ripetitori = {}
+            if len(c) == 9 and isinstance(c[8], dict):
+                for chi, volte in list(c[8].items())[:20]:
+                    if isinstance(chi, str) and re.fullmatch(r"![0-9a-f]{8}", chi) and intero(volte, 1, 10 ** 9):
+                        ripetitori[int(chi[1:], 16)] = volte
+            self.celle[(c[0], c[1])] = [c[2], float(c[3] or 0.0), c[4], c[5], c[6], c[7], ripetitori]
         dal = d.get("dal")
         self.dal = dal if intero(dal, 0, 4102444800) else None
 
     def annota(self, lat: float, lon: float, salti: int, snr: Optional[float], rssi: Optional[int],
-               giorno: int) -> None:
-        """Una posizione ricevuta: diretta (salti 0, con il suo segnale) o arrivata tramite altre radio."""
+               giorno: int, via: Optional[int] = None) -> None:
+        """Una posizione ricevuta: diretta (salti 0, con il suo segnale), con un salto da un ripetitore fisso (via)
+        o arrivata tramite altre radio."""
         chiave = self.quadretto(lat, lon)
         with self._lock:
             c = self.celle.get(chiave)
             if c is None:
                 if len(self.celle) >= self.MASSIMO:
                     self._fai_spazio()
-                c = self.celle[chiave] = [0, 0.0, None, None, 0, giorno]
+                c = self.celle[chiave] = [0, 0.0, None, None, 0, giorno, {}]
             if salti == 0 and snr is not None:
                 c[0] += 1
                 c[1] += snr
                 c[2] = snr if c[2] is None else max(c[2], snr)
                 if rssi is not None:
                     c[3] = rssi if c[3] is None else max(c[3], rssi)
+            elif via is not None and (via in c[6] or len(c[6]) < 20):
+                c[6][via] = c[6].get(via, 0) + 1
             else:
                 c[4] += 1
             c[5] = max(c[5], giorno)
@@ -1475,17 +1500,19 @@ class Copertura:
 
     def _fai_spazio(self) -> None:
         """Pieno: escono i quadretti visti meno di recente (e, a parita', con meno ricezioni)."""
-        via = sorted(self.celle, key=lambda k: (self.celle[k][5], self.celle[k][0] + self.celle[k][4]))
+        via = sorted(self.celle, key=lambda k: (self.celle[k][5],
+                                                self.celle[k][0] + self.celle[k][4] + sum(self.celle[k][6].values())))
         for k in via[:max(1, len(via) // 10)]:
             del self.celle[k]
 
     def dati(self) -> dict:
         """Per la pagina della rete: [x, y, dirette, segnale medio, migliore, potenza migliore, tramite altre radio,
-        giorno]."""
+        giorno, {ripetitore: volte}]."""
         with self._lock:
-            celle = [[x, y, c[0], round(c[1] / c[0], 1) if c[0] else None, c[2], c[3], c[4], c[5]]
+            celle = [[x, y, c[0], round(c[1] / c[0], 1) if c[0] else None, c[2], c[3], c[4], c[5],
+                      {f"!{r:08x}": volte for r, volte in sorted(c[6].items())}]
                      for (x, y), c in sorted(self.celle.items(), key=lambda kv: (kv[0][1], kv[0][0]))]
-            return {"formato": 1, "zoom": self.ZOOM, "dal": self.dal, "celle": celle}
+            return {"formato": 2, "zoom": self.ZOOM, "dal": self.dal, "celle": celle}
 
     def salva(self, subito: bool = False) -> None:
         if not self.percorso:
@@ -1493,8 +1520,9 @@ class Copertura:
         with self._lock:
             if not self._da_salvare or (not subito and time.monotonic() - self._salvata < self.SALVA_OGNI_S):
                 return
-            dati = {"formato": 1, "zoom": self.ZOOM, "dal": self.dal,
-                    "celle": [[x, y, c[0], round(c[1], 2), c[2], c[3], c[4], c[5]] for (x, y), c in self.celle.items()]}
+            dati = {"formato": 2, "zoom": self.ZOOM, "dal": self.dal,
+                    "celle": [[x, y, c[0], round(c[1], 2), c[2], c[3], c[4], c[5],
+                               {f"!{r:08x}": volte for r, volte in c[6].items()}] for (x, y), c in self.celle.items()]}
             self._da_salvare = False
             self._salvata = time.monotonic()
         try:
@@ -1520,6 +1548,74 @@ class Copertura:
                 pass
             except OSError as e:
                 log.warning("Mappa della copertura: non riesco a cancellare %s (%s)", self.percorso, e)
+
+
+class RadioSquadra:
+    """Le radio sentite davvero sul canale della squadra (dalla 1.15.0), con l'ultima volta. Il database del nodo
+    Meshtastic segna come "della squadra" anche radio sentite quando il canale principale del nodo era un altro (per
+    esempio il pubblico LongFast prima dell'installazione): all'avvio il ponte prende dal database solo queste.
+    Su file: {"formato": 1, "radio": {"!1234abcd": ultima volta}}."""
+
+    TIENI_S = 90 * 86400            # una radio non sentita da tre mesi esce
+    MASSIMO = 2000
+    SALVA_OGNI_S = 600.0            # su file al massimo ogni 10 minuti
+
+    def __init__(self, percorso: Optional[str] = None):
+        self.percorso = percorso
+        self._lock = threading.Lock()
+        self.radio: Dict[int, float] = {}
+        self._da_salvare = False
+        self._salvata = time.monotonic()
+        if percorso:
+            try:
+                with open(percorso, encoding="utf-8") as f:
+                    d = json.load(f)
+                if not isinstance(d, dict) or d.get("formato") != 1 or not isinstance(d.get("radio"), dict):
+                    raise ValueError("formato sconosciuto")
+                limite = time.time() - self.TIENI_S
+                for chiave, quando in d["radio"].items():
+                    if (isinstance(chiave, str) and re.fullmatch(r"![0-9a-f]{8}", chiave)
+                            and isinstance(quando, (int, float)) and not isinstance(quando, bool) and quando > limite):
+                        self.radio[int(chiave[1:], 16)] = float(quando)
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError) as e:
+                log.warning("Radio della squadra: %s non valido (%s), riparto da zero", percorso, e)
+
+    def __contains__(self, num) -> bool:
+        with self._lock:
+            return num in self.radio
+
+    def segna(self, num: int, quando: float) -> None:
+        with self._lock:
+            if self.radio.get(num, 0.0) >= quando:
+                return
+            if num not in self.radio and len(self.radio) >= self.MASSIMO:
+                del self.radio[min(self.radio, key=self.radio.get)]
+            nuova = num not in self.radio
+            self.radio[num] = quando
+            self._da_salvare = True
+        if nuova:
+            log.info("Radio della squadra: !%08x sentita sul canale della squadra", num)
+
+    def salva(self, subito: bool = False) -> None:
+        if not self.percorso:
+            return
+        with self._lock:
+            if not self._da_salvare or (not subito and time.monotonic() - self._salvata < self.SALVA_OGNI_S):
+                return
+            dati = {"formato": 1, "radio": {f"!{n:08x}": round(q) for n, q in self.radio.items()}}
+            self._da_salvare = False
+            self._salvata = time.monotonic()
+        try:
+            nuovo = self.percorso + ".nuovo"
+            with open(os.open(nuovo, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+                json.dump(dati, f, separators=(",", ":"))
+            os.replace(nuovo, self.percorso)
+        except OSError as e:
+            log.warning("Radio della squadra: non riesco a salvarle (%s); riprovo piu' tardi", e)
+            with self._lock:
+                self._da_salvare = True
 
 
 class Ponte:
@@ -1550,6 +1646,7 @@ class Ponte:
         self.nota_ponte: Optional[str] = None   # es. "IN PAUSA: ..." in testa alle note del ponte
         self.icone = IconeMappa()               # dalla 1.11.0: icone scelte dalla pagina della rete (main: su file)
         self.copertura = Copertura()            # dalla 1.14.0: mappa della copertura (main: su file)
+        self.squadra = RadioSquadra()           # dalla 1.15.0: radio sentite sul canale della squadra (main: su file)
         # ultimo nodo visto (resta anche da scollegati, per la pagina della rete)
         self.nodo_nome = ""
         self.nodo_nome_breve = ""
@@ -1691,7 +1788,7 @@ class Ponte:
             if not ponte:
                 if ora - sentito > validita:
                     continue
-                if not self._canale_noto(info):
+                if num not in self.squadra:     # dalla 1.15.0: solo radio sentite sul canale della squadra
                     continue
                 if info.get("user", {}).get("role") == "TAK":
                     continue
@@ -1716,8 +1813,9 @@ class Ponte:
         if iface is None:
             return
         for num, info in list(iface.nodesByNum.items()):
-            if (not isinstance(num, int) or num == self.mio_num or info.get("viaMqtt")
-                    or not self._canale_noto(info)):
+            # dalla 1.15.0 solo le radio che il ponte ha sentito davvero sul canale della squadra: il canale che il
+            # nodo ricorda puo' essere quello di quando il suo canale principale era un altro
+            if not isinstance(num, int) or num == self.mio_num or info.get("viaMqtt") or num not in self.squadra:
                 continue
             sentito = numero(info.get("lastHeard"), 1, 4102444800, 0)
             if not sentito:
@@ -1728,6 +1826,8 @@ class Ponte:
                     continue
                 v.ultimo = sentito
                 self._utente(v, info.get("user") or {})
+                if v.lat is None:
+                    self._posizione_vista(v, info.get("position") or {})
                 if v.metriche is None:
                     self._metriche(v, info.get("deviceMetrics") or {}, sentito)
                 salti = info.get("hopsAway")
@@ -1778,6 +1878,8 @@ class Ponte:
         if p.get("pkiEncrypted") and num not in self.viste:
             return      # messaggio diretto cifrato per il nodo: non dice su che canale sta chi lo manda
         d = p.get("decoded") or {}
+        if not p.get("pkiEncrypted"):
+            self.squadra.segna(num, rx)     # decifrato con la chiave del canale: e' davvero della squadra
         with self._lock:
             v = self._vista_di(num)
             v.ultimo = max(v.ultimo, rx)
@@ -1792,6 +1894,19 @@ class Ponte:
                 self._utente(v, d.get("user") or {})
             elif porta == PORTA_TELEMETRY:
                 self._metriche(v, (d.get("telemetry") or {}).get("deviceMetrics") or {}, rx)
+            elif porta == PORTA_POSITION:
+                self._posizione_vista(v, d.get("position") or {})
+
+    @staticmethod
+    def _posizione_vista(v: RadioVista, pos: dict) -> None:
+        """Dalla 1.15.0: posizione impostata a mano (nodo fisso) e ultima posizione, per i ripetitori sulla mappa."""
+        lat_i, lon_i = pos.get("latitudeI"), pos.get("longitudeI")
+        if not isinstance(lat_i, int) or not isinstance(lon_i, int) or (lat_i == 0 and lon_i == 0):
+            return
+        lat, lon = lat_i * 1e-7, lon_i * 1e-7
+        if -90 <= lat <= 90 and -180 <= lon <= 180:
+            v.lat, v.lon = lat, lon
+            v.posizione_fissa = pos.get("locationSource") == "LOC_MANUAL"
 
     def _canale_del_ponte(self, p: dict, rx: float) -> None:
         """Il nodo del ponte manda ogni minuto le sue misure: quanto e' occupato il canale, quanto trasmette."""
@@ -1821,11 +1936,13 @@ class Ponte:
         rx = float(p.get("rxTime") or ora)
         if rx > ora + 300 or rx < ora - 86400:
             rx = ora
+        ripetitore = None
         if num == self.mio_num:
             if porta == PORTA_TELEMETRY:
                 self._canale_del_ponte(p, rx)
         else:
             self._vista(p, num, canale, rx, porta)
+            ripetitore = self._ripetuto_da(p, num, rx)
         fonte = None
         if porta == PORTA_POSITION:
             pos = p["decoded"].get("position") or {}
@@ -1836,26 +1953,48 @@ class Ponte:
         elif porta == PORTA_ATAK_V1:
             fonte = self._tak_v1(num, bytes(grezzo.decoded.payload), canale, rx)
         if fonte is not None and num != self.mio_num:
-            self._annota_copertura(p, fonte, rx)
+            self._annota_copertura(p, fonte, rx, ripetitore)
         self._attivita(num, rx, porta)
 
-    def _annota_copertura(self, p: dict, fonte: "Fonte", rx: float) -> None:
+    def _ripetuto_da(self, p: dict, num: int, rx: float) -> Optional[int]:
+        """Dalla 1.15.0: quale radio della squadra ha ripetuto il pacchetto arrivato al ponte. Il pacchetto porta
+        solo l'ultimo byte del numero di chi l'ha ritrasmesso per ultimo (firmware 2.6 e successivi): vale se una
+        sola radio della squadra finisce con quel byte. E' anche il segno che un ripetitore e' acceso."""
+        inizio, resto, byte = p.get("hopStart"), p.get("hopLimit", 0), p.get("relayNode")
+        if (p.get("viaMqtt") or not isinstance(byte, int) or not 0 < byte <= 0xFF or not isinstance(inizio, int)
+                or not isinstance(resto, int) or not 0 <= resto < inizio <= 7):
+            return None
+        with self._lock:
+            chi = [v for v in self.viste.values() if v.num & 0xFF == byte and v.num not in (num, self.mio_num)]
+            if len(chi) != 1:
+                return None
+            v = chi[0]
+            v.ripetuti += 1
+            v.ultimo_ripetuto = max(v.ultimo_ripetuto or 0.0, rx)
+            return v.num
+
+    def _annota_copertura(self, p: dict, fonte: "Fonte", rx: float, ripetitore: Optional[int] = None) -> None:
         """Mappa della copertura (dalla 1.14.0): dove si trovava la radio e con che segnale il ponte l'ha sentita.
         Il segnale misurato e' quello dell'ultimo trasmettitore: vale per il punto della radio solo se e' arrivata
-        diretta; arrivata tramite altre radio, il quadretto dice soltanto che da li' si arriva alla rete."""
+        diretta. Arrivata con un salto da un ripetitore fisso (dalla 1.15.0), il quadretto conta per quel
+        ripetitore, senza segnale; altrimenti dice soltanto che da li' si arriva alla rete."""
         if p.get("viaMqtt") or (fonte.ce != NON_NOTO and fonte.ce > Copertura.ERRORE_MASSIMO_M):
             return
         inizio, resto = p.get("hopStart"), p.get("hopLimit", 0)
         if not (isinstance(inizio, int) and 0 < inizio <= 7 and isinstance(resto, int) and 0 <= resto <= inizio):
             return      # firmware che non dice i salti: non si sa se e' arrivata diretta
-        salti, snr, rssi = inizio - resto, None, None
+        salti, snr, rssi, via = inizio - resto, None, None, None
         if salti == 0:
             if not p.get("rxRssi"):
                 return  # nessuna misura del segnale
             snr = numero(p.get("rxSnr", 0.0), -40, 40, 2)
             rssi = int(numero(p["rxRssi"], -200, 0, 0) or 0) or None
+        elif salti == 1 and ripetitore is not None:
+            with self._lock:
+                v = self.viste.get(ripetitore)
+                via = ripetitore if v is not None and v.fisso else None
         quando = datetime.fromtimestamp(rx, self.tz) if self.tz else datetime.fromtimestamp(rx)
-        self.copertura.annota(fonte.lat, fonte.lon, salti, snr, rssi, int(quando.strftime("%Y%m%d")))
+        self.copertura.annota(fonte.lat, fonte.lon, salti, snr, rssi, int(quando.strftime("%Y%m%d")), via)
 
     def copertura_per_la_pagina(self, azzera: bool = False, chi: str = "") -> dict:
         """/mesh2tak/copertura.json: i quadretti, dove sta il ponte e il limite del segnale del suo preset."""
@@ -1868,6 +2007,11 @@ class Ponte:
         d["ponte"] = ({"lat": round(lat_i * 1e-7, 4), "lon": round(lon_i * 1e-7, 4)}
                       if isinstance(lat_i, int) and isinstance(lon_i, int) and (lat_i or lon_i) else None)
         d["preset"], d["limite_snr"] = self.preset, limite_snr(self.preset)
+        with self._lock:      # dalla 1.15.0 i ripetitori fissi, con la loro posizione (solo qui, dietro Authentik)
+            d["ripetitori"] = [{"id": f"!{v.num:08x}", "nome": v.nome or self._nome(v.num), "nome_breve": v.nome_breve,
+                                "lat": round(v.lat, 4), "lon": round(v.lon, 4)}
+                               for v in sorted(self.viste.values(), key=lambda v: v.num)
+                               if v.fisso and v.lat is not None and v.lon is not None]
         return d
 
     def _scarta(self, num: int, motivo: str, spiegazione: str) -> None:
@@ -2457,7 +2601,9 @@ class Ponte:
                            "batteria": v.batteria, "tensione": v.tensione, "occupato": v.occupato,
                            "trasmesso": v.trasmesso, "acceso_s": v.acceso_s,
                            "metriche": round(v.metriche) if v.metriche else None, "salti": v.salti,
-                           "snr": v.snr, "rssi": v.rssi, "diretto": round(v.diretto) if v.diretto else None}
+                           "snr": v.snr, "rssi": v.rssi, "diretto": round(v.diretto) if v.diretto else None,
+                           "fisso": v.fisso, "posizione_fissa": v.posizione_fissa, "ripetuti": v.ripetuti,
+                           "ultimo_ripetuto": round(v.ultimo_ripetuto) if v.ultimo_ripetuto else None}
                           for v in viste]
             canale_radio = dict(self.canale_locale)
             if "quando" not in canale_radio:       # prima della misura del minuto: quella del database del nodo
@@ -2523,6 +2669,7 @@ class Ponte:
                      "radio, %d in coda, %d troppo grandi", c.get("radio_al_server", 0), c.get("server_eventi", 0),
                      c.get("radio_trasmessi", 0), len(self.coda_radio), c.get("server_troppo_grandi", 0))
         self.copertura.salva()          # al massimo ogni 10 minuti, e solo se e' cambiata
+        self.squadra.salva()
 
 
 # --------------------------------------------------------------------------
@@ -4784,6 +4931,7 @@ def main(argv=None) -> int:
     ponte = Ponte(cfg, tak, sdk)
     ponte.icone = IconeMappa(os.path.join(cfg.accesso_cartella_stato, "icone.json"))
     ponte.copertura = Copertura(os.path.join(cfg.accesso_cartella_stato, "copertura.json"))
+    ponte.squadra = RadioSquadra(os.path.join(cfg.accesso_cartella_stato, "radio-squadra.json"))
     tak.su_evento = ponte.su_evento_tak
     if os.environ.get("MESH2TAK_ATTESE"):  # solo per le prove automatiche: attese piu' brevi
         f = float(os.environ["MESH2TAK_ATTESE"])
@@ -4924,6 +5072,7 @@ def main(argv=None) -> int:
         gestione.ferma()
     ponte.ferma_uscite()
     ponte.copertura.salva(subito=True)
+    ponte.squadra.salva(subito=True)
     tak.ferma()
     return 0
 

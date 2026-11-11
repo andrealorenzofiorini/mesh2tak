@@ -1,11 +1,13 @@
 // Icone sulla mappa (1.11.0) nel browser: dalla scheda "Radio" si sceglie l'icona di una radio, poi si apre la
 // scelta per il ponte dalla sua scheda. Stampa quello che vede, in JSON.
 const { chromium } = require('playwright');
+const { sfondoFinto } = require('./pagina_comune');
 (async () => {
   const [url, foto] = process.argv.slice(2);
   const b = await chromium.launch({args: ['--host-resolver-rules=MAP *.prova.lan 127.0.0.1', '--no-proxy-server']});
   const ctx = await b.newContext({ignoreHTTPSErrors: true, viewport: {width: 1280, height: 900}, deviceScaleFactor: 1});
   await ctx.addCookies([{name: 'ak_finto', value: 'andrea', domain: 'meshtastic.prova.lan', path: '/'}]);
+  await sfondoFinto(ctx);
   const p = await ctx.newPage();
   const errori = [], finestre = [];
   p.on('console', m => { if (m.type() === 'error') errori.push(m.text()); });
@@ -30,9 +32,8 @@ const { chromium } = require('playwright');
   await p.click('#icone-chiudi');
   r.bottoneDopo = await p.innerText('li.voce:has-text("07-BIANCHI") button.icona-mappa');
   r.figuraNelBottone = await p.$eval('li.voce:has-text("07-BIANCHI") button.icona-mappa img', e => e.src);
-  // la scheda del ponte: la sua icona predefinita e' il traliccio
-  await p.click('[role="tab"]:has-text("Ponti")');
-  await p.click('section.ponte:has(h2:text-is("casa")) button.icona-mappa');
+  // la scheda del gateway (nella stessa pagina dalla 1.15.0): la sua icona predefinita e' il traliccio
+  await p.click('section.ponte:has(h3:text-is("casa")) button.icona-mappa');
   await p.waitForSelector('#icone[open] .tessera-icona');
   r.titoloPonte = await p.innerText('#icone-titolo');
   r.predefinitaPonte = await p.$eval('#icone-scelte .tessera-icona', e => e.textContent);

@@ -3,6 +3,13 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.15.0
+
+- Pagina della rete rifatta, tutta in una pagina: in alto si legge subito se va tutto bene ("Tutto a posto") o quante cose controllare, con l'elenco che porta al punto giusto. Sotto, la mappa della rete con accanto gateway e ripetitori e il loro stato; poi le loro schede (in vista solo quello che conta, il resto in "Altri dettagli"), le radio della squadra e, chiusa in fondo, la gestione: aggiungere un gateway, avvisi per email, aggiornamenti. Sul telefono una colonna sola. Nella pagina il ponte ora si chiama gateway, come il suo nodo.
+- Radio della squadra: contano solo quelle che trasmettono davvero sul canale della squadra (prima comparivano anche quelle sentite quando il canale principale era LongFast: per esempio 16 invece di 1). L'elenco riparte vuoto con l'aggiornamento e si riempie da solo appena le radio trasmettono; le radio estranee non vanno sulla mappa TAK neanche quando il gateway riparte.
+- Ripetitori: un nodo fisso della squadra (ruolo Router o Repeater, oppure posizione impostata a mano) ha la sua scheda: batteria, quando si è fatto sentire, quando ha ripetuto un messaggio verso il gateway, segnale con il gateway, copertura. Se non manda la batteria, la scheda dice come attivarla sul ripetitore.
+- Copertura: le posizioni arrivate al gateway con un solo passaggio da un ripetitore fisso contano per quel ripetitore ("Tramite un ripetitore", in blu). "Mostra" fa vedere tutta la rete, un gateway o un ripetitore; sulla mappa i gateway sono quadrati e i ripetitori cerchi, colorati se c'è qualcosa da guardare.
+
 ## 1.14.0
 
 - Scheda "Copertura" nella pagina della rete: una mappa a quadretti di circa 200 m che dice con che segnale i ponti

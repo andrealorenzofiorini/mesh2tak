@@ -92,7 +92,10 @@ def scrivi_config(percorso, pki, porta_tak, porta_nodo, dizionari, **extra):
         "meshtastic": {"collegamento": f"tcp:127.0.0.1:{porta_nodo}", "canali": "privati"},
         "mappa": {"validita_min": 90, "aggiornamento_min": 0.01, "squadra": "Cyan"},
         "avanzate": {"dizionari": dizionari, "riconnessione_nodo_s": 2},
+        # file del ponte (copertura, radio della squadra...) accanto alla configurazione, non in /var/lib/mesh2tak
+        "accesso_esterno": {"cartella_stato": percorso.parent / "stato"},
     }
+    (percorso.parent / "stato").mkdir(exist_ok=True)
     for chiave, v in extra.items():
         sez, nome = chiave.split("__")
         valori.setdefault(sez, {})[nome] = v

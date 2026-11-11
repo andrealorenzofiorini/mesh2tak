@@ -118,10 +118,15 @@ def test_dal_database_del_nodo_all_avvio(sdk):  # noqa: F811
                             "deviceMetrics": {"batteryLevel": 64, "voltage": 3.8, "uptimeSeconds": 50}}
     iface.nodesByNum[R2] = {"num": R2, "lastHeard": ora - 60, "user": {"longName": "Pubblico"}}    # canale 0
     iface.nodesByNum[R3] = {"num": R3, "channel": 1, "user": {"longName": "Mai sentita"}}             # niente lastHeard
+    # 1.15.0: il nodo la segna sul canale della squadra, ma il ponte non l'ha mai sentita li' (16 radio invece di 1)
+    iface.nodesByNum[0x55555555] = {"num": 0x55555555, "channel": 1, "lastHeard": ora - 60,
+                                    "user": {"longName": "Estranea di prima"}}
     p = m.Ponte(m.Config(tak_host="x"), TakFinto(), sdk)
+    for n in (R1, R3):
+        p.squadra.segna(n, ora - 600)          # sentite davvero sul canale della squadra (prima del riavvio)
     p.collega(iface)
     r = voci(p)[0]
-    assert list(r) == [f"!{R1:08x}"]
+    assert list(r) == [f"!{R1:08x}"], "R2 del canale pubblico, R3 mai sentita dal nodo, la quarta mai sul canale"
     v = r[f"!{R1:08x}"]
     assert (v["nome"], v["modello"], v["ruolo"], v["batteria"], v["salti"], v["snr"], v["rssi"]) == \
         ("07-BIANCHI", "RAK4631", "TAK", 64, 0, 5.5, None)

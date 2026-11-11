@@ -50,10 +50,21 @@ def test_dirette_e_tramite_altre_radio():
     c.annota(45.95, 8.85, 1, None, None, 20261111)
     x, y = m.Copertura.quadretto(45.9, 8.8)
     d = c.dati()
-    assert d["formato"] == 1 and d["zoom"] == 17 and abs(d["dal"] - time.time()) < 5
+    assert d["formato"] == 2 and d["zoom"] == 17 and abs(d["dal"] - time.time()) < 5
     celle = {(q[0], q[1]): q[2:] for q in d["celle"]}
-    assert celle[(x, y)] == [2, -7.0, -5.0, -100, 1, 20261111]
-    assert celle[m.Copertura.quadretto(45.95, 8.85)] == [0, None, None, None, 1, 20261111], "solo tramite altre radio"
+    assert celle[(x, y)] == [2, -7.0, -5.0, -100, 1, 20261111, {}]
+    assert celle[m.Copertura.quadretto(45.95, 8.85)] == [0, None, None, None, 1, 20261111, {}], "solo tramite altre radio"
+
+
+def test_con_un_salto_da_un_ripetitore_fisso():
+    """1.15.0: arrivata con un salto da un ripetitore fisso, il quadretto conta per quel ripetitore."""
+    c = m.Copertura()
+    c.annota(45.9, 8.8, 1, None, None, 20261111, via=0x3333cccc)
+    c.annota(45.9, 8.8, 1, None, None, 20261112, via=0x3333cccc)
+    c.annota(45.9, 8.8, 1, None, None, 20261112, via=0x4444dddd)
+    c.annota(45.9, 8.8, 2, None, None, 20261112)
+    [q] = c.dati()["celle"]
+    assert q[2:] == [0, None, None, None, 1, 20261112, {"!3333cccc": 2, "!4444dddd": 1}]
 
 
 def test_su_file_solo_quadretti_segnali_e_giorni(tmp_path):
@@ -68,11 +79,21 @@ def test_su_file_solo_quadretti_segnali_e_giorni(tmp_path):
     testo = f.read_text()
     assert "!" not in testo and "2222bbbb" not in testo
     d = json.loads(testo)
-    assert set(d) == {"formato", "zoom", "dal", "celle"} and d["celle"][0][2:] == [2, -11.25, -5.25, -100, 0, 20261111]
+    assert set(d) == {"formato", "zoom", "dal", "celle"}
+    assert d["celle"][0][2:] == [2, -11.25, -5.25, -100, 0, 20261111, {}]
     di_nuovo = m.Copertura(str(f))
     assert di_nuovo.dati() == c.dati()
     di_nuovo.annota(45.9, 8.8, 0, -1.0, -90, 20261112)
-    assert di_nuovo.dati()["celle"][0][2:] == [3, -4.1, -1.0, -90, 0, 20261112]
+    di_nuovo.annota(45.9, 8.8, 1, None, None, 20261112, via=0x3333cccc)
+    assert di_nuovo.dati()["celle"][0][2:] == [3, -4.1, -1.0, -90, 0, 20261112, {"!3333cccc": 1}]
+    di_nuovo.salva(subito=True)
+    assert m.Copertura(str(f)).dati() == di_nuovo.dati(), "i ripetitori restano su file"
+
+
+def test_il_formato_della_1_14_si_legge_ancora(tmp_path):
+    f = tmp_path / "copertura.json"
+    f.write_text('{"formato": 1, "zoom": 17, "dal": 1762800000, "celle": [[1, 2, 1, -5, -5, -100, 0, 20261111]]}')
+    assert m.Copertura(str(f)).dati()["celle"] == [[1, 2, 1, -5.0, -5, -100, 0, 20261111, {}]]
 
 
 def test_file_rovinato_si_riparte(tmp_path, caplog):
@@ -123,8 +144,8 @@ def test_il_ponte_annota_le_posizioni_ricevute(ponte):
     p._gestisci(con_segnale(posizione(B, 45.9, 8.8), snr=-7.5, rssi=-110))
     p._gestisci(con_segnale(posizione(B, 45.9, 8.8), salti=1))                 # ripetuta da un'altra radio
     p._gestisci(con_segnale(posizione(B, 45.95, 8.85), salti=2))
-    assert celle_di(p) == {m.Copertura.quadretto(45.9, 8.8): [1, -7.5, -7.5, -110, 1, oggi(p)],
-                           m.Copertura.quadretto(45.95, 8.85): [0, None, None, None, 1, oggi(p)]}
+    assert celle_di(p) == {m.Copertura.quadretto(45.9, 8.8): [1, -7.5, -7.5, -110, 1, oggi(p), {}],
+                           m.Copertura.quadretto(45.95, 8.85): [0, None, None, None, 1, oggi(p), {}]}
 
 
 def test_il_ponte_non_annota_quello_che_non_e_una_misura(ponte):
@@ -154,7 +175,7 @@ def test_anche_le_posizioni_di_atak(ponte):
     p = ponte()
     p._gestisci(con_segnale(pacchetto(A, 78, golden("pli_full")), snr=2.25, rssi=-80))
     [(chiave, valori)] = celle_di(p).items()
-    assert valori == [1, 2.2, 2.25, -80, 0, oggi(p)]
+    assert valori == [1, 2.2, 2.25, -80, 0, oggi(p), {}]
     ev = p.tak.posizioni[-1][1]
     import xml.etree.ElementTree as ET
     pt = ET.fromstring(ev).find("point")
@@ -213,3 +234,105 @@ def test_il_ponte_salva_la_copertura(ponte, tmp_path):
     p.manutenzione()
     assert json.loads((tmp_path / "copertura.json").read_text())["celle"][0][2] == 1
     assert os.stat(tmp_path / "copertura.json").st_mode & 0o077 == 0
+
+
+# ---- 1.15.0: le radio davvero della squadra e i ripetitori fissi ----
+
+R = 0x3333CCCC          # il ripetitore (es. ThinkNode M6 a energia solare)
+
+
+def ripetitore(p, ruolo="ROUTER", fissa=False, lat=45.95, lon=8.75):
+    """Il ripetitore si presenta sul canale della squadra: nome, ruolo e posizione."""
+    from test_inventario import pacchetto as con_dati, utente
+    p._gestisci(con_dati(R, m.PORTA_NODEINFO, utente("Ripetitore Campo dei Fiori", "RCDF", "THINKNODE_M6", ruolo)))
+    pos = posizione(R, lat, lon)
+    if fissa:
+        pos["decoded"]["position"]["locationSource"] = "LOC_MANUAL"
+    p._gestisci(con_segnale(pos, snr=-6.0, rssi=-104))
+
+
+def test_registro_delle_radio_della_squadra(tmp_path, caplog):
+    f = tmp_path / "radio-squadra.json"
+    r = m.RadioSquadra(str(f))
+    ora = time.time()
+    r.segna(0x1234ABCD, ora - 10)
+    r.segna(0x1234ABCD, ora - 100)          # piu' vecchio: non torna indietro
+    assert 0x1234ABCD in r and 0x99999999 not in r and r.radio[0x1234ABCD] == ora - 10
+    r.salva(subito=True)
+    assert oct(f.stat().st_mode)[-3:] == "600"
+    d = json.loads(f.read_text())
+    assert d == {"formato": 1, "radio": {"!1234abcd": round(ora - 10)}}
+    d["radio"]["!0000000a"] = ora - 100 * 86400          # di tre mesi fa: esce
+    d["radio"]["cattivo"] = ora
+    f.write_text(json.dumps(d))
+    assert set(m.RadioSquadra(str(f)).radio) == {0x1234ABCD}
+    f.write_text("[")
+    assert m.RadioSquadra(str(f)).radio == {} and "non valido" in caplog.text
+
+
+def test_entra_nel_registro_solo_chi_trasmette_sul_canale(ponte):
+    p = ponte()
+    p._gestisci(posizione(B, 45.9, 8.8))                                  # canale della squadra
+    p._gestisci(posizione(0x5555EEEE, 45.9, 8.8, canale=0))               # canale pubblico
+    from test_inventario import pacchetto as con_dati, utente
+    p._gestisci(con_dati(0x6666FFFF, m.PORTA_NODEINFO, utente("Sconosciuto", "SCON"), canale=0,
+                         pkiEncrypted=True))                               # messaggio diretto cifrato
+    assert B in p.squadra and 0x5555EEEE not in p.squadra and 0x6666FFFF not in p.squadra
+
+
+def test_ripetitore_fisso_per_ruolo_o_posizione_impostata(ponte):
+    p = ponte()
+    ripetitore(p, ruolo="ROUTER")
+    v = {r["id"]: r for r in p.istantanea()["radio_rete"]}["!3333cccc"]
+    assert v["fisso"] is True and v["posizione_fissa"] is False and "lat" not in v, "la posizione non esce qui"
+    p = ponte()
+    ripetitore(p, ruolo="CLIENT", fissa=True)
+    v = {r["id"]: r for r in p.istantanea()["radio_rete"]}["!3333cccc"]
+    assert v["fisso"] is True and v["posizione_fissa"] is True
+    p = ponte()
+    ripetitore(p, ruolo="CLIENT")
+    assert {r["id"]: r for r in p.istantanea()["radio_rete"]}["!3333cccc"]["fisso"] is False
+
+
+def test_copertura_attraverso_il_ripetitore(ponte):
+    """Un salto dal ripetitore fisso: il quadretto conta per lui. Due salti, o un ripetitore non fisso: tramite
+    altre radio. Ogni pacchetto ripetuto dice anche che il ripetitore e' acceso."""
+    p = ponte()
+    ripetitore(p)
+    da_r = con_segnale(posizione(B, 46.0, 8.7), salti=1)
+    da_r["relayNode"] = R & 0xFF
+    p._gestisci(da_r)
+    due = con_segnale(posizione(B, 46.01, 8.7), salti=2)
+    due["relayNode"] = R & 0xFF
+    p._gestisci(due)
+    ignoto = con_segnale(posizione(B, 46.02, 8.7), salti=1)
+    ignoto["relayNode"] = 0x77
+    p._gestisci(ignoto)
+    celle = celle_di(p)
+    assert celle[m.Copertura.quadretto(46.0, 8.7)][4:] == [0, oggi(p), {"!3333cccc": 1}]
+    assert celle[m.Copertura.quadretto(46.01, 8.7)][4:] == [1, oggi(p), {}], "due salti: non si sa da dove"
+    assert celle[m.Copertura.quadretto(46.02, 8.7)][4:] == [1, oggi(p), {}], "ripetuta da una radio sconosciuta"
+    v = {r["id"]: r for r in p.istantanea()["radio_rete"]}["!3333cccc"]
+    assert v["ripetuti"] == 2 and v["ultimo_ripetuto"] >= time.time() - 5, "l'ultimo salto era il suo"
+    d = p.copertura_per_la_pagina()
+    assert d["ripetitori"] == [{"id": "!3333cccc", "nome": "Ripetitore Campo dei Fiori", "nome_breve": "RCDF",
+                                "lat": 45.95, "lon": 8.75}]
+    assert d["formato"] == 2
+
+
+def test_byte_del_ripetitore_ambiguo_o_radio_mobile(ponte):
+    p = ponte()
+    ripetitore(p)
+    from test_inventario import pacchetto as con_dati, utente
+    p._gestisci(con_dati(0x4444DDCC, m.PORTA_NODEINFO, utente("Stesso ultimo byte", "SUB")))
+    ambiguo = con_segnale(posizione(B, 46.0, 8.7), salti=1)
+    ambiguo["relayNode"] = 0xCC
+    p._gestisci(ambiguo)
+    assert celle_di(p)[m.Copertura.quadretto(46.0, 8.7)][4:] == [1, oggi(p), {}], "due radio finiscono con CC"
+    p = ponte()
+    ripetitore(p, ruolo="CLIENT")                                          # una radio qualsiasi, non fissa
+    mobile = con_segnale(posizione(B, 46.0, 8.7), salti=1)
+    mobile["relayNode"] = R & 0xFF
+    p._gestisci(mobile)
+    assert celle_di(p)[m.Copertura.quadretto(46.0, 8.7)][4:] == [1, oggi(p), {}]
+    assert p.copertura_per_la_pagina()["ripetitori"] == [], "la posizione di una radio mobile non esce"
