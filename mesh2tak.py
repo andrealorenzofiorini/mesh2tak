@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-VERSIONE = "1.10.0"
+VERSIONE = "1.11.0"
 CONFIG_PREDEFINITA = "/etc/mesh2tak/mesh2tak.conf"
 
 log = logging.getLogger("mesh2tak")
@@ -1299,6 +1299,86 @@ class CodaRadio:
             self._voci.append(v)
 
 
+RE_ID_RADIO = re.compile(r"^![0-9a-f]{8}$")
+RE_VERSIONE_ICONE = re.compile(r"^[0-9a-f]{16}$")
+RE_PERCORSO_ICONA = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z][A-Za-z0-9_-]{0,39}/"
+                               r"[A-Za-z0-9][A-Za-z0-9_-]{0,59}\.png$")
+RE_TIPO_ICONA = re.compile(r"^a-f-[A-Z](-[A-Za-z]{1,3}){0,5}$")
+
+
+class IconeMappa:
+    """Le icone sulla mappa scelte dalla pagina della rete per le radio e per i ponti (dalla 1.11.0). Le manda
+    il server dal tunnel quando cambiano; restano su file per i riavvii del ponte."""
+
+    MASSIMO = 500
+
+    def __init__(self, percorso: Optional[str] = None):
+        self.percorso = percorso
+        self._lock = threading.Lock()
+        self.mappa: Dict[str, Tuple[str, str]] = {}      # "!7c3a91e2" -> (tipo CoT, figura dell'insieme di icone)
+        self.versione = ""
+        if percorso:
+            try:
+                with open(percorso, encoding="utf-8") as f:
+                    self.versione, self.mappa = self.valida(json.load(f))
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError) as e:
+                log.warning("Icone sulla mappa: %s non valido (%s), uso quelle predefinite", percorso, e)
+
+    @classmethod
+    def valida(cls, d) -> Tuple[str, Dict[str, Tuple[str, str]]]:
+        if not isinstance(d, dict) or d.get("formato") != 1:
+            raise ValueError("formato sconosciuto")
+        versione, icone = d.get("versione"), d.get("icone")
+        if not isinstance(versione, str) or not RE_VERSIONE_ICONE.match(versione) or not isinstance(icone, dict):
+            raise ValueError("versione o elenco non validi")
+        if len(icone) > cls.MASSIMO:
+            raise ValueError("troppe radio")
+        mappa = {}
+        for radio, v in icone.items():
+            if not isinstance(radio, str) or not RE_ID_RADIO.match(radio) or not isinstance(v, dict):
+                raise ValueError("radio non valida")
+            tipo, percorso = v.get("tipo"), v.get("percorso")
+            if not isinstance(tipo, str) or not RE_TIPO_ICONA.match(tipo):
+                raise ValueError(f"tipo non valido per {radio}")
+            if not isinstance(percorso, str) or not RE_PERCORSO_ICONA.match(percorso):
+                raise ValueError(f"icona non valida per {radio}")
+            mappa[radio] = (tipo, percorso)
+        return versione, mappa
+
+    def imposta(self, corpo: Optional[bytes]) -> Tuple[int, dict, Set[str]]:
+        """(stato HTTP, risposta, radio che cambiano icona)."""
+        try:
+            d = json.loads((corpo or b"").decode("utf-8"))
+            versione, mappa = self.valida(d)
+        except (ValueError, UnicodeDecodeError) as e:
+            return 400, {"errore": f"icone non valide: {e}"}, set()
+        with self._lock:
+            cambiate = {r for r in set(mappa) | set(self.mappa) if mappa.get(r) != self.mappa.get(r)}
+            self.versione, self.mappa = versione, mappa
+            if self.percorso:
+                try:
+                    nuovo = self.percorso + ".nuovo"
+                    with open(os.open(nuovo, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644), "w",
+                              encoding="utf-8") as f:
+                        json.dump(d, f)
+                    os.replace(nuovo, self.percorso)
+                except OSError as e:
+                    log.warning("Icone sulla mappa: non riesco a salvarle (%s): valgono fino al riavvio", e)
+        log.info("Icone sulla mappa dalla pagina della rete: %d radio con un'icona scelta (%d cambiate)",
+                 len(mappa), len(cambiate))
+        return 200, {"versione": versione, "numero": len(mappa)}, cambiate
+
+    def di(self, radio: str) -> Optional[Tuple[str, str]]:
+        with self._lock:
+            return self.mappa.get(radio)
+
+    def stato(self) -> dict:
+        with self._lock:
+            return {"versione": self.versione, "numero": len(self.mappa)}
+
+
 class Ponte:
     # Attese casuali prima di un inoltro, per lasciar fare a un altro ponte che l'ha gia' in mano
     ATTESA_VERSO_SERVER = (0.5, 2.5)
@@ -1325,6 +1405,7 @@ class Ponte:
         self._lock = threading.RLock()
         self._ultimo_riepilogo = time.time()
         self.nota_ponte: Optional[str] = None   # es. "IN PAUSA: ..." in testa alle note del ponte
+        self.icone = IconeMappa()               # dalla 1.11.0: icone scelte dalla pagina della rete (main: su file)
         # ultimo nodo visto (resta anche da scollegati, per la pagina della rete)
         self.nodo_nome = ""
         self.nodo_nome_breve = ""
@@ -2120,15 +2201,34 @@ class Ponte:
         if not ponte and salti is not None:
             parti.append("ricevuta direttamente" if salti == 0 else
                          ("1 salto radio" if salti == 1 else f"{salti} salti radio"))
+        tipo = "a-f-G-I" if fisso else (f.tipo_cot or "a-f-G-U-C")
+        icona = self.cfg.icona_ponte if ponte else None
+        squadra = None if fisso else (f.squadra or self.cfg.squadra)
+        ruolo = None if fisso else (f.ruolo or "Team Member")
+        scelta = self.icone.di(id_radio)
+        if scelta:
+            # icona scelta dalla pagina della rete: al posto del colore della squadra (TAK Aware), e un tipo che
+            # da' un simbolo sensato a chi non ha l'insieme di icone
+            tipo, icona = scelta
+            squadra = ruolo = None
         xml = cot_evento(
-            uid=f.uid, tipo="a-f-G-I" if fisso else (f.tipo_cot or "a-f-G-U-C"), how=f.how,
+            uid=f.uid, tipo=tipo, how=f.how,
             lat=f.lat, lon=f.lon, hae=f.hae, ce=f.ce, t_evento=t_evento, stale=stale, callsign=nome,
-            squadra=None if fisso else (f.squadra or self.cfg.squadra),
-            ruolo=None if fisso else (f.ruolo or "Team Member"),
+            squadra=squadra, ruolo=ruolo,
             batteria=None if fisso else b, rotta=f.rotta, velocita=f.velocita,
-            geosrc=f.geosrc, altsrc=f.altsrc, note=" · ".join(parti), segno=segno,
-            icona=self.cfg.icona_ponte if ponte else None)
+            geosrc=f.geosrc, altsrc=f.altsrc, note=" · ".join(parti), segno=segno, icona=icona)
         return nome, xml
+
+    def imposta_icone(self, corpo: Optional[bytes]) -> Tuple[int, dict]:
+        """Icone arrivate dalla pagina della rete: le radio che cambiano icona si rimandano al prossimo giro di
+        manutenzione (pochi secondi), senza aspettare i 2 minuti della ripetizione."""
+        stato, risposta, cambiate = self.icone.imposta(corpo)
+        if cambiate:
+            with self._lock:
+                for st in self.stato.values():
+                    if f"!{st.num:08x}" in cambiate:
+                        st.ultimo_invio = 0.0
+        return stato, risposta
 
     def annuncia_pausa(self, nota: str) -> None:
         """Prima di lasciare il nodo alla pagina di gestione: chi guarda la mappa lo legge nel ponte."""
@@ -2325,6 +2425,7 @@ class Gestione:
         self.nodo_porta = u.port or (443 if self.nodo_https else 80)
         self.fornisci_stato: Optional[Callable[[], dict]] = None   # /mesh2tak/stato.json
         self.radio: Optional["GestioneRadio"] = None                # /mesh2tak/radio/... (dalla 1.10.0)
+        self.icone: Optional[Callable[[Optional[bytes]], Tuple[int, dict]]] = None   # /mesh2tak/icone (1.11.0)
         self.chi = ""                    # chi tiene il nodo nella pausa in corso
         self._ctx_nodo = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self._ctx_nodo.check_hostname = False
@@ -2440,6 +2541,9 @@ class Gestione:
             else:
                 self._rispondi(h, 405, "Solo lettura")
             return
+        if percorso == "/mesh2tak/icone":   # icone sulla mappa scelte dalla pagina della rete (dalla 1.11.0)
+            self._servi_icone(h)
+            return
         if percorso.startswith("/mesh2tak/radio/"):   # radio della squadra gestite dalla pagina della rete
             try:
                 troppo = int(h.headers.get("Content-Length") or 0) > 16384
@@ -2484,6 +2588,36 @@ class Gestione:
         except ValueError:
             lunghezza = 0
         return h.rfile.read(lunghezza) if lunghezza > 0 else None
+
+    def _servi_icone(self, h) -> None:
+        """Le manda il servizio della pagina della rete dal tunnel: si accettano solo da li' (indirizzo del
+        Raspberry stesso) e con l'intestazione della rete, mai dal Wi-Fi."""
+        try:
+            lunghezza = int(h.headers.get("Content-Length") or 0)
+        except ValueError:
+            lunghezza = -1
+        if lunghezza < 0 or lunghezza > 131072:
+            if 0 < lunghezza <= 1 << 20:
+                resta = lunghezza                # letta e buttata: la risposta arriva senza chiudere a meta'
+                while resta > 0:
+                    pezzo = h.rfile.read(min(resta, 65536))
+                    if not pezzo:
+                        break
+                    resta -= len(pezzo)
+            h.close_connection = True
+            stato, dati = 413, {"errore": "richiesta troppo grande"}
+        else:
+            corpo = h.rfile.read(lunghezza) if lunghezza else None
+            if h.command != "POST":
+                stato, dati = 405, {"errore": "solo POST"}
+            elif h.client_address[0] not in ("127.0.0.1", "::1") or h.headers.get("X-Mesh2tak") != "1":
+                stato, dati = 403, {"errore": "le icone arrivano solo dalla pagina della rete"}
+            elif self.icone is None:
+                stato, dati = 404, {"errore": "icone non attive su questo ponte"}
+            else:
+                stato, dati = self.icone(corpo)
+        self._rispondi(h, stato, json.dumps(dati, ensure_ascii=False, separators=(",", ":")),
+                       "application/json; charset=utf-8")
 
     def _stato(self, h) -> None:
         try:
@@ -4025,6 +4159,7 @@ def stato_per_la_rete(cfg: Config, ponte: Ponte, tak: ClienteTAK, gestione: Gest
         "accesso": accesso.stato() if accesso is not None else None,
         "sistema": sistema.stato() if sistema is not None else None,
         "certificato": certificato_tak(cfg.certificato),
+        "icone": ponte.icone.stato(),
     })
     return s
 
@@ -4189,6 +4324,7 @@ def main(argv=None) -> int:
         log.error("Certificato o chiave del ponte non leggibili (%s): rifai l'installazione", e)
         return 78
     ponte = Ponte(cfg, tak, sdk)
+    ponte.icone = IconeMappa(os.path.join(cfg.accesso_cartella_stato, "icone.json"))
     tak.su_evento = ponte.su_evento_tak
     if os.environ.get("MESH2TAK_ATTESE"):  # solo per le prove automatiche: attese piu' brevi
         f = float(os.environ["MESH2TAK_ATTESE"])
@@ -4223,6 +4359,7 @@ def main(argv=None) -> int:
         try:
             gestione = Gestione(cfg, pausa, ponte.tz)
             gestione.radio = GestioneRadio(ponte)
+            gestione.icone = ponte.imposta_icone
             gestione.avvia()
             if gestione.nodo_pagina:
                 dove = [f"pagina nel browser sulla porta {cfg.gestione_porta_pagina}"] if cfg.gestione_porta_pagina else []

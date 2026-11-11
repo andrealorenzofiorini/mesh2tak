@@ -138,6 +138,29 @@ dialog h2 { font: 700 1.6rem/1.15 var(--titoli); margin: 0 0 0.8rem; }
 dialog p, dialog li { margin: 0.5rem 0; }
 dialog ul { padding-left: 1.2rem; }
 .pulsanti { display: flex; gap: 0.8rem; justify-content: flex-end; margin-top: 1.4rem; flex-wrap: wrap; }
+#icone { max-width: 46rem; width: calc(100% - 2rem); }
+#icone h3 { font: 600 0.95rem/1.3 var(--testo); color: var(--ardesia); margin: 1.1rem 0 0.45rem; }
+.griglia-icone { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.2rem, 1fr)); gap: 0.5rem; }
+.tessera-icona { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 0.65rem 0.4rem 0.55rem;
+  border: 2px solid var(--nebbia); border-radius: 6px; background: transparent; color: var(--granito);
+  font: 500 0.85rem/1.2 var(--testo); text-align: center; cursor: pointer; }
+.tessera-icona:hover { border-color: var(--lago); }
+.tessera-icona[aria-pressed="true"] { border-color: var(--lago); background: var(--lago-tenue); font-weight: 700; }
+.tessera-icona[disabled] { cursor: wait; }
+/* le figure di ATAK sono disegnate per lo sfondo chiaro della mappa: sempre su un fondo bianco */
+.figura-icona { width: 36px; height: 36px; padding: 2px; border-radius: 5px; background: #fff; object-fit: contain; flex: none; }
+.figura-vuota { width: 36px; height: 36px; border-radius: 5px; border: 2px dashed var(--nebbia); flex: none; }
+.figura-squadra { width: 36px; height: 36px; flex: none; border-radius: 50%; background: radial-gradient(circle, #2fa8c8 0 9px, #fff 9px 11px, transparent 11px); }
+.icona-mappa { display: inline-flex; align-items: center; gap: 0.45rem; }
+.icona-mappa .figura-icona { width: 24px; height: 24px; padding: 1px; }
+.voce .icona-mappa { margin-top: 0.45rem; }
+#icone .piede-icone { position: sticky; bottom: 0; display: flex; gap: 0.6rem 1.2rem; align-items: center;
+  justify-content: space-between; margin: 1.2rem 0 0; padding: 0.8rem 1rem; border-radius: 6px;
+  background: var(--carta); border: 1px solid var(--nebbia); box-shadow: 0 -8px 16px var(--carta); }
+#icone .piede-icone p { margin: 0.15rem 0; }
+#icone .nota { color: var(--ardesia); font-size: 0.9rem; }
+#icone .esito { font-weight: 600; }
+#icone .esito:empty { display: none; }
 
 .novita { margin: 1.8rem 0 0.5rem; padding: 1.4rem 1.5rem 1.5rem; background: var(--carta); border: 2px solid var(--lago); border-radius: 10px; }
 .novita h2, .aggiungi h2 { font: 700 1.7rem/1.1 var(--titoli); margin: 0 0 0.3rem; }
@@ -324,6 +347,19 @@ dialog ul { padding-left: 1.2rem; }
 
 <dialog id="radio" aria-labelledby="radio-titolo">
   <div class="gestione-radio" id="radio-dentro"></div>
+</dialog>
+
+<dialog id="icone" aria-labelledby="icone-titolo">
+  <h2 id="icone-titolo">Icona sulla mappa</h2>
+  <p id="icone-spiega"></p>
+  <div id="icone-scelte"></div>
+  <div class="piede-icone">
+    <div>
+      <p class="esito" id="icone-esito" aria-live="polite"></p>
+      <p class="nota" id="icone-ponti"></p>
+    </div>
+    <button class="bottone secondario" type="button" id="icone-chiudi">Chiudi</button>
+  </div>
 </dialog>
 
 <dialog id="riprova" aria-labelledby="riprova-titolo">
@@ -732,6 +768,7 @@ function disegnaPonte(p) {
     b.addEventListener("click", () => chiediConferma(p, d));
     azione.append(b, el("small", null, "Mentre è aperta il ponte è in pausa"));
   }
+  if (d && d.id_nodo && iconeAttive()) azione.append(bottoneIcona(d.id_nodo, "ponte " + p.nome, true));
   if (gestione) {
     const t = el("button", "togli", "Togli dalla rete");
     t.type = "button";
@@ -2021,6 +2058,7 @@ function disegnaVoce(v) {
     g.addEventListener("click", () => apriGestioneRadio(v));
     ponti.append(g);
   }
+  if (iconeAttive()) ponti.append(bottoneIcona(v.id, v.ponte ? "ponte " + v.ponte : (v.nome || "radio " + v.id), !!v.ponte));
   li.append(nome, bat, quando, ponti);
   return li;
 }
@@ -2171,8 +2209,146 @@ document.getElementById("aggiorna-conferma").addEventListener("click", async () 
   await giro();
 });
 
+// ---- icone sulla mappa (dalla 1.11.0): per ogni radio e ogni ponte, scelte qui e consegnate ai ponti dal server
+let iconeMappa = null, caricoIcone = false, iconaAperta = null;
+
+async function caricaIconeMappa() {
+  if (iconeMappa || caricoIcone) return;
+  caricoIcone = true;
+  try {
+    const r = await fetch("icone-mappa.json", {cache: "no-store", redirect: "manual", credentials: "same-origin"});
+    if (r.ok) {
+      const d = await r.json();
+      if (d && Array.isArray(d.icone)) iconeMappa = {lista: d.icone, per: new Map(d.icone.map(x => [x.chiave, x]))};
+    }
+  } catch (e) {
+    // server di prima della 1.11.0: la scelta delle icone non c'e'
+  } finally {
+    caricoIcone = false;
+  }
+}
+
+function iconeAttive() {
+  return !!(iconeMappa && gestione && gestione.icone && gestione.icone.scelte);
+}
+
+function sceltaIcona(id) {
+  const s = iconeAttive() ? gestione.icone.scelte[id] : null;
+  return s && iconeMappa.per.get(s.icona) ? s : null;
+}
+
+function figuraIcona(voce) {
+  if (voce && voce.pallino) return el("span", "figura-squadra");     // predefinita delle radio: colore della squadra
+  if (!voce || !voce.figura) return el("span", "figura-vuota");
+  const img = el("img", "figura-icona");
+  img.src = voce.figura;
+  img.alt = "";
+  return img;
+}
+
+function bottoneIcona(id, chi, ponte) {
+  const s = sceltaIcona(id);
+  const voce = s ? iconeMappa.per.get(s.icona) : (ponte ? iconeMappa.per.get("traliccio") : null);
+  const b = el("button", "bottone secondario piccolo icona-mappa");
+  b.type = "button";
+  if (voce && voce.figura) b.append(figuraIcona(voce));
+  b.append(document.createTextNode(s ? "Icona: " + voce.nome : "Icona sulla mappa"));
+  b.addEventListener("click", () => apriIcone(id, chi, ponte));
+  return b;
+}
+
+function apriIcone(id, chi, ponte) {
+  iconaAperta = {id, chi, ponte};
+  document.getElementById("icone-titolo").textContent = "Icona di " + chi + " sulla mappa";
+  document.getElementById("icone-esito").textContent = "";
+  document.getElementById("icone-spiega").textContent = "Come compare " + (ponte ? "il ponte" : "la radio") +
+    " su ATAK e TAK Aware. Le app che non hanno queste icone mostrano il simbolo militare più vicino" +
+    (ponte ? "." : "; le radio abbinate a un telefono con l'app TAK compaiono come le mostra l'app.");
+  disegnaIcone();
+  document.getElementById("icone").showModal();
+}
+
+function tesseraIcona(chiave, nome, voce, attuale) {
+  const b = el("button", "tessera-icona");
+  b.type = "button";
+  b.setAttribute("aria-pressed", String(chiave === attuale));
+  b.append(figuraIcona(voce), el("span", null, nome));
+  b.addEventListener("click", () => scegliIcona(chiave));
+  return b;
+}
+
+function disegnaIcone() {
+  const a = iconaAperta;
+  if (!a || !iconeAttive()) return;
+  const s = sceltaIcona(a.id);
+  const attuale = s ? s.icona : "";
+  const zona = [];
+  const prima = el("div", "griglia-icone");
+  prima.append(tesseraIcona("", a.ponte ? "Traliccio (predefinita)" : "Predefinita",
+                            a.ponte ? iconeMappa.per.get("traliccio") : {pallino: true}, attuale));
+  zona.push(prima);
+  const gruppi = new Map();
+  for (const voce of iconeMappa.lista) {
+    if (a.ponte && voce.chiave === "traliccio") continue;      // e' gia' la predefinita
+    if (!gruppi.has(voce.gruppo)) gruppi.set(voce.gruppo, []);
+    gruppi.get(voce.gruppo).push(voce);
+  }
+  for (const [gruppo, voci] of gruppi) {
+    const griglia = el("div", "griglia-icone");
+    voci.forEach(voce => griglia.append(tesseraIcona(voce.chiave, voce.nome, voce, attuale)));
+    zona.push(el("h3", null, gruppo), griglia);
+  }
+  document.getElementById("icone-scelte").replaceChildren(...zona);
+  disegnaIconePonti();
+}
+
+function disegnaIconePonti() {
+  const p = (gestione && gestione.icone && gestione.icone.ponti) || {};
+  const gia = [], attesa = [], vecchi = [];
+  for (const q of elenco) {
+    const s = p[q.nome];
+    (s === "aggiornato" ? gia : (s === "vecchio" ? vecchi : attesa)).push(q.nome);
+  }
+  const parti = [];
+  if (gia.length) parti.push("Le scelte di questa pagina sono già in uso su: " + gia.join(", ") + ".");
+  if (attesa.length) parti.push("Arrivano entro un paio di minuti a: " + attesa.join(", ") + " (se acces" +
+                                (attesa.length === 1 ? "o" : "i") + ").");
+  if (vecchi.length) parti.push("Da aggiornare alla versione " + versione + " per usarle: " + vecchi.join(", ") + ".");
+  document.getElementById("icone-ponti").textContent = parti.join(" ");
+}
+
+async function scegliIcona(chiave) {
+  const a = iconaAperta;
+  if (!a) return;
+  const esito = document.getElementById("icone-esito");
+  document.querySelectorAll("#icone-scelte button").forEach(x => { x.disabled = true; });
+  esito.textContent = "Salvo...";
+  try {
+    const d = await manda("icona", {radio: a.id, icona: chiave});
+    if (gestione && gestione.icone) {     // la copia della pagina, finche' non arriva lo stato nuovo
+      if (chiave) gestione.icone.scelte[a.id] = {icona: chiave, da: gestione.utente, quando: Date.now() / 1000};
+      else delete gestione.icone.scelte[a.id];
+      if (d.versione && d.versione !== gestione.icone.versione) {
+        gestione.icone.versione = d.versione;
+        for (const n of Object.keys(gestione.icone.ponti || {})) {
+          if (gestione.icone.ponti[n] === "aggiornato") gestione.icone.ponti[n] = "attesa";
+        }
+      }
+    }
+    esito.textContent = d.messaggio || "Salvata.";
+    disegna();
+  } catch (e) {
+    esito.textContent = "Non salvata: " + e.message;
+  }
+  disegnaIcone();
+}
+
+document.getElementById("icone-chiudi").addEventListener("click", () => document.getElementById("icone").close());
+document.getElementById("icone").addEventListener("close", () => { iconaAperta = null; });
+
 async function giro() {
   const g = aggiornaGestione();
+  const ic = caricaIconeMappa();
   erroreGiro = "";
   try {
     await aggiornaElenco();
@@ -2181,7 +2357,9 @@ async function giro() {
     erroreGiro = e.message;
   }
   await g;
+  await ic;
   disegna();
+  if (iconaAperta) disegnaIconePonti();
 }
 
 giro();

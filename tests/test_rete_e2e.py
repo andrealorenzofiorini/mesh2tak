@@ -39,6 +39,9 @@ NOMI = [f"meshtastic.{DOMINIO}", f"meshtastic-casa.{DOMINIO}", f"meshtastic-altr
         f"meshtastic-velate.{DOMINIO}"]
 REPO = "andrealorenzofiorini/mesh2tak"
 FILE_RELEASE = ("installa-ponte-meshtastic.sh", "rete-meshtastic.sh", "SHA256SUMS")
+# figura finta per il catalogo di icone di infra-TAK (un quadratino PNG valido)
+FIGURA_CANE = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==")
+CANE = "6d781afb-89a6-4c07-b2b9-a89748b6a38f/Leisure/dog.png"
 
 pytestmark = pytest.mark.skipif(not (os.path.exists(SSHD) and os.path.exists(CADDY) and shutil.which("ssh")),
                                 reason="servono sshd, ssh e caddy di prova")
@@ -92,6 +95,15 @@ class Rete:
         (r / "opt/infratak/.config/settings.json").write_text(json.dumps(
             {"fqdn": DOMINIO, "server_ip": "127.0.0.1", "ssl_mode": "letsencrypt", "caddy_https_port": 8443,
              "guarddog_alert_email": "info@prova.lan", "console_port": self.console.server_address[1]}))
+        # catalogo delle icone di infra-TAK (1.11.0): figure finte, o quello vero con RETE_PROVA_CATALOGO_ICONE
+        (r / "opt/infratak/nodered").mkdir()
+        if os.environ.get("RETE_PROVA_CATALOGO_ICONE"):
+            shutil.copyfile(os.environ["RETE_PROVA_CATALOGO_ICONE"], r / "opt/infratak/nodered/icon-catalog.json")
+        else:
+            (r / "opt/infratak/nodered/icon-catalog.json").write_text(json.dumps({"OSM": {
+                "uid": "6d781afb-89a6-4c07-b2b9-a89748b6a38f", "groups": {
+                    "Leisure": [{"f": "dog.png", "b": base64.b64encode(FIGURA_CANE).decode()}],
+                    "Landmarks": [{"f": "tower.png", "b": base64.b64encode(FIGURA_CANE).decode()}]}}}))
         (r / "root/authentik/.env").write_text(f"AUTHENTIK_BOOTSTRAP_TOKEN={TOKEN}\n")
         (r / "etc/caddy/Caddyfile").write_text(
             f"{{\n\thttp_port 18080\n\thttps_port 8443\n\tlocal_certs\n\tskip_install_trust\n\tadmin localhost:2999\n"
@@ -157,6 +169,8 @@ class Rete:
         self.g = m.Gestione(self.cfg, self.pausa)
         # lo stato vero del ponte (stessa funzione del servizio), con un paio di radio sentite
         self.ponte = m.Ponte(self.cfg, tak=None, sdk=None)
+        self.ponte.icone = m.IconeMappa(str(cartella / "pi" / "icone.json"))
+        self.g.icone = self.ponte.imposta_icone
         self.ponte.mio_num, self.ponte.nodo_nome, self.ponte.nodo_nome_breve = 0x11111111, "Ponte di prova", "PROV"
         self.ponte.canali = {0: m.Canale(0, "CNSAS-VA", True), 1: m.Canale(1, "Public", False)}
         self.ponte.canali_ok = {0}
@@ -719,6 +733,54 @@ def test_6d_radio_gestite_dal_browser(rete):
     assert r["sceltaChiave0"].startswith("Lascia la chiave com'è (privata, uguale a quella del canale")
     assert base64.b64encode(bytes(range(32))).decode() not in r["testoFinestra"]
     assert r["chiusa"]
+
+
+def test_6e_icona_scelta_sulla_pagina_arriva_al_ponte(rete):
+    """1.11.0: l'icona scelta sulla pagina della rete arriva al ponte dal suo tunnel (il servizio, al giro della
+    sorveglianza) e il ponte la usa per quella radio; figure ed elenco dalla pagina, dietro Authentik."""
+    codice, r = rete.api("POST", "/api/icona", {"radio": "!7c3a91e2", "icona": "cinofilo"})
+    assert codice == 200, r
+    assert aspetta(lambda: rete.ponte.icone.di("!7c3a91e2") == ("a-f-G-U-C-I", CANE), 30)
+    assert aspetta(lambda: rete.stato_api()["icone"]["ponti"].get("casa") == "aggiornato", 30)
+    st = rete.stato_api()["icone"]
+    assert st["scelte"]["!7c3a91e2"]["icona"] == "cinofilo" and st["scelte"]["!7c3a91e2"]["da"] == "andrea"
+    stato, corpo, _ = rete.chiedi(f"{RETE}/stato/casa.json")
+    assert json.loads(corpo)["icone"] == {"versione": st["versione"], "numero": 1}
+    assert json.loads((rete.c / "pi" / "icone.json").read_text())["versione"] == st["versione"], "tenute su file"
+    # elenco e figure per la pagina: solo con Authentik
+    stato, corpo, _ = rete.chiedi(f"{RETE}/icone-mappa.json")
+    elenco = {x["chiave"]: x for x in json.loads(corpo)["icone"]}
+    assert stato == 200 and elenco["cinofilo"]["figura"] == "icone/cinofilo.png" and elenco["sci"]["figura"] == ""
+    stato, figura, _ = rete.chiedi(f"{RETE}/icone/cinofilo.png")
+    assert stato == 200 and figura == FIGURA_CANE
+    assert rete.chiedi(f"{RETE}/icone/cinofilo.png", cookie=None)[0] == 302
+    # le icone si scelgono solo dalla pagina (Authentik e intestazione), non da un altro sito
+    assert rete.api("POST", "/api/icona", {"radio": "!7c3a91e2", "icona": "sci"}, cookie=None)[0] == 302
+    assert rete.api("POST", "/api/icona", {"radio": "!7c3a91e2", "icona": "sci"}, intestazioni={"X-Mesh2tak": ""})[0] == 403
+    # tornata la predefinita: anche il ponte torna a quella
+    assert rete.api("POST", "/api/icona", {"radio": "!7c3a91e2", "icona": ""})[0] == 200
+    assert aspetta(lambda: rete.ponte.icone.di("!7c3a91e2") is None, 30)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
+def test_6f_icona_scelta_dal_browser(rete):
+    foto = os.environ.get("RETE_FOTO", "")
+    senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+    p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_icone.js"), f"{RETE}/",
+                        foto.replace(".png", "-icone.png") if foto else ""], capture_output=True, text=True,
+                       timeout=180, env=senza_proxy)
+    r = json.loads(p.stdout.strip().splitlines()[-1])
+    assert "errore" not in r, r
+    assert r["errori"] == [] and r["finestre"] == [], r["errori"]
+    assert r["titolo"] == "Icona di 07-BIANCHI sulla mappa"
+    assert r["gruppi"][:2] == ["Persone", "Mezzi"] and "Unità cinofila" in r["tessere"]
+    assert r["sceltaPrima"] == "Predefinita"
+    assert r["esito"].startswith("Icona salvata") and r["sceltaDopo"] == "Unità cinofila"
+    assert r["bottoneDopo"] == "Icona: Unità cinofila" and r["figuraNelBottone"].endswith("icone/cinofilo.png")
+    assert r["titoloPonte"] == "Icona di ponte casa sulla mappa" and r["predefinitaPonte"] == "Traliccio (predefinita)"
+    assert rete.stato_api()["icone"]["scelte"]["!7c3a91e2"]["icona"] == "cinofilo"
+    assert aspetta(lambda: rete.ponte.icone.di("!7c3a91e2") == ("a-f-G-U-C-I", CANE), 30)
+    rete.api("POST", "/api/icona", {"radio": "!7c3a91e2", "icona": ""})
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")

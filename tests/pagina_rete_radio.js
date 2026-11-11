@@ -20,7 +20,7 @@ const { chromium } = require('playwright');
              ordine: await p.$$eval('li.voce .nome b', x => x.map(e => e.textContent)),
              voci: await p.$$eval('li.voce', x => x.map(e => e.innerText)),
              visibili: [await p.isVisible('#vista-radio'), await p.isVisible('#vista-ponti')],
-             immagini: await p.$$eval('main img', x => x.length)};
+             immagini: await p.$$eval('main img:not(.figura-icona)', x => x.length)};
   await p.fill('#cerca-radio', 'bianchi');
   await p.evaluate(() => giro());
   await p.waitForTimeout(800);

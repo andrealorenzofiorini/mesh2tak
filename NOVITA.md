@@ -3,6 +3,17 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.11.0
+
+- Icona sulla mappa per ogni radio e ogni ponte, scelta dalla pagina della rete: "Icona sulla mappa" nella scheda
+  "Radio" e nella scheda di ogni ponte. Persone (soccorritore, squadra a piedi, sanitario, unità cinofila, sci,
+  bici), mezzi (auto, ambulanza, vigili del fuoco, moto, elicottero), basi con i simboli ICS (posto di comando,
+  base, campo, area di raccolta, elibase, piazzola), luoghi (traliccio, rifugio, bivacco, tenda, ospedale) e
+  pallini colorati.
+- Le icone sono quelle che ATAK e TAK Aware hanno di serie (insieme OSM, lo stesso del traliccio dei ponti): chi
+  non le ha vede il simbolo militare più vicino. La scelta vale per tutti i ponti: il server la manda a ognuno
+  dal suo tunnel, anche a quelli spenti appena tornano.
+
 ## 1.10.0
 
 - Ponti nuovi senza terminale: sulla pagina della rete si caricano una volta certificato e canale, poi per ogni

@@ -17,6 +17,6 @@ const { chromium } = require('playwright');
   if (foto) await p.screenshot({path: foto, fullPage: true});
   const testo = await p.innerText('main');
   const stato = await p.getAttribute('section.ponte', 'data-stato');
-  console.log(JSON.stringify({testo, stato, errori, finestre, immagini: await p.$$eval('main img', x => x.length)}));
+  console.log(JSON.stringify({testo, stato, errori, finestre, immagini: await p.$$eval('main img:not(.figura-icona)', x => x.length)}));
   await b.close();
 })().catch(e => { console.log(JSON.stringify({errore: String(e)})); process.exit(1); });

@@ -102,6 +102,47 @@ AVANZAMENTO_DIR = WEB_DIR + "/avanzamento"                   # lo scrive ogni po
 INVITI_DIR = SERVIZIO_DIR + "/inviti"                        # inviti preparati sulla pagina (del servizio)
 INSTALLAZIONI_DIR = SERVIZIO_DIR + "/installazioni"          # scheda e posizione scelte, per "Riprova"
 SCHEDE = ("usb", "waveshare", "meshadv", "meshadv-mini", "rak")
+# Icone sulla mappa (dalla 1.11.0): scelte dalla pagina per ogni radio e ogni ponte, consegnate ai ponti dal tunnel
+ICONE_SCELTE = SERVIZIO_DIR + "/icone.json"                  # chi ha quale icona (del servizio)
+ICONE_SITO = SITO_DIR + "/icone"                             # le figure per la pagina, prese da infra-TAK (root)
+ICONE_ELENCO = SITO_DIR + "/icone-mappa.json"                # l'elenco per la pagina (root)
+ICONE_MAX = 500
+# L'insieme di icone OSM che ATAK ha di serie e che TAK Aware porta con se' (lo stesso del traliccio dei ponti
+# dalla 1.3.2). Chi non lo ha (es. CloudTAK) mostra il simbolo militare del tipo accanto a ogni icona.
+ICONSET_OSM = "6d781afb-89a6-4c07-b2b9-a89748b6a38f"
+ICONE_MAPPA = (
+    # chiave, nome sulla pagina, gruppo, figura nell'insieme OSM, tipo CoT
+    ("soccorritore", "Soccorritore", "Persone", "General/people.png", "a-f-G-U-C-I"),
+    ("squadra", "Squadra a piedi", "Persone", "Misc/map_hiking.png", "a-f-G-U-C-I"),
+    ("sanitario", "Sanitario", "Persone", "General/health.png", "a-f-G-U-S-M"),
+    ("cinofilo", "Unità cinofila", "Persone", "Leisure/dog.png", "a-f-G-U-C-I"),
+    ("sci", "Sci", "Persone", "Sport/skiing.png", "a-f-G-U-C-I"),
+    ("bici", "Bici", "Persone", "Sport/mountain_bike.png", "a-f-G-U-C-I"),
+    ("auto", "Auto o fuoristrada", "Mezzi", "Transport/car.png", "a-f-G-E-V-C"),
+    ("ambulanza", "Ambulanza", "Mezzi", "Service/emergency.png", "a-f-G-U-S-M"),
+    ("vigili-fuoco", "Vigili del fuoco", "Mezzi", "Service/firebrigade.png", "a-f-G-E-V-C"),
+    ("moto", "Moto o quad", "Mezzi", "Transport/motorbike.png", "a-f-G-E-V-C"),
+    ("elicottero", "Elicottero", "Mezzi", "Transport/helipad.png", "a-f-A-C-H"),
+    ("posto-comando", "Posto di comando", "Basi (simboli ICS)", "Misc/IncidentCommandPost.png", "a-f-G-I"),
+    ("base", "Base", "Basi (simboli ICS)", "Misc/Base.png", "a-f-G-I"),
+    ("campo", "Campo", "Basi (simboli ICS)", "Misc/Camp.png", "a-f-G-I"),
+    ("raccolta", "Area di raccolta", "Basi (simboli ICS)", "Misc/StagingArea.png", "a-f-G-I"),
+    ("elibase", "Elibase", "Basi (simboli ICS)", "Misc/Helibase.png", "a-f-G-I"),
+    ("piazzola", "Piazzola elicottero", "Basi (simboli ICS)", "Misc/Helipad1.png", "a-f-G-I"),
+    ("traliccio", "Ripetitore o traliccio", "Luoghi", "Landmarks/tower.png", "a-f-G-I"),
+    ("rifugio", "Rifugio", "Luoghi", "Lodging/chalet.png", "a-f-G-I"),
+    ("bivacco", "Bivacco", "Luoghi", "Lodging/shelter-bw.png", "a-f-G-I"),
+    ("tenda", "Tenda", "Luoghi", "Lodging/camping.png", "a-f-G-I"),
+    ("ospedale", "Ospedale", "Luoghi", "Landmarks/hospital.png", "a-f-G-I"),
+    ("rosso", "Pallino rosso", "Colori", "Waypoints/wptred.png", "a-f-G-U-C"),
+    ("blu", "Pallino blu", "Colori", "Waypoints/wptblue.png", "a-f-G-U-C"),
+    ("verde", "Pallino verde", "Colori", "Waypoints/wptgreen.png", "a-f-G-U-C"),
+    ("arancione", "Pallino arancione", "Colori", "Waypoints/wptorange.png", "a-f-G-U-C"),
+    ("giallo", "Pallino giallo", "Colori", "Waypoints/wptyellow.png", "a-f-G-U-C"),
+)
+ICONE_PER_CHIAVE = {c: {"chiave": c, "nome": n, "gruppo": g, "percorso": f"{ICONSET_OSM}/{f}", "tipo": t}
+                    for c, n, g, f, t in ICONE_MAPPA}
+RE_ID_RADIO = re.compile(r"^![0-9a-f]{8}$")
 SSHD_DROPIN = "/etc/ssh/sshd_config.d/mesh2tak-ponti.conf"
 OPT_DIR = "/opt/mesh2tak-rete"
 OPT_SCRIPT = OPT_DIR + "/rete_meshtastic.py"
@@ -582,6 +623,68 @@ def scrivi_sito(imp: Impostazioni, reg: dict) -> None:
                                                   for n, p in sorted(reg["ponti"].items())]},
                                        ensure_ascii=False, indent=1) + "\n")
     scrivi_riassunto_nuovi(leggi_impostazioni_nuovi())
+    scrivi_icone_mappa(imp)
+
+
+def figure_infratak(imp: Impostazioni) -> Dict[str, bytes]:
+    """Le figure delle icone dell'elenco, dal catalogo che infra-TAK usa per i suoi flussi (nodered/
+    icon-catalog.json, le stesse icone che ATAK ha di serie). Il codice di mesh2tak non le contiene: la pagina
+    le mostra solo se infra-TAK c'e' e le ha."""
+    catalogo = os.path.join(os.path.dirname(os.path.dirname(imp.percorso)), "nodered", "icon-catalog.json")
+    try:
+        if os.path.getsize(catalogo) > 64 << 20:
+            return {}
+        with open(catalogo, encoding="utf-8") as f:
+            dati = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    insiemi = {}
+    for insieme in (dati.values() if isinstance(dati, dict) else []):
+        if isinstance(insieme, dict) and isinstance(insieme.get("groups"), dict):
+            insiemi[str(insieme.get("uid"))] = insieme["groups"]
+    figure = {}
+    for chiave, voce in ICONE_PER_CHIAVE.items():
+        uid, gruppo, nome_file = voce["percorso"].split("/", 2)
+        for x in (insiemi.get(uid) or {}).get(gruppo) or []:
+            if not isinstance(x, dict) or x.get("f") != nome_file or not isinstance(x.get("b"), str):
+                continue
+            try:
+                png = base64.b64decode(x["b"], validate=True)
+            except (ValueError, binascii.Error):
+                break
+            if png.startswith(b"\x89PNG\r\n\x1a\n") and len(png) <= 32768:
+                figure[chiave] = png
+            break
+    return figure
+
+
+def scrivi_icone_mappa(imp: Impostazioni) -> None:
+    """Elenco delle icone per la pagina (icone-mappa.json) e le loro figure (icone/CHIAVE.png)."""
+    figure = figure_infratak(imp)
+    os.makedirs(P(ICONE_SITO), exist_ok=True)
+    os.chmod(P(ICONE_SITO), 0o755)
+    for f in glob.glob(P(ICONE_SITO) + "/*.png"):
+        if os.path.basename(f)[:-4] not in figure:
+            togli(f)
+    for chiave, png in figure.items():
+        percorso = P(f"{ICONE_SITO}/{chiave}.png")
+        if leggi_bytes(percorso) != png:
+            with open(os.open(percorso + ".nuovo", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644), "wb") as f:
+                f.write(png)
+            os.chmod(percorso + ".nuovo", 0o644)
+            os.replace(percorso + ".nuovo", percorso)
+    elenco = [{"chiave": v["chiave"], "nome": v["nome"], "gruppo": v["gruppo"], "tipo": v["tipo"],
+               "figura": f"icone/{v['chiave']}.png" if v["chiave"] in figure else ""}
+              for v in ICONE_PER_CHIAVE.values()]
+    scrivi(P(ICONE_ELENCO), json.dumps({"formato": 1, "icone": elenco}, ensure_ascii=False, indent=1) + "\n")
+
+
+def leggi_bytes(percorso: str) -> Optional[bytes]:
+    try:
+        with open(percorso, "rb") as f:
+            return f.read()
+    except OSError:
+        return None
 
 
 def porta_console(imp: Impostazioni) -> int:
@@ -2223,6 +2326,7 @@ class Sorveglianza:
         self.lock = threading.Lock()
         self.s = self._carica()
         self._ultima_prova = 0.0
+        self.dopo = None        # dalla 1.11.0: (nome, porta, stato) dopo ogni lettura, per le icone sulla mappa
 
     # ---- stato su file ----
 
@@ -2270,6 +2374,11 @@ class Sorveglianza:
             st = self.prendi(porta)
             with self.lock:
                 self._valuta(nome, st, self.ora())
+            if self.dopo is not None:
+                try:
+                    self.dopo(nome, porta, st)
+                except Exception as e:  # noqa
+                    print(f"icone: ponte {nome} ({type(e).__name__}: {e})", flush=True)
         self._consegna(cfg)
 
     def _accoda(self, nome: str, codice: str, tipo: str, ora: float, **dati) -> None:
@@ -2520,6 +2629,20 @@ class Sorveglianza:
             return None
         return d if isinstance(d, dict) and d.get("formato") == 1 else None
 
+    @staticmethod
+    def manda_icone(porta: int, corpo: bytes) -> Optional[dict]:
+        """Le icone scelte al ponte, dal suo tunnel (1.11.0): il ponte le accetta solo da li'."""
+        apri = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                                           urllib.request.HTTPSHandler(context=ssl._create_unverified_context()))
+        richiesta = urllib.request.Request(f"https://127.0.0.1:{porta}/mesh2tak/icone", data=corpo, method="POST",
+                                           headers={"Content-Type": "application/json", "X-Mesh2tak": "1"})
+        try:
+            with apri.open(richiesta, timeout=15) as r:
+                d = json.loads(r.read(65536))
+        except Exception:  # noqa
+            return None
+        return d if isinstance(d, dict) else None
+
     # ---- per la pagina ----
 
     def vista(self) -> dict:
@@ -2661,6 +2784,8 @@ class Servizio:
         self.per_ip: Dict[str, List[float]] = {}
         self.sorveglianza = sorveglianza
         self.rilasci = rilasci
+        self.icone_ponti: Dict[str, str] = {}    # versione delle icone che ogni ponte usa ("vecchio": prima della 1.11.0)
+        self.manda_icone = Sorveglianza.manda_icone
 
     # ---- file ----
 
@@ -2845,6 +2970,74 @@ class Servizio:
         v.update({k: scelte.get(k) for k in ("scheda", "posizione") if isinstance(scelte.get(k), str)})
         return v
 
+    # ---- icone sulla mappa (dalla 1.11.0) ----
+
+    def scelte_icone(self) -> Dict[str, dict]:
+        d = self._leggi_json(P(ICONE_SCELTE)) or {}
+        scelte = d.get("scelte") if isinstance(d.get("scelte"), dict) else {}
+        return {k: v for k, v in scelte.items()
+                if RE_ID_RADIO.match(str(k)) and isinstance(v, dict) and v.get("icona") in ICONE_PER_CHIAVE}
+
+    @staticmethod
+    def icone_per_i_ponti(scelte: Dict[str, dict]) -> Tuple[str, Dict[str, dict]]:
+        """(versione, quello che riceve ogni ponte): per ogni radio la figura e il tipo, nient'altro."""
+        mappa = {k: {"percorso": ICONE_PER_CHIAVE[v["icona"]]["percorso"], "tipo": ICONE_PER_CHIAVE[v["icona"]]["tipo"]}
+                 for k, v in sorted(scelte.items())}
+        impronta = hashlib.sha256(json.dumps(mappa, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        return impronta.hexdigest()[:16], mappa
+
+    def imposta_icona(self, dati: dict, utente: str) -> Tuple[int, dict]:
+        radio, icona = str(dati.get("radio") or ""), str(dati.get("icona") or "")
+        if not RE_ID_RADIO.match(radio):
+            return 400, {"errore": "radio non valida"}
+        if icona and icona not in ICONE_PER_CHIAVE:
+            return 400, {"errore": "icona sconosciuta: ricarica la pagina"}
+        with self.lock:
+            scelte = self.scelte_icone()
+            if icona:
+                if radio not in scelte and len(scelte) >= ICONE_MAX:
+                    return 409, {"errore": f"al massimo {ICONE_MAX} radio con un'icona scelta"}
+                scelte[radio] = {"icona": icona, "da": utente, "quando": int(time.time())}
+            else:
+                scelte.pop(radio, None)
+            self._scrivi_json(P(ICONE_SCELTE), {"formato": 1, "scelte": scelte})
+        print(f"icona di {radio}: {icona or 'predefinita'} (da {utente})", flush=True)
+        return 200, {"esito": "fatto", "versione": self.icone_per_i_ponti(scelte)[0],
+                     "messaggio": "Icona salvata." if icona else "Tornata l'icona predefinita."}
+
+    def allinea_icone(self, nome: str, porta: int, st: Optional[dict]) -> None:
+        """Dopo ogni lettura dello stato di un ponte (una al minuto): se usa icone diverse da quelle scelte,
+        gliele manda dal suo tunnel. Un ponte spento le riceve quando torna."""
+        if st is None:
+            return
+        ic = st.get("icone")
+        if not isinstance(ic, dict):
+            self.icone_ponti[nome] = "vecchio"
+            return
+        with self.lock:
+            versione, mappa = self.icone_per_i_ponti(self.scelte_icone())
+        if ic.get("versione") == versione:
+            self.icone_ponti[nome] = versione
+            return
+        corpo = json.dumps({"formato": 1, "versione": versione, "icone": mappa}, separators=(",", ":"))
+        risposta = self.manda_icone(porta, corpo.encode("utf-8"))
+        if isinstance(risposta, dict) and risposta.get("versione") == versione:
+            self.icone_ponti[nome] = versione
+            print(f"icone: il ponte {nome} usa quelle scelte ({len(mappa)} radio)", flush=True)
+        else:
+            self.icone_ponti[nome] = str(ic.get("versione") or "")
+            errore = risposta.get("errore") if isinstance(risposta, dict) else "nessuna risposta"
+            print(f"icone: il ponte {nome} non le ha prese ({errore})", flush=True)
+
+    def vista_icone(self, ponti) -> dict:
+        scelte = self.scelte_icone()
+        versione, _ = self.icone_per_i_ponti(scelte)
+        stato_ponti = {}
+        for n in ponti:
+            v = self.icone_ponti.get(n)
+            stato_ponti[n] = "aggiornato" if v == versione else ("vecchio" if v == "vecchio" else "attesa")
+        return {"versione": versione, "scelte": scelte, "ponti": stato_ponti}
+
     def _salva_installazione(self, nome: str, installa: dict, utente: str) -> None:
         self._scrivi_json(P(f"{INSTALLAZIONI_DIR}/{nome}.json"), dict(installa, da=utente, quando=int(time.time())))
 
@@ -3027,7 +3220,8 @@ class Servizio:
                 "versione": VERSIONE, "avvisi": self.sorveglianza.vista() if self.sorveglianza else None,
                 "rilasci": self.rilasci.vista() if self.rilasci else None,
                 "ponti_nuovi": self.riassunto_nuovi(), "inviti": [self.vista_invito(i) for i in inviti],
-                "installazioni": installazioni, "imager": f"{GITHUB}/{REPO}/releases/latest/download/imager.json"}
+                "installazioni": installazioni, "imager": f"{GITHUB}/{REPO}/releases/latest/download/imager.json",
+                "icone": self.vista_icone(ponti)}
 
     def _approva(self, f: str, r: dict, utente: str, sostituisci_ok: bool,
                  installa: Optional[dict] = None) -> Tuple[int, dict]:
@@ -3098,6 +3292,8 @@ class Servizio:
                                           "qualche minuto."}
         if percorso == "/api/invita":
             return self.nuovo_invito(dati, utente)
+        if percorso == "/api/icona":
+            return self.imposta_icona(dati, utente)
         if percorso == "/api/impostazioni-nuovi":
             try:
                 impostazioni = controlla_impostazioni(dati)
@@ -3289,6 +3485,7 @@ def cmd_servi(a) -> int:
     sorveglianza = Sorveglianza()
     rilasci = Rilasci()
     servizio = Servizio(sorveglianza, rilasci)
+    sorveglianza.dopo = servizio.allinea_icone      # dalla 1.11.0: icone sulla mappa ai ponti, dal tunnel
     threading.Thread(target=sorveglianza.ciclo, name="avvisi", daemon=True).start()
     threading.Thread(target=rilasci.ciclo, name="rilasci", daemon=True).start()
     server = http.server.ThreadingHTTPServer(("127.0.0.1", PORTA_WEB), gestore_per(servizio))

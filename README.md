@@ -67,6 +67,15 @@ amministrazione di Meshtastic mandati dal nodo di un ponte. La radio deve avere 
 chiave pubblica del nodo del ponte (la pagina la mostra): si mette una volta, da vicino, con l'app. Le chiavi dei
 canali non escono dal ponte.
 
+## Icone sulla mappa (dalla 1.11.0)
+
+"Icona sulla mappa", nella scheda "Radio" e nella scheda di ogni ponte, sceglie come compare quella radio o quel
+ponte su ATAK e TAK Aware: icone dell'insieme OSM che le app hanno di serie, ognuna con un tipo CoT che dà un
+simbolo militare sensato a chi non le ha. Il servizio della pagina tiene le scelte e le manda a ogni ponte dal suo
+tunnel (`POST /mesh2tak/icone`, accettato solo da lì); il ponte le usa negli eventi che costruisce lui. Le figure
+mostrate nella pagina vengono dal catalogo di icone di infra-TAK sul server (`nodered/icon-catalog.json`): il
+codice di mesh2tak non le contiene.
+
 ## Aggiornare
 
 Dalla 1.8.0 non serve il terminale: quando esce una release nuova la pagina della rete lo dice, con le novità.
