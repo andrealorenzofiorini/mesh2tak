@@ -1032,8 +1032,6 @@ function costruisciNuovi() {
   canale.placeholder = "es. CNSAS-VA";
   const chiave = el("input"); chiave.type = "password"; chiave.id = "nuovi-chiave"; chiave.required = true; chiave.autocomplete = "off";
   chiave.placeholder = "44 caratteri, finisce con =";
-  const secondario = el("input"); secondario.id = "nuovi-secondario"; secondario.maxLength = 11; secondario.autocomplete = "off";
-  secondario.placeholder = "vuoto = LongFast, il pubblico standard";
   const invia = el("button", "bottone", "Controlla e salva");
   invia.type = "submit";
   const esito = el("p", "esito");
@@ -1043,7 +1041,6 @@ function costruisciNuovi() {
            ...campo("Indirizzo del TAK Server", host, "solo se il pacchetto non lo contiene"),
            ...campo("Nome del canale della squadra", canale),
            ...campo("Chiave del canale della squadra", chiave, "dall'app Meshtastic: Canali, il canale della squadra, chiave"),
-           ...campo("Canale pubblico secondario", secondario),
            el("p", "nota", "Restano sul server, leggibili solo da root. Da qui non si possono rileggere: si possono solo sostituire. " +
                            "A ogni Raspberry approvato arrivano cifrati, e solo a lui."),
            invia, esito);
@@ -1056,7 +1053,7 @@ function costruisciNuovi() {
       if (file.files[0].size > 256 * 1024) throw new Error("il file è troppo grande: serve il pacchetto .zip della console infra-TAK");
       const d = await manda("impostazioni-nuovi", {
         nome_pacchetto: file.files[0].name, pacchetto: await fileInBase64(file.files[0]), password: password.value,
-        host: host.value.trim(), canale: canale.value.trim(), chiave: chiave.value.trim(), secondario: secondario.value.trim()});
+        host: host.value.trim(), canale: canale.value.trim(), chiave: chiave.value.trim()});
       esito.textContent = (d.messaggio || "Mandato.") + " L'esito compare in cima alla pagina tra qualche secondo.";
       f.reset();
       await giro();
@@ -1086,7 +1083,7 @@ function costruisciNuovi() {
   const esitoInvito = el("p", "esito");
   esitoInvito.setAttribute("aria-live", "polite");
   moduloInvito.append(el("h4", null, "Prepara un ponte nuovo"),
-                      ...campo("Nome del ponte", nome, "diventa anche il nome sulla mappa: Ponte CNSAS Velate"),
+                      ...campo("Nome del ponte", nome, "diventa anche il nome sulla mappa: Gateway CNSAS Velate"),
                       ...campo("Radio del ponte", scheda),
                       ...campo("Dove sta", posizione, "coordinate copiate da Google Maps; vuoto se la radio ha il suo GPS"),
                       el("p"), prepara, esitoInvito);
@@ -1118,7 +1115,7 @@ function aggiornaNuovi() {
   if (n.pronto) {
     zonaStatoNuovi.textContent = "Per i ponti nuovi: certificato " + (n.certificato ? "\"" + n.certificato + "\"" : "caricato") +
       (n.scade ? " (scade il " + new Date(n.scade * 1000).toLocaleDateString("it-IT") + ")" : "") + ", TAK Server " + (n.server || "?") +
-      ", canale " + n.canale + ", secondario " + (n.secondario || "LongFast") + ". Caricati da " + (n.da || "?") + " " +
+      ", canale " + n.canale + " (l'unico del nodo dei ponti). Caricati da " + (n.da || "?") + " " +
       giornoOra(n.aggiornato) + ".";
     dettagliImpostazioni.firstChild.textContent = "Cambia certificato o canale";
   } else {

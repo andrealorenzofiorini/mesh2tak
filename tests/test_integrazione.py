@@ -245,16 +245,18 @@ def test_configura_nodo_appena_installato(nodo_nuovo, tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     assert "ESITO configurazione=ok" in r.stdout
     s = json.loads(stato.read_text())
-    assert (s["regione"], s["ruolo"], s["nome"], s["nome_breve"]) == ("EU_868", "CLIENT_MUTE", "Ponte CNSAS Varese", "PONT")
+    assert (s["regione"], s["ruolo"], s["nome"], s["nome_breve"]) == ("EU_868", "CLIENT_MUTE", "Gateway CNSAS Varese",
+                                                                         "GTSA")
     assert {k: v for k, v in s["canali"][0].items() if k != "psk"} == {
         "indice": 0, "ruolo": "PRIMARY", "nome": "CNSAS", "psk_len": 32, "precisione": 32}
-    assert s["canali"][1]["ruolo"] == "SECONDARY" and s["canali"][1]["psk_len"] == 1 and s["canali"][1]["precisione"] == 0
+    assert [c["ruolo"] for c in s["canali"][1:]] == ["DISABLED"] * 7, "dalla 1.12.0 nessun canale secondario"
+    assert "nessun canale secondario" in r.stdout
     assert (s["posizione_fissa"], s["lat"], s["lon"], s["alt"]) == (True, 458205000, 88257000, 400)
     assert os.stat(link).st_mode & 0o777 == 0o600
     url = link.read_text().strip()
     corpo = url.split("#", 1)[1].replace("-", "+").replace("_", "/")
     cs = apponly_pb2.ChannelSet.FromString(base64.b64decode(corpo + "=" * (-len(corpo) % 4)))
-    assert [c.name for c in cs.settings] == ["CNSAS", ""]
+    assert [c.name for c in cs.settings] == ["CNSAS"], "nel QR solo il canale della squadra"
     assert cs.lora_config.region == config_pb2.Config.LoRaConfig.RegionCode.EU_868
     # rilancio: niente da cambiare, la chiave resta la stessa
     r2, link2 = _configura(porta, tmp_path, "--posizione", "45.8205,8.8257,400")
@@ -264,7 +266,7 @@ def test_configura_nodo_appena_installato(nodo_nuovo, tmp_path):
 
 
 def test_configura_nodo_canale_della_squadra_dato(nodo_nuovo, tmp_path):
-    """Il canale della squadra viene da fuori (es. ICARO): nome e chiave dati, secondario pubblico con nome."""
+    """Il canale della squadra viene da fuori (es. ICARO): nome e chiave dati, l'unico del nodo."""
     import base64
     import json
     from meshtastic.protobuf import apponly_pb2
@@ -275,50 +277,84 @@ def test_configura_nodo_canale_della_squadra_dato(nodo_nuovo, tmp_path):
     file_chiave = tmp_path / "chiave.txt"
     file_chiave.write_text("base64:" + base64.b64encode(chiave).decode() + "\n")
     r, link = _configura(porta, tmp_path, "--posizione", "45.8205, 8.8257, 400", "--canale", "CNSAS-VA",
-                         "--chiave-canale-file", str(file_chiave), "--secondario", "Public")
+                         "--chiave-canale-file", str(file_chiave))
     assert r.returncode == 0 and "ESITO configurazione=ok" in r.stdout, r.stdout
     assert "canale della squadra 'CNSAS-VA' con la chiave data" in r.stdout
     assert base64.b64encode(chiave).decode() not in r.stdout, "la chiave non finisce nel registro"
-    assert "secondario pubblico: Public" in r.stdout
+    assert "nessun canale secondario" in r.stdout
     s = json.loads(stato.read_text())
     assert (s["canali"][0]["ruolo"], s["canali"][0]["nome"], s["canali"][0]["psk"], s["canali"][0]["precisione"]) == \
         ("PRIMARY", "CNSAS-VA", base64.b64encode(chiave).decode(), 32)
-    assert (s["canali"][1]["ruolo"], s["canali"][1]["nome"], s["canali"][1]["psk"]) == ("SECONDARY", "Public", "AQ==")
+    assert s["canali"][1]["ruolo"] == "DISABLED"
     url = link.read_text().strip()
     corpo = url.split("#", 1)[1].replace("-", "+").replace("_", "/")
     cs = apponly_pb2.ChannelSet.FromString(base64.b64decode(corpo + "=" * (-len(corpo) % 4)))
-    assert [(c.name, bytes(c.psk)) for c in cs.settings] == [("CNSAS-VA", chiave), ("Public", b"\x01")]
+    assert [(c.name, bytes(c.psk)) for c in cs.settings] == [("CNSAS-VA", chiave)]
     # rilancio senza chiave: il canale dato resta com'e'
     r2, _ = _configura(porta, tmp_path, "--posizione", "45.8205,8.8257,400", "--canale", "CNSAS-VA")
     assert r2.returncode == 0 and "era gia' tutto a posto" in r2.stdout, r2.stdout
     assert json.loads(stato.read_text())["canali"][0]["psk"] == base64.b64encode(chiave).decode()
 
 
-def test_configura_nodo_secondario_cambiato_senza_chiave(nodo_nuovo, tmp_path):
-    """Solo il nome del canale pubblico cambia (Public -> LongFast standard, nome vuoto): squadra e chiave restano."""
+@pytest.fixture
+def nodo_1_11(tmp_path):
+    """Nodo configurato dalla 1.11.0: squadra CNSAS-VA primaria, LongFast pubblico secondario."""
+    porta = porta_libera()
+    stato = tmp_path / "nodo.json"
+    proc = subprocess.Popen([sys.executable, os.path.join(QUI, "fake_node.py"), "--porta", str(porta), "--squadra-primaria",
+                             "--primo-scenario", "99", "--stato", str(stato)],
+                            env=AMBIENTE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    aspetta_porta(porta)
+    yield porta, stato
+    proc.terminate()
+    proc.wait(5)
+
+
+def test_configura_nodo_spegne_il_canale_pubblico(nodo_1_11, tmp_path):
+    """Aggiornamento alla 1.12.0 di un ponte configurato prima: il LongFast secondario si spegne, la squadra resta."""
     import base64
     import json
     from meshtastic.protobuf import apponly_pb2
-    porta, stato = nodo_nuovo
-    chiave = bytes(range(100, 132))
-    file_chiave = tmp_path / "chiave.txt"
-    file_chiave.write_text(base64.b64encode(chiave).decode() + "\n")
-    r, link = _configura(porta, tmp_path, "--canale", "CNSAS-VA", "--chiave-canale-file", str(file_chiave),
-                         "--secondario", "Public")
-    assert r.returncode == 0, r.stdout
-    r, link = _configura(porta, tmp_path, "--canale", "CNSAS-VA", "--secondario", "")
+    porta, stato = nodo_1_11
+    r, link = _configura(porta, tmp_path, "--canale", "CNSAS-VA")
     assert r.returncode == 0 and "ESITO configurazione=ok" in r.stdout, r.stdout
-    assert "canale secondario pubblico 'LongFast'" in r.stdout and "secondario pubblico: LongFast" in r.stdout
+    assert "canale secondario 'LongFast' spento" in r.stdout and "nessun canale secondario" in r.stdout
     assert "canale della squadra" not in r.stdout                  # la squadra non si tocca
     s = json.loads(stato.read_text())
-    assert (s["canali"][0]["nome"], s["canali"][0]["psk"]) == ("CNSAS-VA", base64.b64encode(chiave).decode())
-    assert (s["canali"][1]["ruolo"], s["canali"][1]["nome"], s["canali"][1]["psk"], s["canali"][1]["precisione"]) == \
-        ("SECONDARY", "", "AQ==", 0)
+    assert (s["canali"][0]["ruolo"], s["canali"][0]["nome"], s["canali"][0]["psk_len"]) == ("PRIMARY", "CNSAS-VA", 32)
+    assert [c["ruolo"] for c in s["canali"][1:]] == ["DISABLED"] * 7
     corpo = link.read_text().strip().split("#", 1)[1].replace("-", "+").replace("_", "/")
     cs = apponly_pb2.ChannelSet.FromString(base64.b64decode(corpo + "=" * (-len(corpo) % 4)))
-    assert [(c.name, bytes(c.psk)) for c in cs.settings] == [("CNSAS-VA", chiave), ("", b"\x01")]
-    r, _ = _configura(porta, tmp_path, "--canale", "CNSAS-VA", "--secondario", "")
+    assert [c.name for c in cs.settings] == ["CNSAS-VA"]
+    r, _ = _configura(porta, tmp_path, "--canale", "CNSAS-VA")
     assert r.returncode == 0 and "era gia' tutto a posto" in r.stdout, r.stdout
+
+
+def test_il_ponte_spegne_il_canale_pubblico_rimesso(pki, tmp_path, tak_finto, nodo_1_11):
+    """1.12.0: un canale secondario acceso sul nodo (es. rimesso dall'app) lo spegne il ponte quando si collega."""
+    import json
+    porta, stato = nodo_1_11
+    tak = tak_finto()
+    ponte = avvia_ponte(scrivi_config(tmp_path / "m.conf", pki, tak.porta, porta, f"{SDK}/dictionaries"))
+    fine = time.time() + 40
+    while time.time() < fine and not (stato.exists() and json.loads(stato.read_text())["canali"][1]["ruolo"] == "DISABLED"):
+        time.sleep(0.5)
+    time.sleep(1)
+    ponte.send_signal(signal.SIGTERM)
+    registro, _ = ponte.communicate(timeout=20)
+    assert "Canali secondari del nodo spenti: LongFast" in registro, registro
+    assert "canale 0 'CNSAS-VA' (privato): INOLTRATO" in registro and "canale 1 " not in registro
+    assert "Traceback" not in registro
+    s = json.loads(stato.read_text())
+    assert (s["canali"][0]["ruolo"], s["canali"][0]["nome"], s["canali"][0]["psk_len"]) == ("PRIMARY", "CNSAS-VA", 32)
+    assert [c["ruolo"] for c in s["canali"][1:]] == ["DISABLED"] * 7
+
+
+def test_configura_nodo_squadra_secondaria_non_si_perde(nodo_finto, tmp_path):
+    """Nodo messo a mano con la squadra come secondario (primario pubblico): senza chiave la squadra resta."""
+    r, _ = _configura(nodo_finto, tmp_path, "--canale", "CNSAS")
+    assert r.returncode == 0 and "ESITO configurazione=ok" in r.stdout, r.stdout
+    assert "spento" not in r.stdout and "canali secondari: CNSAS" in r.stdout
 
 
 @pytest.mark.parametrize("contenuto", ["non base64!", "AQ==", "QUJD"])
@@ -373,7 +409,7 @@ def test_configura_radio_usb_nuova(radio_usb, tmp_path):
                        env=AMBIENTE, capture_output=True, text=True, timeout=240)
     assert r.returncode == 0 and "ESITO configurazione=ok" in r.stdout, r.stdout + r.stderr
     s = json.loads(stato.read_text())
-    assert (s["regione"], s["ruolo"], s["nome"]) == ("EU_868", "CLIENT", "Ponte CNSAS Varese")
+    assert (s["regione"], s["ruolo"], s["nome"]) == ("EU_868", "CLIENT", "Gateway CNSAS Varese")
     assert s["canali"][0]["nome"] == "CNSAS" and s["canali"][0]["psk_len"] == 32
     assert link.read_text().startswith("https://meshtastic.org/e/#")
 

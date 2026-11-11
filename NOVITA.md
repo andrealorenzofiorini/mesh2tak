@@ -3,6 +3,15 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.12.0
+
+- Il ponte si chiama "Gateway": il ponte di casa diventa "Gateway CNSAS Varese" (sigla GTSA), i ponti nuovi
+  "Gateway CNSAS Nome" (G e tre lettere, es. GVEL). Il nome cambia sul nodo e sulla mappa con l'aggiornamento.
+- Il nodo di ogni ponte ha solo il canale della squadra: il canale secondario (il pubblico LongFast) si spegne
+  con l'aggiornamento e ogni volta che il ponte si collega al suo nodo, anche se qualcuno lo rimette dall'app.
+  Il QR del canale contiene solo la squadra. Tolta dalla pagina la voce "Canale pubblico secondario";
+  l'opzione `--canale-pubblico` dell'installatore si ignora.
+
 ## 1.11.0
 
 - Icona sulla mappa per ogni radio e ogni ponte, scelta dalla pagina della rete: "Icona sulla mappa" nella scheda

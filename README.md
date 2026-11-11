@@ -7,7 +7,8 @@ arrivano in ATAK e in sala operativa, e la chat e gli oggetti della sala operati
 ## Come è fatto
 
 - **Raspberry Pi** con una radio Meshtastic (via USB o una scheda LoRa sui pin): `mesh2tak.py` porta i
-  pacchetti della radio al TAK Server e ritorno. L'installatore prepara il Raspberry da zero.
+  pacchetti della radio al TAK Server e ritorno. L'installatore prepara il Raspberry da zero. Il nodo del ponte
+  ("Gateway CNSAS Nome") ha solo il canale della squadra: i canali secondari si spengono (dalla 1.12.0).
 - **Server infra-TAK**: `rete-meshtastic.sh` aggiunge la pagina della rete (dietro Authentik, solo
   amministratori) con lo stato di tutti i ponti, le radio sentite, gli avvisi per email e gli aggiornamenti.
   I Raspberry arrivano con un tunnel SSH aperto da loro: a casa non si apre nessuna porta.

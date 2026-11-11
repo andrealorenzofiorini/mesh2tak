@@ -190,7 +190,7 @@ def impostazioni(pki, **cambi):
 def test_impostazioni_dalla_pagina_al_lavoro_di_root(sv, pki):  # noqa: F811
     for cambi, parola in (({"nome_pacchetto": "virus.exe"}, "pacchetto"), ({"pacchetto": "non base64!"}, "certificato"),
                           ({"chiave": "corta"}, "chiave"), ({"canale": "nome troppo lungo"}, "canale"),
-                          ({"host": "tak server"}, "TAK Server"), ({"secondario": "con spazi"}, "pubblico"),
+                          ({"host": "tak server"}, "TAK Server"),
                           ({"pacchetto": base64.b64encode(b"x" * (rete.PACCHETTO_MAX + 1)).decode()}, "grande")):
         codice, r = sv.azione("/api/impostazioni-nuovi", impostazioni(pki, **cambi), "andrea")
         assert codice == 400 and parola in r["errore"], (cambi.keys(), r)
@@ -198,6 +198,8 @@ def test_impostazioni_dalla_pagina_al_lavoro_di_root(sv, pki):  # noqa: F811
     codice, r = sv.azione("/api/impostazioni-nuovi", impostazioni(pki, nome_pacchetto="C:\\Scaricati\\meshtastic-cnsas-integration.zip"),
                           "andrea")
     assert codice == 202
+    # dalla 1.12.0 il canale pubblico secondario non c'e' piu': quello mandato da una pagina vecchia si ignora
+    assert rete.controlla_impostazioni(impostazioni(pki, secondario="con spazi"))["secondario"] == ""
     [lavoro] = lavori()
     f = rete.P(f"{rete.LAVORI_DIR}/{lavoro['id']}.json")
     assert stat.S_IMODE(os.stat(f).st_mode) == 0o600
@@ -261,7 +263,12 @@ def test_configurazione_del_ponte_nuovo_e_registrazione(radice, pki):
     reg = {"formato": 1, "ponti": {"velate": {"porta": 19402, "chiave": chiave(1), "impronta": impronta(1)}}}
     with pytest.raises(rete.Errore, match="certificato e canale"):
         rete.prepara_configurazione(IMP, reg, "velate", {"scheda": "waveshare", "posizione": ""}, "andrea")
-    rete.salva_impostazioni_nuovi({"da": "andrea", "impostazioni": impostazioni(pki, secondario="Varese")})
+    rete.salva_impostazioni_nuovi({"da": "andrea", "impostazioni": impostazioni(pki)})
+    # salvate con la 1.11.0, con un canale pubblico: dalla 1.12.0 il ponte nuovo non lo riceve
+    salvate = json.load(open(rete.P(rete.IMPOSTAZIONI_NUOVI)))
+    assert salvate["canale"]["secondario"] == ""
+    salvate["canale"]["secondario"] = "Varese"
+    open(rete.P(rete.IMPOSTAZIONI_NUOVI), "w").write(json.dumps(salvate))
     assert rete.prepara_configurazione(IMP, reg, "velate", {"scheda": "waveshare", "posizione": "45.8,8.8"}, "andrea") == 1
     f = rete.file_configurazione("velate")
     assert stat.S_IMODE(os.stat(f).st_mode) == 0o400
@@ -270,7 +277,7 @@ def test_configurazione_del_ponte_nuovo_e_registrazione(radice, pki):
     c = json.load(open(f))
     assert (c["nome"], c["scheda"], c["posizione"], c["rete"], c["versione"], c["tentativo"]) == (
         "velate", "waveshare", "45.8,8.8", "https://meshtastic.prova.lan", "1.10.0", 1)
-    assert c["canale"] == {"nome": "CNSAS-VA", "chiave": PSK, "secondario": "Varese"}
+    assert c["canale"] == {"nome": "CNSAS-VA", "chiave": PSK, "secondario": ""}
     assert c["tak"]["password"] == "atakatak" and c["tak"]["nome_pacchetto"] == "meshtastic-cnsas-integration.zip"
     assert base64.b64decode(c["tak"]["pacchetto"]) == (pki / "meshtastic-cnsas-integration.zip").read_bytes()
     assert reg["ponti"]["velate"]["installa"]["tentativo"] == 1

@@ -17,9 +17,8 @@
 #            rak = scheda RAK6421 sui pin con la radio RAK13300 nello slot 1)
 #  Opzione: --canale-squadra  chiede nome e chiave del canale della squadra gia' esistente (es. quello
 #           di ICARO) e lo mette sul nodo al posto di quello creato dall'installatore
-#  Opzione: --canale-pubblico  come secondario il canale pubblico standard di Meshtastic (LongFast, nome
-#           vuoto); --canale-pubblico=NOME un canale pubblico con quel nome (es. Public). Non tocca il
-#           canale della squadra e rifa' il QR
+#  Dalla 1.12.0 il nodo del ponte ha solo il canale della squadra: i canali secondari (es. il pubblico
+#           LongFast) si spengono; --canale-pubblico non serve piu' e si ignora
 #  Opzione: --accesso-esterno  gestione del nodo e stato del ponte anche da internet, dalla pagina della
 #           rete Meshtastic sul server: il ponte chiede da solo di entrare, alla fine l'installatore mostra
 #           il codice da confermare su quella pagina; --accesso-esterno=no lo spegne
@@ -54,8 +53,8 @@ MESHTASTIC_VER=2.7.11
 TAK_SDK_VER=0.10.0
 TAK_SDK_FILE=meshtastic_tak-0.10.0-py3-none-any.whl
 TAK_SDK_SHA256=34c0501137830712f69a41c2a2cfa0d0f57ab55a5f395d7b525e9b14219365d1
-NOME_NODO="Ponte CNSAS Varese"           # installazioni fatte prima della 1.9.0: restano cosi'
-NOME_BREVE="PONT"
+NOME_NODO="Gateway CNSAS Varese"         # installazioni fatte prima della 1.9.0 (il ponte di casa)
+NOME_BREVE="GTSA"
 NOME_NODO_AUTOMATICO=0                   # 1 = ponte installato da zero: nome del nodo dal nome del ponte
 CANALE="CNSAS"
 CONFIG_TXT="${MESH2TAK_CONFIG_TXT:-/boot/firmware/config.txt}"
@@ -269,8 +268,8 @@ alla_fine() {
 trap alla_fine EXIT
 
 # Risposte gia' date nella prima esecuzione (prima del riavvio)
-HOST=""; PORTA=8089; CA_RIGA=""; POSIZIONE=""; SCHEDA_SALVATA=""; CERTIFICATO_OK=0; CANALE_SQUADRA=""; SECONDARIO=""
-SECONDARIO_DATO=0
+HOST=""; PORTA=8089; CA_RIGA=""; POSIZIONE=""; SCHEDA_SALVATA=""; CERTIFICATO_OK=0; CANALE_SQUADRA=""
+SECONDARIO=""; SECONDARIO_DATO=0; NOMI_NUOVI=0       # SECONDARIO*: fino alla 1.11.0, letti e non piu' usati
 ACCESSO_NOME=""; ACCESSO_RETE=""
 [ -f "$STATO" ] || NOME_NODO_AUTOMATICO=1           # Raspberry nuovo: il nodo prendera' il nome del ponte
 # shellcheck disable=SC1090
@@ -295,22 +294,30 @@ case "$SCHEDA" in
   usb)          FILE_SCHEDA="";                              RUOLO=CLIENT ;;
   *) fallisci "Scheda '$SCHEDA' non prevista: usa waveshare, meshadv, meshadv-mini, rak o usb" ;;
 esac
-nomi_del_nodo() {  # ponte nuovo: nome e sigla del nodo dal nome del ponte (velate -> "Ponte CNSAS Velate", PVEL)
+nomi_del_nodo() {  # ponte nuovo: nome e sigla del nodo dal nome del ponte (velate -> "Gateway CNSAS Velate", GVEL)
   local base parola nome=""
   base=$(printf '%s' "$1" | sed 's/^ponte-//; s/-/ /g')
   for parola in $base; do nome="$nome ${parola^}"; done
-  NOME_NODO=$(printf 'Ponte CNSAS%s' "$nome" | cut -c1-39)
-  NOME_BREVE=$(printf 'P%s' "$(printf '%s' "$base" | tr -cd 'a-z0-9' | cut -c1-3)" | tr 'a-z' 'A-Z')
+  NOME_NODO=$(printf 'Gateway CNSAS%s' "$nome" | cut -c1-39)
+  NOME_BREVE=$(printf 'G%s' "$(printf '%s' "$base" | tr -cd 'a-z0-9' | cut -c1-3)" | tr 'a-z' 'A-Z')
 }
 salva_stato() {
   {
-    printf 'HOST=%q\nPORTA=%q\nCA_RIGA=%q\nPOSIZIONE=%q\nSCHEDA_SALVATA=%q\nCERTIFICATO_OK=%q\nCANALE_SQUADRA=%q\nSECONDARIO=%q\n' \
-      "$HOST" "$PORTA" "$CA_RIGA" "$POSIZIONE" "$SCHEDA" "$CERTIFICATO_OK" "$CANALE_SQUADRA" "$SECONDARIO"
-    printf 'ACCESSO_NOME=%q\nACCESSO_RETE=%q\nSECONDARIO_DATO=%q\n' "$ACCESSO_NOME" "$ACCESSO_RETE" "$SECONDARIO_DATO"
+    printf 'HOST=%q\nPORTA=%q\nCA_RIGA=%q\nPOSIZIONE=%q\nSCHEDA_SALVATA=%q\nCERTIFICATO_OK=%q\nCANALE_SQUADRA=%q\n' \
+      "$HOST" "$PORTA" "$CA_RIGA" "$POSIZIONE" "$SCHEDA" "$CERTIFICATO_OK" "$CANALE_SQUADRA"
+    printf 'ACCESSO_NOME=%q\nACCESSO_RETE=%q\n' "$ACCESSO_NOME" "$ACCESSO_RETE"
     printf 'NOME_NODO=%q\nNOME_BREVE=%q\nNOME_NODO_AUTOMATICO=%q\n' "$NOME_NODO" "$NOME_BREVE" "$NOME_NODO_AUTOMATICO"
   } > "$STATO"
   chmod 600 "$STATO"
 }
+# dalla 1.12.0 (scelta di Andrea dell'11/11/2026) i ponti si chiamano "Gateway": il ponte di casa "Gateway CNSAS
+# Varese" (GTSA), i ponti nuovi "Gateway CNSAS Nome" (G e tre lettere). Si cambiano solo i nomi messi dall'installatore.
+if [ "$NOME_NODO" = "Ponte CNSAS Varese" ] && [ "$NOME_BREVE" = PONT ]; then
+  NOME_NODO="Gateway CNSAS Varese"; NOME_BREVE="GTSA"; NOMI_NUOVI=1
+elif [ "$NOME_NODO_AUTOMATICO" = 1 ] && [ -n "$ACCESSO_NOME" ] && [ "${NOME_NODO#Ponte CNSAS }" != "$NOME_NODO" ]; then
+  nomi_del_nodo "$ACCESSO_NOME"; NOMI_NUOVI=1
+fi
+[ "$NOMI_NUOVI" = 1 ] && [ -f "$STATO" ] && salva_stato
 
 # ---------------------------------------------------------------- 1. certificato e domande
 if [ -z "${MESH2TAK_STACCATO:-}" ]; then
@@ -473,24 +480,12 @@ if [ "$CHIEDI_CANALE" = 1 ]; then
   done
   [ -n "$CHIAVE" ] || fallisci "Senza una chiave valida non cambio il canale. Rilancia con --canale-squadra quando ce l'hai."
   ( umask 077; printf '%s\n' "$CHIAVE" > "$CHIAVE_CANALE" ); unset CHIAVE
-  CANALE_SQUADRA="$NOME_CANALE"; CANALE="$NOME_CANALE"; SECONDARIO="${MESH2TAK_SECONDARIO-}"
+  CANALE_SQUADRA="$NOME_CANALE"; CANALE="$NOME_CANALE"
   salva_stato
-  ok "canale '$CANALE' con la chiave data, secondario pubblico '${SECONDARIO:-LongFast}': li imposto al passo 7"
+  ok "canale '$CANALE' con la chiave data: lo imposto al passo 7, l'unico del nodo"
 fi
 if [ -n "$CANALE_PUBBLICO_DATO" ]; then
-  passo "   Canale pubblico (secondario)"
-  if [ "$(printf '%s' "$CANALE_PUBBLICO_DATO" | tr 'A-Z' 'a-z')" = longfast ]; then NUOVO_SECONDARIO=""
-  else NUOVO_SECONDARIO="$CANALE_PUBBLICO_DATO"; fi
-  [[ "$NUOVO_SECONDARIO" =~ ^[A-Za-z0-9_-]{0,11}$ ]] \
-    || fallisci "Nome del canale pubblico non valido: lettere, numeri, - e _, al massimo 11 caratteri (o niente: --canale-pubblico)."
-  SECONDARIO="$NUOVO_SECONDARIO"; SECONDARIO_DATO=1
-  salva_stato
-  if [ -z "$SECONDARIO" ]; then
-    ok "secondario: il canale pubblico standard di Meshtastic (LongFast, nome vuoto): lo imposto al passo 7, poi QR nuovo"
-  else
-    ok "secondario: canale pubblico '$SECONDARIO' (chiave AQ==): lo imposto al passo 7, poi QR nuovo"
-    info "Con un nome non e' il LongFast pubblico di tutti: lo sentono solo le radio con un canale '$SECONDARIO'."
-  fi
+  info "--canale-pubblico ignorato: dalla 1.12.0 il nodo del ponte ha solo il canale della squadra"
 fi
 if [ "$CHIEDI_ACCESSO" = 1 ]; then
   passo "   Accesso da internet (pagina della rete Meshtastic)"
@@ -871,11 +866,11 @@ printf '%s\n' "$LIB" | grep -q '^ESITO librerie=ok' || {
 ok "librerie pronte ($(printf '%s\n' "$LIB" | sed -n 's/^ *\(meshtastic-tak [^:]*\):.*/\1/p'))"
 
 # ---------------------------------------------------------------- 7. nodo meshtastic
-passo "7/9  Nodo Meshtastic: regione EU 868, nome, ruolo $RUOLO, canale privato '$CANALE'"
+passo "7/9  Nodo Meshtastic: regione EU 868, nome, ruolo $RUOLO, solo il canale privato '$CANALE'"
 systemctl stop mesh2tak >/dev/null 2>&1 || true
 OPZ_CANALE=()
 [ -s "$CHIAVE_CANALE" ] && OPZ_CANALE+=(--chiave-canale-file "$CHIAVE_CANALE")
-if [ -n "$CANALE_SQUADRA" ] || [ "$SECONDARIO_DATO" = 1 ]; then OPZ_CANALE+=(--secondario "$SECONDARIO"); fi
+[ "$NOMI_NUOVI" = 1 ] && info "nome nuovo del nodo: '$NOME_NODO' (sigla $NOME_BREVE)"
 NODO=$("$VENV/bin/python" "$DIR/mesh2tak.py" --configura-nodo "$COLLEGAMENTO" --nome "$NOME_NODO" \
   --nome-breve "$NOME_BREVE" --canale "$CANALE" --ruolo "$RUOLO" --posizione "$POSIZIONE" \
   --file-link "$FILE_LINK" "${OPZ_CANALE[@]}" 2>&1 || true)

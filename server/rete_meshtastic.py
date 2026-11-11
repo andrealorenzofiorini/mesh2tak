@@ -1246,7 +1246,6 @@ def valida_nome(nome: str) -> str:
 RE_POSIZIONE = re.compile(r"^-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?(?:,-?\d{1,5}(?:\.\d+)?)?$")
 RE_NOME_PACCHETTO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,78}\.(?:zip|p12|pfx)$")
 RE_NOME_CANALE = re.compile(r"^[A-Za-z0-9_-]{1,11}$")
-RE_SECONDARIO = re.compile(r"^[A-Za-z0-9_-]{0,11}$")
 RE_HOST_TAK = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 PACCHETTO_MAX = 256 << 10
 
@@ -1379,14 +1378,13 @@ def salva_impostazioni_nuovi(lavoro: dict) -> str:
         avviso("certificato non controllato qui (manca openssl): lo controlla il Raspberry")
     salvate = {"formato": 1, "pacchetto": d["pacchetto"], "nome_pacchetto": d["nome_pacchetto"], "password": password,
                "host": d["host"], "server": f"{host}:{c['porta']}",
-               "canale": {"nome": d["canale"], "chiave": d["chiave"], "secondario": d["secondario"]},
+               "canale": {"nome": d["canale"], "chiave": d["chiave"], "secondario": ""},
                "certificato": c["certificato"], "scade": c["scade"], "aggiornato": int(time.time()), "da": lavoro["da"]}
     os.makedirs(P(PONTI_NUOVI_DIR), exist_ok=True)
     os.chmod(P(PONTI_NUOVI_DIR), 0o700)
     scrivi(P(IMPOSTAZIONI_NUOVI), json.dumps(salvate, ensure_ascii=False) + "\n", 0o600)
     scrivi_riassunto_nuovi(salvate)
-    ok(f"TAK Server {host}:{c['porta']}, canale '{d['canale']}' (secondario "
-       f"{d['secondario'] or 'LongFast, il pubblico standard'})")
+    ok(f"TAK Server {host}:{c['porta']}, canale '{d['canale']}' (l'unico dei ponti nuovi)")
     return (f"Impostazioni salvate: certificato '{c['certificato'] or '?'}', TAK Server {host}:{c['porta']}, "
             f"canale {d['canale']}.")
 
@@ -1399,7 +1397,7 @@ def scrivi_riassunto_nuovi(s: Optional[dict]) -> None:
     canale = s.get("canale") or {}
     scrivi(P(RIASSUNTO_NUOVI), json.dumps({
         "formato": 1, "pronto": True, "certificato": s.get("certificato") or "", "scade": s.get("scade"),
-        "server": s.get("server") or "", "canale": canale.get("nome") or "", "secondario": canale.get("secondario") or "",
+        "server": s.get("server") or "", "canale": canale.get("nome") or "",
         "aggiornato": s.get("aggiornato"), "da": s.get("da") or ""}, ensure_ascii=False) + "\n", 0o644)
 
 
@@ -1429,7 +1427,7 @@ def prepara_configurazione(imp: Impostazioni, reg: dict, nome: str, installa: di
             "rete": imp.url().rstrip("/"), "versione": VERSIONE, "tentativo": tentativo,
             "tak": {"pacchetto": s["pacchetto"], "nome_pacchetto": s["nome_pacchetto"], "password": s["password"],
                     "host": s.get("host") or ""},
-            "canale": s["canale"]}
+            "canale": dict(s["canale"], secondario="")}       # dalla 1.12.0 nessun canale pubblico, anche se salvato prima
     prepara_cartelle_ponti()
     f = file_configurazione(nome)
     togli(f)
@@ -1840,7 +1838,6 @@ def controlla_impostazioni(d) -> dict:
     password = str(d.get("password") or "")
     host = str(d.get("host") or "").strip()
     canale = str(d.get("canale") or "").strip()
-    secondario = str(d.get("secondario") or "").strip()
     if not RE_NOME_PACCHETTO.match(nome_pacchetto):
         raise Errore("serve il pacchetto .zip scaricato dalla console infra-TAK (o un .p12)")
     try:
@@ -1855,10 +1852,9 @@ def controlla_impostazioni(d) -> dict:
         raise Errore("indirizzo del TAK Server non valido (es. takserver.tuodominio.it)")
     if not RE_NOME_CANALE.match(canale):
         raise Errore("nome del canale: lettere, numeri, - e _, al massimo 11 caratteri (es. CNSAS-VA)")
-    if not RE_SECONDARIO.match(secondario):
-        raise Errore("nome del canale pubblico: lettere, numeri, - e _, al massimo 11 caratteri (vuoto = LongFast)")
+    # dalla 1.12.0 niente canale pubblico secondario: "secondario" vuoto per i programmi di primo avvio di prima
     return {"nome_pacchetto": nome_pacchetto, "pacchetto": pacchetto, "password": password, "host": host,
-            "canale": canale, "chiave": chiave_canale_valida(str(d.get("chiave") or "")), "secondario": secondario}
+            "canale": canale, "chiave": chiave_canale_valida(str(d.get("chiave") or "")), "secondario": ""}
 
 
 def leggi_impostazioni_lavoro(d) -> Optional[dict]:

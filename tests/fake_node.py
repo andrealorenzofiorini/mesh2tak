@@ -103,7 +103,7 @@ class SessionePty:
 
 class NodoFinto:
     def __init__(self, porta, senza_privato=False, primo_scenario=1, nuovo=False, file_stato=None,
-                 rete=None, file_trasmessi=None):
+                 rete=None, file_trasmessi=None, squadra_primaria=False):
         self.porta = porta
         self.rete = rete
         self.file_trasmessi = file_trasmessi
@@ -141,6 +141,10 @@ class NodoFinto:
             else:
                 ch.role = channel_pb2.Channel.Role.DISABLED
             self.canali.append(ch)
+        if squadra_primaria:
+            # come un nodo configurato dalla 1.11.0: squadra primaria, LongFast pubblico secondario
+            self.canali[0].settings.psk, self.canali[0].settings.name = PSK_PRIVATA, "CNSAS-VA"
+            self.canali[1].settings.psk, self.canali[1].settings.name = b"\x01", ""
         ora = time.time()
         if nuovo:
             # meshtasticd appena installato: regione non impostata, solo il canale pubblico
@@ -549,9 +553,11 @@ if __name__ == "__main__":
     ap.add_argument("--nuovo", action="store_true", help="come meshtasticd appena installato")
     ap.add_argument("--stato", default=None, help="file JSON con lo stato del nodo")
     ap.add_argument("--usb", default=None, metavar="PERCORSO", help="radio USB finta invece della porta TCP")
+    ap.add_argument("--squadra-primaria", action="store_true", help="squadra primaria, LongFast secondario (1.11.0)")
     a = ap.parse_args()
     MIO = a.num
-    nodo_finto = NodoFinto(a.porta, a.senza_privato, a.primo_scenario, a.nuovo, a.stato, a.rete, a.trasmessi)
+    nodo_finto = NodoFinto(a.porta, a.senza_privato, a.primo_scenario, a.nuovo, a.stato, a.rete, a.trasmessi,
+                           a.squadra_primaria)
     if a.rete:
         os.makedirs(a.rete, exist_ok=True)
         threading.Thread(target=nodo_finto.ascolta_rete, daemon=True).start()

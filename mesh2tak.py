@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-VERSIONE = "1.11.0"
+VERSIONE = "1.12.0"
 CONFIG_PREDEFINITA = "/etc/mesh2tak/mesh2tak.conf"
 
 log = logging.getLogger("mesh2tak")
@@ -1387,6 +1387,7 @@ class Ponte:
     SPAZIO_TRA_INVII_S = 3.0          # tra due trasmissioni del ponte, per lasciar ripetere la rete
     RISERVA_RADIO_S = 600.0           # il credito di tempo radio si accumula al massimo per 10 minuti
     MAX_VISTE = 300                   # radio ricordate per l'elenco della pagina della rete
+    PAUSA_CANALI_S = 1.0              # tra due canali secondari spenti (coda di 4 messaggi del nodo)
 
     def __init__(self, cfg: Config, tak: ClienteTAK, sdk: Optional[LibreriaTak]):
         self.cfg = cfg
@@ -1457,6 +1458,7 @@ class Ponte:
     # ---- collegamento ----
 
     def collega(self, iface) -> None:
+        self._spegni_secondari(iface)
         canali, ok = leggi_canali(iface, self.cfg)
         preset, salti = "LONG_FAST", 3
         try:
@@ -1487,6 +1489,29 @@ class Ponte:
         with self._lock:
             self.iface = None
             self.nodo_collegato_dal = None
+
+    def _spegni_secondari(self, iface) -> None:
+        """Dalla 1.12.0 il nodo del ponte ha solo il canale della squadra: un canale secondario acceso (per esempio
+        il pubblico rimesso dall'app) si spegne ogni volta che il ponte si collega al nodo."""
+        try:
+            nodo = iface.localNode
+            da_spegnere = secondari_da_spegnere(nodo)
+        except Exception:  # noqa  (nodo di cui non si leggono i canali: niente da fare)
+            return
+        spenti = []
+        for i in da_spegnere:
+            nome = nome_canale(nodo.channels[i])
+            try:
+                with self._lock_invio:
+                    spegni_canale(nodo, i)
+            except Exception as e:  # noqa
+                log.warning("Non riesco a spegnere il canale secondario '%s' del nodo (%s)", nome, e)
+                break
+            spenti.append(nome)
+            time.sleep(self.PAUSA_CANALI_S)     # un messaggio alla volta (vedi PAUSA_ADMIN_S)
+        if spenti:
+            log.info("Canali secondari del nodo spenti: %s (dalla 1.12.0 il ponte usa solo il canale della "
+                     "squadra)", ", ".join(spenti))
 
     def _descrivi_nodo(self) -> None:
         info = self._info(self.mio_num) if self.mio_num else {}
@@ -2180,7 +2205,7 @@ class Ponte:
         nome = f.callsign if f.tipo_fonte == "tak" else self._nome(st.num)
         hw = utente.get("hwModel")
         dettagli = [x for x in ((hw if hw and hw != "UNSET" else None), ruolo_radio) if x]
-        intest = ("Ponte Meshtastic verso TAK" if ponte else "Radio Meshtastic") + f" {id_radio}"
+        intest = ("Gateway Meshtastic verso TAK" if ponte else "Radio Meshtastic") + f" {id_radio}"
         if dettagli:
             intest += " (" + ", ".join(dettagli) + ")"
         parti = [intest, f"posizione delle {self._ora_locale(f.t_fix)}"]
@@ -3761,7 +3786,40 @@ def _stato_nodo(iface) -> dict:
         "privati": [c.settings.name or "?" for c in privati],
         "posizione_fissa": bool(nodo.localConfig.position.fixed_position),
         "canali": [(int(c.role), c.settings.name, bytes(c.settings.psk)) for c in (nodo.channels or [])[:2]],
+        "secondari": [nome_canale(nodo.channels[i]) for i in secondari_da_spegnere(nodo)],
+        "accesi": [nome_canale(c) for i, c in enumerate(nodo.channels or []) if i > 0 and int(c.role) != 0],
     }
+
+
+def nome_canale(c) -> str:
+    return c.settings.name or ("LongFast" if bytes(c.settings.psk) == b"\x01" else f"n. {c.index}")
+
+
+def secondari_da_spegnere(nodo) -> List[int]:
+    """Canali secondari ancora accesi, da spegnere: dalla 1.12.0 il nodo del ponte ha solo il canale della squadra
+    (scelta di Andrea dell'11/11/2026). Tutti, se il primario e' un canale privato (la squadra); altrimenti (canale
+    della squadra messo come secondario a mano) solo quelli pubblici, per non perdere la squadra."""
+    canali = list(nodo.channels or [])
+    if not canali:
+        return []
+    primo = canali[0]
+    primario_privato = int(primo.role) == 1 and len(bytes(primo.settings.psk)) >= 16
+    return [i for i, c in enumerate(canali) if i > 0 and int(c.role) != 0
+            and (primario_privato or len(bytes(c.settings.psk)) < 16)]
+
+
+def spegni_canale(nodo, indice: int) -> None:
+    from meshtastic.protobuf import channel_pb2
+    c = nodo.channels[indice]
+    prima = channel_pb2.Channel()
+    prima.CopyFrom(c)
+    c.role = channel_pb2.Channel.Role.DISABLED
+    c.ClearField("settings")
+    try:
+        nodo.writeChannel(indice)
+    except Exception:
+        c.CopyFrom(prima)        # il nodo non l'ha preso: la copia del ponte resta come il nodo
+        raise
 
 
 # Il nodo mette i messaggi di configurazione in una coda di 4 posti e, se ne arrivano di piu' tutti
@@ -3773,13 +3831,12 @@ TENTATIVI_CONFIGURAZIONE = 3
 
 def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: str,
                        posizione: Optional[Tuple[float, float, int]], pausa: Callable[[], None],
-                       chiave: Optional[bytes] = None, secondario: Optional[str] = None):
+                       chiave: Optional[bytes] = None):
     """(descrizione, azione) per cio' che sul nodo non e' ancora come deve essere.
 
     Con 'chiave' il canale della squadra e' dato (es. quello di ICARO): il primario deve avere
     esattamente quel nome e quella chiave. Senza, si crea un canale con chiave nuova solo se non
-    ce n'e' gia' uno privato. Con 'secondario' il canale 1 e' quello pubblico (chiave AQ==) con
-    quel nome; attenzione, il nome fa parte del canale: "" e' il LongFast pubblico di tutti.
+    ce n'e' gia' uno privato. Dalla 1.12.0 i canali secondari (es. il pubblico LongFast) si spengono.
     """
     from meshtastic.protobuf import channel_pb2, config_pb2
     Ruolo = config_pb2.Config.DeviceConfig.Role
@@ -3811,36 +3868,23 @@ def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: st
                 primo.settings.module_settings.position_precision = 32
                 nodo.writeChannel(0)
             da_fare.append((f"canale della squadra '{canale}' con la chiave data", _primario))
-    if secondario is not None:
-        secondo = nodo.channels[1]
-        if not (secondo.role == channel_pb2.Channel.Role.SECONDARY and secondo.settings.name == secondario
-                and bytes(secondo.settings.psk) == b"\x01"):
-            def _secondario():
-                secondo.role = channel_pb2.Channel.Role.SECONDARY
-                secondo.settings.name = secondario
-                secondo.settings.psk = b"\x01"
-                secondo.settings.module_settings.position_precision = 0
-                nodo.writeChannel(1)
-            da_fare.append((f"canale secondario pubblico '{secondario or 'LongFast'}'", _secondario))
     if chiave is None and not prima["privati"]:
         def _canali():
-            canali = nodo.channels
-            primo = canali[0]
+            primo = nodo.channels[0]
             primo.role = channel_pb2.Channel.Role.PRIMARY
             primo.settings.name = canale
             primo.settings.psk = os.urandom(32)
             primo.settings.module_settings.position_precision = 32
             nodo.writeChannel(0)
-            # il canale pubblico resta come secondario: si sentono gli altri, senza mandare la posizione
-            secondo = canali[1]
-            if secondario is None and secondo.role == channel_pb2.Channel.Role.DISABLED:
-                pausa()
-                secondo.role = channel_pb2.Channel.Role.SECONDARY
-                secondo.settings.name = ""
-                secondo.settings.psk = b"\x01"
-                secondo.settings.module_settings.position_precision = 0
-                nodo.writeChannel(1)
         da_fare.append((f"canale privato '{canale}' con chiave nuova", _canali))
+    # solo il canale della squadra: i secondari si spengono. Se in questo giro il primario diventa la squadra
+    # (chiave data, o canale creato adesso) si spengono tutti; altrimenti vale la regola di secondari_da_spegnere
+    primo = nodo.channels[0]
+    squadra_primaria = chiave is not None or not prima["privati"] or (
+        int(primo.role) == 1 and len(bytes(primo.settings.psk)) >= 16)
+    for i, c in enumerate(nodo.channels):
+        if i > 0 and int(c.role) != 0 and (squadra_primaria or len(bytes(c.settings.psk)) < 16):
+            da_fare.append((f"canale secondario '{nome_canale(c)}' spento", lambda i=i: spegni_canale(nodo, i)))
     if posizione:
         lat, lon, alt = posizione
         attuale = (iface.nodesByNum.get(prima["num"]) or {}).get("position") or {}
@@ -3857,7 +3901,7 @@ def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: st
 def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, ruolo: str,
                    posizione: Optional[Tuple[float, float, int]] = None, file_link: Optional[str] = None,
                    attesa_riavvio_s: float = 15.0, pausa_s: float = PAUSA_ADMIN_S,
-                   chiave_canale: Optional[bytes] = None, secondario: Optional[str] = None) -> int:
+                   chiave_canale: Optional[bytes] = None) -> int:
     """Regione EU 868, nome, ruolo, canale privato della squadra e posizione fissa.
 
     Non cambia cio' che e' gia' a posto, quindi si puo' rilanciare senza danni: se un
@@ -3879,7 +3923,7 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
         cambi = []
         try:
             da_fare = _modifiche_da_fare(iface, nome, nome_breve, canale, ruolo, posizione, pausa,
-                                         chiave_canale, secondario)
+                                         chiave_canale)
             if not da_fare or tentativo == TENTATIVI_CONFIGURAZIONE:
                 dopo = _stato_nodo(iface)
                 link = iface.localNode.getURL(includeAll=True)
@@ -3926,12 +3970,11 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
     canali = dopo.get("canali") or []
     if chiave_canale is not None and not (canali and canali[0][1] == canale and canali[0][2] == chiave_canale):
         problemi.append(f"canale della squadra '{canale}'")
-    if secondario is not None and not (len(canali) > 1 and canali[1][1] == secondario and canali[1][2] == b"\x01"):
-        problemi.append(f"canale secondario '{secondario}'")
-    secondo = canali[1] if len(canali) > 1 and canali[1][0] else None
+    if dopo["secondari"]:
+        problemi.append("canali secondari ancora accesi: " + ", ".join(dopo["secondari"]))
     print(f"  nodo !{dopo['num']:08x} '{dopo['nome']}' - regione {dopo['regione']}, ruolo {dopo['ruolo']}, "
-          f"canale privato: {', '.join(dopo['privati']) or 'nessuno'}"
-          + (f", secondario pubblico: {secondo[1] or 'LongFast'}" if secondo and secondo[2] == b"\x01" else ""))
+          f"canale privato: {', '.join(dopo['privati']) or 'nessuno'}, "
+          + (f"canali secondari: {', '.join(dopo['accesi'])}" if dopo["accesi"] else "nessun canale secondario"))
     if file_link and dopo["privati"]:
         try:
             with open(os.open(file_link, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
@@ -4239,15 +4282,14 @@ def main(argv=None) -> int:
     nodo = ap.add_argument_group("configurazione del nodo (usata dall'installatore)")
     nodo.add_argument("--configura-nodo", metavar="COLLEGAMENTO",
                       help="imposta regione EU 868, nome, ruolo, canale privato; es. tcp:127.0.0.1:4403")
-    nodo.add_argument("--nome", default="Ponte CNSAS Varese")
-    nodo.add_argument("--nome-breve", default="PONT")
+    nodo.add_argument("--nome", default="Gateway CNSAS Varese")
+    nodo.add_argument("--nome-breve", default="GTSA")
     nodo.add_argument("--canale", default="CNSAS")
     nodo.add_argument("--ruolo", default="CLIENT")
     nodo.add_argument("--posizione", default="", help="lat,lon[,quota] della posizione fissa")
     nodo.add_argument("--file-link", default="", help="dove salvare il link del canale")
     nodo.add_argument("--chiave-canale-file", default="",
                       help="file con la chiave (base64) del canale della squadra: il primario prende --canale e questa chiave")
-    nodo.add_argument("--secondario", default=None, help="nome del canale secondario pubblico (chiave AQ==)")
     args = ap.parse_args(argv)
 
     if args.codice_controllo:
@@ -4287,13 +4329,9 @@ def main(argv=None) -> int:
                 print(f"ERRORE: chiave del canale non valida ({e})")
                 print("ESITO configurazione=errore")
                 return 2
-        secondario = args.secondario.strip() if args.secondario is not None else None
-        if secondario is not None and len(secondario.encode("utf-8")) > 11:
-            print("ERRORE: il nome del canale secondario puo' avere al massimo 11 caratteri")
-            return 2
         return configura_nodo(args.configura_nodo, args.nome.strip(), args.nome_breve.strip()[:4],
                               args.canale.strip(), args.ruolo.strip().upper(), posizione,
-                              args.file_link or None, chiave_canale=chiave, secondario=secondario)
+                              args.file_link or None, chiave_canale=chiave)
 
     try:
         cfg = carica_config(args.config)
