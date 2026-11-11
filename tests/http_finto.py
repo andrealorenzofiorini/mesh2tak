@@ -35,6 +35,21 @@ class ServerFinto:
                 self.end_headers()
                 self.wfile.write(corpo)
 
+            def do_POST(self):  # noqa: N802
+                # risposte["POST /percorso"]: (codice, oggetto) oppure una funzione del corpo che li restituisce
+                corpo = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                srv.spedite.append((self.path, corpo))
+                r = srv.risposte.get("POST " + self.path)
+                if callable(r):
+                    r = r(corpo)
+                codice, dati = r if r is not None else (404, {})
+                testo = json.dumps(dati).encode()
+                self.send_response(codice)
+                self.send_header("Content-Length", str(len(testo)))
+                self.end_headers()
+                self.wfile.write(testo)
+
+        self.spedite = []
         self.porta = porta_libera()
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", self.porta), G)
         if tls:

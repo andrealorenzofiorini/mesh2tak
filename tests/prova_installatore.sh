@@ -215,6 +215,7 @@ controlla "meshtasticd su porte interne: pagina 9444, API 4404" 'grep -qx "  Por
 controlla "l'app Meshtastic trova il Raspberry da sola (mDNS)" 'grep -q "<type>_meshtastic._tcp</type>" /etc/avahi/services/mesh2tak-meshtastic.service && grep -q "<port>4403</port>" /etc/avahi/services/mesh2tak-meshtastic.service && grep -q "shortname=PONT" /etc/avahi/services/mesh2tak-meshtastic.service'
 controlla "meshtasticd risponde solo al Raspberry" 'grep -qx "IPAddressAllow=localhost" /etc/systemd/system/meshtasticd.service.d/mesh2tak-solo-locale.conf && grep -qx "IPAddressDeny=any" /etc/systemd/system/meshtasticd.service.d/mesh2tak-solo-locale.conf'
 controlla "riavvio chiesto" 'grep -q RIAVVIO "$STUB/chiamate.log"'
+controlla "esito per il primo avvio dei ponti nuovi: riavvio" 'grep -qx riavvio /etc/mesh2tak/esito-installazione'
 controlla "si ferma prima della configurazione del nodo" '! grep -q "5/9" /tmp/pi-run1.log'
 controlla "certificato gia' installato" '[ -s /etc/mesh2tak/client.key ] && grep -q "CERTIFICATO_OK=1" /etc/mesh2tak/installazione.conf'
 controlla "posizione ricordata" '[ "$(. /etc/mesh2tak/installazione.conf; echo "$POSIZIONE")" = "45.8205,8.8257,400" ]'
@@ -228,6 +229,7 @@ echo "== 2a esecuzione (dopo il riavvio: la lancia systemd, da sola)"
 sleep 8
 controlla "uscita 0" '[ $U2 = 0 ]'
 controlla "ripresa da sola, una volta sola" 'grep -q "dopo il riavvio l.installazione riprende da sola" /tmp/pi-run2.log && grep -q "systemctl disable mesh2tak-installazione.service" "$STUB/chiamate.log"'
+controlla "esito: ok con la versione" 'grep -qE "^ok [0-9]+\.[0-9]+\.[0-9]+$" /etc/mesh2tak/esito-installazione'
 controlla "alla fine niente ripresa rimasta in giro" '[ ! -e /etc/systemd/system/mesh2tak-installazione.service ] && [ ! -e /etc/mesh2tak/installatore-in-corso.sh ] && [ ! -e /etc/mesh2tak/.in-corso ]'
 controlla "ponte nuovo: nome del nodo ricordato per i rilanci" 'grep -q "^NOME_NODO_AUTOMATICO=1" /etc/mesh2tak/installazione.conf'
 controlla "nessun nuovo riavvio" '! grep -q RIAVVIO "$STUB/chiamate.log"'
@@ -330,6 +332,7 @@ controlla "QR rifatto e scelta ricordata" '[ "$(cat /root/canale-meshtastic.txt)
 esegui boot2 /tmp/pi-run3q.log --canale-pubblico; U3Q=$?
 controlla "--canale-pubblico: di nuovo il pubblico standard, QR come prima" '[ $U3Q = 0 ] && canali_nodo "" && [ "$(cat /root/canale-meshtastic.txt)" = "$LINK2" ] && ( . /etc/mesh2tak/installazione.conf; [ -z "$SECONDARIO" ] && [ "$SECONDARIO_DATO" = 1 ] ) && grep -q "canale pubblico standard di Meshtastic (LongFast" /tmp/pi-run3q.log'
 esegui boot2 /tmp/pi-run3r.log "--canale-pubblico=Pub lic"; U3R=$?
+controlla "esito: errore con il motivo" 'grep -q "^errore Nome del canale pubblico non valido" /etc/mesh2tak/esito-installazione'
 controlla "nome del canale pubblico non valido: fermo, niente cambiato" '[ $U3R != 0 ] && grep -q "Nome del canale pubblico non valido" /tmp/pi-run3r.log && canali_nodo "" && ( . /etc/mesh2tak/installazione.conf; [ -z "$SECONDARIO" ] )'
 controlla "rilancio senza opzione dopo --canale-pubblico: niente da fare" 'esegui boot2 /tmp/pi-run3s.log && grep -q "era gia. tutto a posto" /tmp/pi-run3s.log && canali_nodo ""'
 controlla "chiave della squadra mai nei registri" '! grep -rqs "$CHIAVE_PROVA" /tmp/pi-run3p.log /tmp/pi-run3q.log /tmp/pi-run3r.log /tmp/pi-run3s.log /etc/mesh2tak /var/log/mesh2tak-installazione.log'

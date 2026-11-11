@@ -93,6 +93,15 @@ REPO = "andrealorenzofiorini/mesh2tak"          # pubblico: le release si leggon
 GITHUB_API = os.environ.get("RETE_PROVA_GITHUB_API", "https://api.github.com").rstrip("/")
 GITHUB = os.environ.get("RETE_PROVA_GITHUB", "https://github.com").rstrip("/")
 RE_VERSIONE_RILASCIO = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}$")
+# Ponti nuovi (dalla 1.10.0): un Raspberry scritto con Raspberry Pi Imager si installa da solo
+PONTI_NUOVI_DIR = CONF_DIR + "/ponti-nuovi"                 # solo root: certificato e canale da consegnare
+IMPOSTAZIONI_NUOVI = PONTI_NUOVI_DIR + "/impostazioni.json"
+CONFIGURAZIONI_DIR = CONF_DIR + "/configurazioni"            # una per ponte da installare, la legge solo lui
+RIASSUNTO_NUOVI = WEB_DIR + "/ponti-nuovi.json"              # per la pagina: cosa c'e', senza segreti
+AVANZAMENTO_DIR = WEB_DIR + "/avanzamento"                   # lo scrive ogni ponte che si installa (via SSH)
+INVITI_DIR = SERVIZIO_DIR + "/inviti"                        # inviti preparati sulla pagina (del servizio)
+INSTALLAZIONI_DIR = SERVIZIO_DIR + "/installazioni"          # scheda e posizione scelte, per "Riprova"
+SCHEDE = ("usb", "waveshare", "meshadv", "meshadv-mini", "rak")
 SSHD_DROPIN = "/etc/ssh/sshd_config.d/mesh2tak-ponti.conf"
 OPT_DIR = "/opt/mesh2tak-rete"
 OPT_SCRIPT = OPT_DIR + "/rete_meshtastic.py"
@@ -362,10 +371,18 @@ def controlla_dns(imp: Impostazioni, nomi: List[str], ignora: bool) -> None:
 # sshd: utenti dei ponti
 # --------------------------------------------------------------------------
 
+def comando_ponte() -> str:
+    """Il solo comando che un ponte puo' lanciare via SSH (dalla 1.10.0): legge la sua configurazione da
+    installare e scrive a che punto e' l'installazione. Sempre questo, qualunque cosa chieda il Raspberry."""
+    prova = f"/usr/bin/env RETE_PROVA_RADICE={RADICE} " if RADICE else ""
+    return f"{prova}/usr/bin/python3 -I {P(OPT_SCRIPT)} ponte"
+
+
 def testo_dropin() -> str:
     return "\n".join([
         "# Aggiunto da rete-meshtastic.sh (mesh2tak): utenti dei ponti Meshtastic.",
-        "# Possono solo tenere aperto un tunnel verso la loro porta sul server (127.0.0.1), niente comandi.",
+        "# Possono solo tenere aperto un tunnel verso la loro porta sul server (127.0.0.1) e, dalla 1.10.0,",
+        "# lanciare un solo comando: configurazione e avanzamento dell'installazione del loro ponte.",
         f"Match Group {GRUPPO}",
         f"\tAuthorizedKeysFile {P(CHIAVI_DIR)}/%u",
         "\tAuthenticationMethods publickey",
@@ -381,7 +398,7 @@ def testo_dropin() -> str:
         "\tPermitTunnel no",
         "\tPermitUserRC no",
         "\tGatewayPorts no",
-        "\tForceCommand /usr/sbin/nologin",
+        f"\tForceCommand {comando_ponte()}",
         "\tClientAliveInterval 30",
         "\tClientAliveCountMax 3",
         "",
@@ -389,8 +406,19 @@ def testo_dropin() -> str:
 
 
 def riga_autorizzata(chiave: str, porta: int) -> str:
-    return (f'restrict,port-forwarding,permitlisten="127.0.0.1:{porta}",command="/usr/sbin/nologin" '
+    return (f'restrict,port-forwarding,permitlisten="127.0.0.1:{porta}",command="{comando_ponte()}" '
             f"{chiave}\n")
+
+
+def stessa_chiave_e_porta(vecchia: Optional[str], nuova: str) -> bool:
+    """Le due righe di authorized_keys hanno la stessa chiave e la stessa porta (cambia solo il comando): il
+    tunnel aperto puo' restare."""
+    def parti(riga: str) -> Tuple[str, str]:
+        m = re.search(r'permitlisten="([^"]*)"', riga or "")
+        k = re.search(r"(ssh-ed25519 [A-Za-z0-9+/=]+)", riga or "")
+        return (m.group(1) if m else "", k.group(1) if k else "")
+    a, b = parti(vecchia or ""), parti(nuova)
+    return bool(a[0] and a[1]) and a == b
 
 
 def ricarica_ssh() -> None:
@@ -410,6 +438,7 @@ def prepara_sshd() -> None:
     os.makedirs(P(CHIAVI_DIR), exist_ok=True)
     os.chmod(P(CONF_DIR), 0o755)
     os.chmod(P(CHIAVI_DIR), 0o755)
+    prepara_cartelle_ponti()
     percorso = P(SSHD_DROPIN)
     prima = leggi(percorso)
     if prima == testo_dropin():
@@ -431,6 +460,27 @@ def prepara_sshd() -> None:
                      + ((r.stdout or "") + (r.stderr or "")).strip()[-300:])
     ricarica_ssh()
     ok(f"regole di sshd per i ponti: {SSHD_DROPIN}")
+
+
+def prepara_cartelle_ponti() -> None:
+    """Le cartelle che il comando dei ponti usa (dalla 1.10.0), con il gruppo dei ponti e il bit sticky: ogni
+    ponte crea e toglie solo i suoi file, non vede l'elenco degli altri. La configurazione da installare la legge
+    solo il suo ponte; l'avanzamento lo legge anche il servizio della pagina (senza privilegi)."""
+    try:
+        gid = grp.getgrnam(GRUPPO).gr_gid
+    except KeyError:
+        if not RADICE:
+            raise Errore(f"manca il gruppo {GRUPPO}")
+        gid = None                      # prove con groupadd finto
+    os.makedirs(P(WEB_DIR), exist_ok=True)
+    os.chmod(P(WEB_DIR), 0o755)
+    for d, modo in ((CONFIGURAZIONI_DIR, 0o1730), (AVANZAMENTO_DIR, 0o1731)):
+        os.makedirs(P(d), exist_ok=True)
+        if gid is not None:
+            os.chown(P(d), 0, gid)
+        os.chmod(P(d), modo)
+    os.makedirs(P(PONTI_NUOVI_DIR), exist_ok=True)
+    os.chmod(P(PONTI_NUOVI_DIR), 0o700)
 
 
 def porta_ssh() -> int:
@@ -459,16 +509,23 @@ def utente_ponte(nome: str) -> str:
     return f"ponte-{nome}"
 
 
+SHELL_PONTI = "/bin/sh"   # sshd lancia il comando forzato con la shell dell'utente: con nologin non partirebbe
+
+
 def prepara_utente(nome: str) -> str:
     utente = utente_ponte(nome)
     try:
         pw = pwd.getpwnam(utente)
     except KeyError:
         esegui(["useradd", "--system", "--no-create-home", "--home-dir", "/nonexistent", "--shell",
-                "/usr/sbin/nologin", "--gid", GRUPPO, "--comment", f"Ponte Meshtastic {nome} (mesh2tak)", utente])
+                SHELL_PONTI, "--gid", GRUPPO, "--comment", f"Ponte Meshtastic {nome} (mesh2tak)", utente])
     else:
         if pw.pw_gid != grp.getgrnam(GRUPPO).gr_gid:
             raise Errore(f"esiste gia' un utente {utente} che non e' di un ponte: scegli un altro nome")
+        if pw.pw_shell != SHELL_PONTI:
+            # utenti creati prima della 1.10.0. Resta tutto chiuso: sshd lancia solo il comando forzato
+            # (ForceCommand), senza terminale, e l'account non ha password
+            esegui(["usermod", "-s", SHELL_PONTI, utente])
     # nessuna password ma account non bloccato: con UsePAM no sshd rifiuta anche le chiavi di un account '!'
     esegui(["usermod", "-p", "*", utente])
     return utente
@@ -524,6 +581,7 @@ def scrivi_sito(imp: Impostazioni, reg: dict) -> None:
                                         "ponti": [{"nome": n, "porta": p["porta"]}
                                                   for n, p in sorted(reg["ponti"].items())]},
                                        ensure_ascii=False, indent=1) + "\n")
+    scrivi_riassunto_nuovi(leggi_impostazioni_nuovi())
 
 
 def porta_console(imp: Impostazioni) -> int:
@@ -543,6 +601,10 @@ def scrivi_registrazione(imp: Impostazioni, nome: str, p: dict, porta_sshd: int,
     if isinstance(agg, dict) and RE_VERSIONE_RILASCIO.match(str(agg.get("versione", ""))):
         # dalla 1.8.0: il Raspberry vede la richiesta e scarica quella versione da GitHub (mai da qui)
         dati["aggiorna"] = {"versione": agg["versione"], "chiesto": int(agg.get("chiesto") or 0)}
+    ins = p.get("installa")
+    if isinstance(ins, dict) and os.path.exists(file_configurazione(nome)):
+        # dalla 1.10.0: c'e' una configurazione da installare; il Raspberry la scarica via SSH, con la sua chiave
+        dati["installa"] = {"tentativo": int(ins.get("tentativo") or 1)}
     scrivi(P(f"{ACCESSO_DIR}/{p['impronta']}.json"), json.dumps(dati, indent=1) + "\n")
 
 
@@ -606,6 +668,14 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
           "\t\t\tfile_server",
           "\t\t}"]
     r += auth
+    r += ["\t\t# certificato e canale per i ponti nuovi (dalla 1.10.0): il pacchetto della console e' piu' grande",
+          "\t\thandle /api/impostazioni-nuovi {",
+          "\t\t\trequest_body {",
+          "\t\t\t\tmax_size 400KB",
+          "\t\t\t}",
+          f"\t\t\treverse_proxy 127.0.0.1:{PORTA_WEB} {{"] + senza_cookie + [
+          "\t\t\t}",
+          "\t\t}"]
     r += ["\t\thandle /api/* {",
           "\t\t\trequest_body {",
           "\t\t\t\tmax_size 16KB",
@@ -623,8 +693,27 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
               "\t\t\t\t\tresponse_header_timeout 15s",
               "\t\t\t\t}",
               "\t\t\t}",
+              "\t\t}",
+              # dalla 1.10.0: le radio della squadra gestite attraverso il nodo del ponte (solo amministratori:
+              # il ponte vuole il nome messo da Authentik e risponde solo a quello che arriva dal tunnel)
+              f"\t\thandle_path /radio/{n}/* {{",
+              "\t\t\trequest_body {",
+              "\t\t\t\tmax_size 16KB",
+              "\t\t\t}",
+              "\t\t\trewrite * /mesh2tak/radio{uri}",
+              f"\t\t\treverse_proxy https://127.0.0.1:{p['porta']} {{"] + senza_cookie + [
+              "\t\t\t\theader_up X-Forwarded-Host {hostport}",
+              "\t\t\t\ttransport http {",
+              "\t\t\t\t\ttls_insecure_skip_verify",
+              "\t\t\t\t\tdial_timeout 5s",
+              "\t\t\t\t\tresponse_header_timeout 15s",
+              "\t\t\t\t}",
+              "\t\t\t}",
               "\t\t}"]
     r += ["\t\thandle /stato/* {",
+          "\t\t\trespond 404",
+          "\t\t}",
+          "\t\thandle /radio/* {",
           "\t\t\trespond 404",
           "\t\t}",
           "\t\theader Cache-Control no-store",
@@ -1017,10 +1106,12 @@ def prepara_ponti(imp: Impostazioni, reg: dict, nomi: List[str]) -> None:
     for n in nomi:
         p = reg["ponti"][n]
         utente = prepara_utente(n)
-        cambiata = scrivi(P(f"{CHIAVI_DIR}/{utente}"), riga_autorizzata(p["chiave"], p["porta"]), 0o644)
+        riga = riga_autorizzata(p["chiave"], p["porta"])
+        prima = leggi(P(f"{CHIAVI_DIR}/{utente}"))
+        cambiata = scrivi(P(f"{CHIAVI_DIR}/{utente}"), riga, 0o644)
         for vecchia in p.pop("impronte_vecchie", []):
             togli(P(f"{ACCESSO_DIR}/{vecchia}.json"))   # il Raspberry con la chiave vecchia non trova piu' nulla
-        if cambiata:
+        if cambiata and not stessa_chiave_e_porta(prima, riga):
             chiudi_sessioni(utente)   # chiave o porta cambiate: il tunnel si riapre con quelle nuove
     ok(f"utenti dei ponti pronti: {', '.join(utente_ponte(n) for n in nomi) or 'nessuno'} (solo tunnel)")
 
@@ -1042,9 +1133,244 @@ def valida_nome(nome: str) -> str:
     return nome
 
 
+# --------------------------------------------------------------------------
+# Ponti nuovi (dalla 1.10.0): il Raspberry scritto con Raspberry Pi Imager si installa da solo.
+# Certificato e canale si caricano una volta sulla pagina e restano qui, letti solo da root; quando un
+# ponte nuovo e' approvato, root ne scrive la configurazione in un file che puo' leggere solo l'utente SSH di
+# quel ponte, e il Raspberry la scarica con la sua chiave (comando "ponte").
+# --------------------------------------------------------------------------
+
+RE_POSIZIONE = re.compile(r"^-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?(?:,-?\d{1,5}(?:\.\d+)?)?$")
+RE_NOME_PACCHETTO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,78}\.(?:zip|p12|pfx)$")
+RE_NOME_CANALE = re.compile(r"^[A-Za-z0-9_-]{1,11}$")
+RE_SECONDARIO = re.compile(r"^[A-Za-z0-9_-]{0,11}$")
+RE_HOST_TAK = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
+PACCHETTO_MAX = 256 << 10
+
+
+def valida_posizione(testo: str) -> str:
+    """'lat,lon[,quota]' come le copia Google Maps (anche con spazi); '' se non c'e'. Come l'installatore."""
+    parti = [x for x in str(testo or "").replace(";", ",").replace(" ", ",").split(",") if x.strip()]
+    if not parti:
+        return ""
+    pulita = ",".join(parti)
+    try:
+        lat, lon = float(parti[0]), float(parti[1])
+    except (ValueError, IndexError):
+        raise Errore("coordinate: latitudine e longitudine separate da una virgola, es. 45.8205, 8.8257")
+    if (not RE_POSIZIONE.match(pulita) or not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0)):
+        raise Errore("coordinate: latitudine e longitudine separate da una virgola, es. 45.8205, 8.8257")
+    return pulita
+
+
+def chiave_canale_valida(chiave: str) -> str:
+    """La chiave del canale (PSK) in base64, 16 o 32 byte, come la vuole l'installatore."""
+    t = str(chiave or "").strip()
+    t = t[7:] if t.lower().startswith("base64:") else t
+    try:
+        if len(base64.b64decode(t, validate=True)) in (16, 32):
+            return t
+    except (binascii.Error, ValueError):
+        pass
+    raise Errore("chiave del canale non valida: serve quella del canale privato, in base64 (16 o 32 byte, "
+                 "es. 44 caratteri con = in fondo)")
+
+
+def openssl(argomenti: List[str], password: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["openssl"] + argomenti, capture_output=True, text=True, timeout=60,
+                          stdin=subprocess.DEVNULL, env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                                                         "M2T_PASS": password})
+
+
+def controlla_pacchetto(dati: bytes, nome_file: str, password: str) -> dict:
+    """Il pacchetto d'integrazione della console infra-TAK (o un .p12): si apre, ha certificato e chiave, la
+    password li apre. Torna nome e scadenza del certificato, indirizzo e porta del TAK Server se li dice."""
+    cartella = P(PONTI_NUOVI_DIR + "/controllo")
+    shutil.rmtree(cartella, ignore_errors=True)
+    os.makedirs(cartella, mode=0o700)
+    try:
+        host, porta = "", 8089
+        file_dentro: Dict[str, str] = {}
+        if nome_file.lower().endswith(".zip"):
+            import zipfile
+            try:
+                z = zipfile.ZipFile(io.BytesIO(dati))
+                nomi = [n for n in z.namelist() if not n.endswith("/")]
+                if len(nomi) > 40 or sum(i.file_size for i in z.infolist()) > 4 << 20:
+                    raise Errore("il pacchetto contiene troppa roba: e' quello della console infra-TAK?")
+                for n in nomi:
+                    b = os.path.basename(n)
+                    if b and re.match(r"^[A-Za-z0-9._ -]{1,100}$", b) and not b.startswith("._"):
+                        destinazione = os.path.join(cartella, b)
+                        with open(destinazione, "wb") as f:
+                            f.write(z.read(n))
+                        file_dentro[b] = destinazione
+            except (zipfile.BadZipFile, OSError, RuntimeError, ValueError):
+                raise Errore("il file .zip non si apre: e' quello scaricato dalla console infra-TAK?")
+        else:
+            destinazione = os.path.join(cartella, "certificato.p12")
+            with open(destinazione, "wb") as f:
+                f.write(dati)
+            file_dentro["certificato.p12"] = destinazione
+        leggimi = file_dentro.get("README.txt")
+        if leggimi:
+            testo = open(leggimi, encoding="utf-8", errors="replace").read()
+            m = re.search(r"^Server:\s*(\S+)", testo, re.M)
+            if m and not m.group(1).startswith("<") and RE_HOST_TAK.match(m.group(1)):
+                host = m.group(1)
+            m = re.search(r"^Port:\s*(\d+)", testo, re.M)
+            if m and 0 < int(m.group(1)) < 65536:
+                porta = int(m.group(1))
+        cert = next((f for b, f in sorted(file_dentro.items()) if b.endswith(".pem") and b not in
+                     ("ca-chain.pem", "ca.pem")), None)
+        chiave = next((f for b, f in sorted(file_dentro.items()) if b.endswith(".key")), None)
+        p12 = next((f for b, f in sorted(file_dentro.items()) if b.endswith((".p12", ".pfx")) and
+                    not b.endswith("-legacy.p12") and not b.startswith("truststore-")), None)
+        if not ((cert and chiave) or p12):
+            raise Errore("nel pacchetto non c'e' ne' il certificato .pem/.key ne' il .p12: e' quello della console "
+                         "infra-TAK?")
+        risultato = {"host": host, "porta": porta, "certificato": "", "scade": None}
+        if not shutil.which("openssl"):
+            return risultato                # senza openssl si controlla sul Raspberry, come sempre
+        if cert and chiave:
+            if openssl(["pkey", "-in", chiave, "-passin", "env:M2T_PASS", "-noout"], password).returncode != 0:
+                raise Errore("password del certificato sbagliata (quella mostrata nella console infra-TAK)")
+        else:
+            esportato = os.path.join(cartella, "cliente.pem")
+            for extra in ([], ["-legacy"]):
+                r = openssl(["pkcs12"] + extra + ["-in", p12, "-passin", "env:M2T_PASS", "-clcerts", "-nokeys",
+                                                  "-out", esportato], password)
+                if r.returncode == 0:
+                    break
+            else:
+                raise Errore("password del certificato sbagliata, o file .p12 rovinato")
+            cert = esportato
+        r = openssl(["x509", "-in", cert, "-noout", "-subject", "-enddate", "-nameopt", "multiline"], password)
+        m = re.search(r"commonName\s*=\s*(.+)", r.stdout or "")
+        if m:
+            risultato["certificato"] = re.sub(r"[^\w.@ -]", "", m.group(1).strip())[:64]
+        m = re.search(r"notAfter=(.+)", r.stdout or "")
+        if m:
+            try:
+                risultato["scade"] = int(ssl.cert_time_to_seconds(m.group(1).strip()))
+            except ValueError:
+                pass
+        return risultato
+    finally:
+        shutil.rmtree(cartella, ignore_errors=True)
+
+
+def salva_impostazioni_nuovi(lavoro: dict) -> str:
+    """Lavoro "impostazioni-nuovi" (da root): controlla e salva certificato e canale per i ponti nuovi."""
+    d = lavoro["impostazioni"]
+    dati = base64.b64decode(d["pacchetto"])
+    password = d["password"] or "atakatak"
+    info(f"pacchetto {d['nome_pacchetto']} ({len(dati) // 1024 + 1} kB)")
+    c = controlla_pacchetto(dati, d["nome_pacchetto"], password)
+    host = c["host"] or d["host"]          # come l'installatore: vale quello scritto nel pacchetto
+    if not host:
+        raise Errore("il pacchetto non dice l'indirizzo del TAK Server: scrivilo nel modulo (es. takserver.tuodominio.it)")
+    if c["certificato"]:
+        ok(f"certificato '{c['certificato']}'" + (f", scade il {giorno_it(c['scade'])}" if c["scade"] else ""))
+    else:
+        avviso("certificato non controllato qui (manca openssl): lo controlla il Raspberry")
+    salvate = {"formato": 1, "pacchetto": d["pacchetto"], "nome_pacchetto": d["nome_pacchetto"], "password": password,
+               "host": d["host"], "server": f"{host}:{c['porta']}",
+               "canale": {"nome": d["canale"], "chiave": d["chiave"], "secondario": d["secondario"]},
+               "certificato": c["certificato"], "scade": c["scade"], "aggiornato": int(time.time()), "da": lavoro["da"]}
+    os.makedirs(P(PONTI_NUOVI_DIR), exist_ok=True)
+    os.chmod(P(PONTI_NUOVI_DIR), 0o700)
+    scrivi(P(IMPOSTAZIONI_NUOVI), json.dumps(salvate, ensure_ascii=False) + "\n", 0o600)
+    scrivi_riassunto_nuovi(salvate)
+    ok(f"TAK Server {host}:{c['porta']}, canale '{d['canale']}' (secondario "
+       f"{d['secondario'] or 'LongFast, il pubblico standard'})")
+    return (f"Impostazioni salvate: certificato '{c['certificato'] or '?'}', TAK Server {host}:{c['porta']}, "
+            f"canale {d['canale']}.")
+
+
+def scrivi_riassunto_nuovi(s: Optional[dict]) -> None:
+    """Per la pagina della rete: cosa c'e' nelle impostazioni dei ponti nuovi, senza chiavi ne' password."""
+    if not s:
+        togli(P(RIASSUNTO_NUOVI))
+        return
+    canale = s.get("canale") or {}
+    scrivi(P(RIASSUNTO_NUOVI), json.dumps({
+        "formato": 1, "pronto": True, "certificato": s.get("certificato") or "", "scade": s.get("scade"),
+        "server": s.get("server") or "", "canale": canale.get("nome") or "", "secondario": canale.get("secondario") or "",
+        "aggiornato": s.get("aggiornato"), "da": s.get("da") or ""}, ensure_ascii=False) + "\n", 0o644)
+
+
+def leggi_impostazioni_nuovi() -> Optional[dict]:
+    testo = leggi(P(IMPOSTAZIONI_NUOVI))
+    try:
+        d = json.loads(testo) if testo else None
+    except ValueError:
+        return None
+    return d if isinstance(d, dict) and d.get("pacchetto") else None
+
+
+def file_configurazione(nome: str) -> str:
+    return P(f"{CONFIGURAZIONI_DIR}/{nome}.json")
+
+
+def prepara_configurazione(imp: Impostazioni, reg: dict, nome: str, installa: dict, da: str) -> int:
+    """Scrive la configurazione da installare del ponte nuovo: la legge solo il suo utente SSH (e root). Torna il
+    numero del tentativo, che va nella registrazione: il Raspberry lo vede e la scarica."""
+    s = leggi_impostazioni_nuovi()
+    if not s:
+        raise Errore("mancano certificato e canale per i ponti nuovi: caricali sulla pagina della rete")
+    p = reg["ponti"][nome]
+    prima = p.get("installa") if isinstance(p.get("installa"), dict) else {}
+    tentativo = int(prima.get("tentativo") or 0) + 1
+    conf = {"formato": 1, "nome": nome, "scheda": installa["scheda"], "posizione": installa.get("posizione") or "",
+            "rete": imp.url().rstrip("/"), "versione": VERSIONE, "tentativo": tentativo,
+            "tak": {"pacchetto": s["pacchetto"], "nome_pacchetto": s["nome_pacchetto"], "password": s["password"],
+                    "host": s.get("host") or ""},
+            "canale": s["canale"]}
+    prepara_cartelle_ponti()
+    f = file_configurazione(nome)
+    togli(f)
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
+    try:
+        os.write(fd, (json.dumps(conf, ensure_ascii=False) + "\n").encode("utf-8"))
+        try:
+            os.fchown(fd, pwd.getpwnam(utente_ponte(nome)).pw_uid, 0)
+        except KeyError:
+            if not RADICE:
+                raise Errore(f"manca l'utente {utente_ponte(nome)}")
+        os.fchmod(fd, 0o400)
+    finally:
+        os.close(fd)
+    p["installa"] = {"tentativo": tentativo, "chiesto": int(time.time()), "scheda": installa["scheda"],
+                     "posizione": installa.get("posizione") or "", "da": da}
+    ok(f"configurazione per il ponte nuovo pronta (tentativo {tentativo}, radio {installa['scheda']}): la legge "
+       f"solo il Raspberry di {nome}")
+    return tentativo
+
+
+def riprova_installazione(imp: Impostazioni, reg: dict, lavoro: dict) -> None:
+    """Lavoro "installa" (da root): la configurazione di nuovo, con le scelte nuove o quelle di prima."""
+    nome = lavoro["nome"]
+    if nome not in reg["ponti"]:
+        raise Errore("ponte non trovato: ricarica la pagina")
+    prima = reg["ponti"][nome].get("installa")
+    if not isinstance(prima, dict):
+        raise Errore(f"il ponte {nome} non e' stato installato dalla pagina: da qui non si reinstalla")
+    installa = {"scheda": lavoro["installa"].get("scheda") or prima.get("scheda") or "usb",
+                "posizione": (lavoro["installa"]["posizione"] if "posizione" in lavoro["installa"]
+                              else prima.get("posizione") or "")}
+    prepara_configurazione(imp, reg, nome, installa, lavoro["da"])
+    salva_registro(reg)
+    pubblica_registrazioni(imp, reg, [nome])
+    ok(f"il Raspberry di {nome} riprova l'installazione entro un paio di minuti")
+
+
 def aggiungi_ponte(imp: Impostazioni, reg: dict, nome: str, chiave: str, impronta: str, ignora_dns: bool = False,
-                   cambio_chiave: bool = True) -> None:
-    """Registra (o aggiorna) un ponte: DNS, utente SSH, pagina, Caddy, Authentik, registrazione."""
+                   cambio_chiave: bool = True, installa: Optional[dict] = None, da: str = "") -> None:
+    """Registra (o aggiorna) un ponte: DNS, utente SSH, pagina, Caddy, Authentik, registrazione. Con installa
+    (ponte nuovo dalla 1.10.0) prepara anche la configurazione che il Raspberry scarica per installarsi."""
+    if installa is not None and not leggi_impostazioni_nuovi():
+        raise Errore("mancano certificato e canale per i ponti nuovi: caricali sulla pagina della rete")
     reg["dominio"] = imp.dominio
     nuovo = nome not in reg["ponti"]
     passo(f"1/5  Indirizzi: {imp.url()} e {imp.url(nome)}")
@@ -1077,6 +1403,8 @@ def aggiungi_ponte(imp: Impostazioni, reg: dict, nome: str, chiave: str, impront
     configura_authentik(imp, reg)
     # solo adesso, a tutto pronto: se un passo prima non riesce il ponte non risulta aggiunto e si riprova
     passo("5/5  Pagina della rete e registrazione per il Raspberry")
+    if installa is not None:
+        prepara_configurazione(imp, reg, nome, installa, da)
     salva_registro(reg)
     scrivi_sito(imp, reg)
     pubblica_registrazioni(imp, reg, [nome])
@@ -1089,6 +1417,8 @@ def rimuovi_ponte(imp: Impostazioni, reg: dict, nome: str) -> None:
     utente = utente_ponte(nome)
     togli(P(f"{ACCESSO_DIR}/{p['impronta']}.json"))
     togli(P(f"{CHIAVI_DIR}/{utente}"))
+    togli(file_configurazione(nome))                     # certificato e canale non piu' consegnabili
+    togli(P(f"{AVANZAMENTO_DIR}/{nome}.json"))
     chiudi_sessioni(utente)
     try:
         pwd.getpwnam(utente)
@@ -1178,7 +1508,7 @@ def installa_servizio_web() -> None:
             pw = None   # prove con useradd finto
     for d, modo, proprio in ((WEB_DIR, 0o755, False), (SERVIZIO_DIR, 0o700, True), (RICHIESTE_DIR, 0o700, True),
                              (LAVORI_DIR, 0o700, True), (TMP_DIR, 0o700, True), (ESITI_DIR, 0o755, False),
-                             (OPT_DIR, 0o755, False)):
+                             (INVITI_DIR, 0o700, True), (INSTALLAZIONI_DIR, 0o700, True), (OPT_DIR, 0o755, False)):
         os.makedirs(P(d), exist_ok=True)
         os.chmod(P(d), modo)
         if proprio and pw is not None:
@@ -1365,6 +1695,8 @@ def cmd_disinstalla(a) -> int:
         passo("5/5  File")
         shutil.rmtree(P(WEB_DIR), ignore_errors=True)
         shutil.rmtree(P(CADDY_DIR), ignore_errors=True)
+        shutil.rmtree(P(CONFIGURAZIONI_DIR), ignore_errors=True)   # dalla 1.10.0: certificato e canale
+        shutil.rmtree(P(PONTI_NUOVI_DIR), ignore_errors=True)
         for f in glob.glob(P(CHIAVI_DIR) + "/*"):
             togli(f)
         togli(P(REGISTRO))
@@ -1382,6 +1714,57 @@ RE_IMPRONTA = re.compile(r"^[0-9a-f]{64}$")
 RE_UTENTE_AK = re.compile(r"^[\w.@+-]{1,64}$")
 
 
+LAVORO_MAX = 16384
+LAVORO_IMPOSTAZIONI_MAX = 512 << 10      # certificato dei ponti nuovi (base64)
+
+
+def leggi_installa(d) -> Optional[dict]:
+    """Scheda radio e posizione per installare un ponte nuovo (dalla 1.10.0)."""
+    if not isinstance(d, dict) or str(d.get("scheda") or "") not in SCHEDE:
+        return None
+    try:
+        return {"scheda": d["scheda"], "posizione": valida_posizione(str(d.get("posizione") or ""))}
+    except Errore:
+        return None
+
+
+def controlla_impostazioni(d) -> dict:
+    """Certificato e canale per i ponti nuovi, come li manda la pagina: ogni campo controllato (Errore col perche')."""
+    if not isinstance(d, dict):
+        raise Errore("richiesta non valida")
+    nome_pacchetto = os.path.basename(str(d.get("nome_pacchetto") or "").replace("\\", "/")).strip()
+    pacchetto = str(d.get("pacchetto") or "")
+    password = str(d.get("password") or "")
+    host = str(d.get("host") or "").strip()
+    canale = str(d.get("canale") or "").strip()
+    secondario = str(d.get("secondario") or "").strip()
+    if not RE_NOME_PACCHETTO.match(nome_pacchetto):
+        raise Errore("serve il pacchetto .zip scaricato dalla console infra-TAK (o un .p12)")
+    try:
+        grezzo = base64.b64decode(pacchetto, validate=True)
+    except (binascii.Error, ValueError):
+        raise Errore("file del certificato non valido: riprova a sceglierlo")
+    if not 0 < len(grezzo) <= PACCHETTO_MAX:
+        raise Errore("il file del certificato e' troppo grande: serve il pacchetto della console infra-TAK")
+    if len(password) > 128 or not password.isprintable():
+        raise Errore("password del certificato non valida")
+    if host and not RE_HOST_TAK.match(host):
+        raise Errore("indirizzo del TAK Server non valido (es. takserver.tuodominio.it)")
+    if not RE_NOME_CANALE.match(canale):
+        raise Errore("nome del canale: lettere, numeri, - e _, al massimo 11 caratteri (es. CNSAS-VA)")
+    if not RE_SECONDARIO.match(secondario):
+        raise Errore("nome del canale pubblico: lettere, numeri, - e _, al massimo 11 caratteri (vuoto = LongFast)")
+    return {"nome_pacchetto": nome_pacchetto, "pacchetto": pacchetto, "password": password, "host": host,
+            "canale": canale, "chiave": chiave_canale_valida(str(d.get("chiave") or "")), "secondario": secondario}
+
+
+def leggi_impostazioni_lavoro(d) -> Optional[dict]:
+    try:
+        return controlla_impostazioni(d)
+    except Errore:
+        return None
+
+
 def leggi_lavoro(percorso: str) -> Optional[dict]:
     """Un lavoro scritto dal servizio della pagina: non ci si fida di nulla (niente collegamenti simbolici,
     file piccolo, solo i campi previsti)."""
@@ -1391,9 +1774,15 @@ def leggi_lavoro(percorso: str) -> Optional[dict]:
         return None
     try:
         st = os.fstat(fd)
-        if not (st.st_mode & 0o170000 == 0o100000) or st.st_size > 16384:
+        if not (st.st_mode & 0o170000 == 0o100000) or st.st_size > LAVORO_IMPOSTAZIONI_MAX:
             return None
-        dati = json.loads(os.read(fd, 16384).decode("utf-8"))
+        grezzo = b""
+        while len(grezzo) <= LAVORO_IMPOSTAZIONI_MAX:
+            pezzo = os.read(fd, 65536)
+            if not pezzo:
+                break
+            grezzo += pezzo
+        dati = json.loads(grezzo.decode("utf-8"))
     except (OSError, ValueError, UnicodeDecodeError):
         return None
     finally:
@@ -1402,8 +1791,34 @@ def leggi_lavoro(percorso: str) -> Optional[dict]:
         return None
     azione = dati.get("azione")
     da = str(dati.get("da") or "")
-    if azione not in ("aggiungi", "rimuovi", "aggiorna-server", "aggiorna-ponti") or not RE_UTENTE_AK.match(da):
+    if (azione not in ("aggiungi", "rimuovi", "aggiorna-server", "aggiorna-ponti", "impostazioni-nuovi", "installa")
+            or not RE_UTENTE_AK.match(da)):
         return None
+    if azione != "impostazioni-nuovi" and len(grezzo) > LAVORO_MAX:
+        return None
+    if azione == "impostazioni-nuovi":
+        impostazioni = leggi_impostazioni_lavoro(dati.get("impostazioni"))
+        if impostazioni is None:
+            return None
+        return {"id": dati["id"], "azione": azione, "nome": "ponti-nuovi", "da": da, "impostazioni": impostazioni,
+                "richiesta": None, "sostituisci": False}
+    if azione == "installa":
+        d = dati.get("installa") if isinstance(dati.get("installa"), dict) else {}
+        installa: dict = {}
+        if d.get("scheda"):
+            if d["scheda"] not in SCHEDE:
+                return None
+            installa["scheda"] = d["scheda"]
+        if "posizione" in d:
+            try:
+                installa["posizione"] = valida_posizione(str(d.get("posizione") or ""))
+            except Errore:
+                return None
+        nome = str(dati.get("nome") or "")
+        if not RE_NOME.match(nome):
+            return None
+        return {"id": dati["id"], "azione": azione, "nome": nome, "da": da, "installa": installa, "richiesta": None,
+                "sostituisci": False}
     if azione.startswith("aggiorna-"):
         versione = str(dati.get("versione") or "")
         nome = str(dati.get("nome") or "")
@@ -1419,6 +1834,10 @@ def leggi_lavoro(percorso: str) -> Optional[dict]:
                   "sostituisci": dati.get("sostituisci") is True}
         if azione == "aggiungi":
             lavoro["chiave"], lavoro["impronta"] = leggi_chiave(str(dati.get("chiave", "")))
+            if dati.get("installa") is not None:
+                lavoro["installa"] = leggi_installa(dati.get("installa"))
+                if lavoro["installa"] is None:
+                    return None
     except Errore:
         return None
     richiesta = str(dati.get("richiesta") or "")
@@ -1433,6 +1852,21 @@ def scrivi_esito(lavoro: dict, esito: str, messaggio: str, testo: str = "") -> N
             "richiesta": lavoro.get("richiesta"), "versione": lavoro.get("versione"), "esito": esito,
             "messaggio": messaggio[:600], "testo": pulito[-4000:], "quando": int(time.time())}
     scrivi(P(f"{ESITI_DIR}/{lavoro['id']}.json"), json.dumps(dati, ensure_ascii=False) + "\n", 0o644)
+
+
+CONFIGURAZIONE_SCADE_S = 30 * 24 * 3600
+
+
+def pulisci_configurazioni() -> None:
+    """Configurazioni dei ponti nuovi mai scaricate fino in fondo (certificato e canale dentro): dopo 30 giorni
+    via. Quelle dei ponti tolti le toglie gia' "togli dalla rete"."""
+    for f in glob.glob(P(CONFIGURAZIONI_DIR) + "/*.json"):
+        try:
+            if time.time() - os.lstat(f).st_mtime > CONFIGURAZIONE_SCADE_S:
+                togli(f)
+                registra(f"configurazione scaduta tolta: {os.path.basename(f)}")
+        except OSError:
+            pass
 
 
 def numeri_versione(v: str) -> Tuple[int, ...]:
@@ -1582,16 +2016,22 @@ def cmd_lavora(a) -> int:
             scrivi_esito(lavoro, "in_corso", "in corso")
             uscita = io.StringIO()
             try:
+                messaggio = "fatto"
                 with contextlib.redirect_stdout(uscita):
                     reg = carica_registro()
                     if lavoro["azione"] == "aggiungi":
                         aggiungi_ponte(imp, reg, lavoro["nome"], lavoro["chiave"], lavoro["impronta"],
-                                       cambio_chiave=lavoro["sostituisci"])
+                                       cambio_chiave=lavoro["sostituisci"], installa=lavoro.get("installa"),
+                                       da=lavoro["da"])
                     elif lavoro["azione"] == "aggiorna-ponti":
                         chiedi_aggiornamento_ponti(imp, reg, lavoro)
+                    elif lavoro["azione"] == "impostazioni-nuovi":
+                        messaggio = salva_impostazioni_nuovi(lavoro)
+                    elif lavoro["azione"] == "installa":
+                        riprova_installazione(imp, reg, lavoro)
                     else:
                         rimuovi_ponte(imp, reg, lavoro["nome"])
-                scrivi_esito(lavoro, "ok", "fatto", uscita.getvalue())
+                scrivi_esito(lavoro, "ok", messaggio, uscita.getvalue())
             except Errore as e:
                 registra(f"lavoro {lavoro['id']}: ERRORE {e}")
                 scrivi_esito(lavoro, "errore", str(e), uscita.getvalue())
@@ -1602,6 +2042,7 @@ def cmd_lavora(a) -> int:
         esiti = sorted(glob.glob(P(ESITI_DIR) + "/*.json"), key=lambda f: os.path.getmtime(f))
         for f in esiti[:-30]:
             togli(f)
+        pulisci_configurazioni()
     for lavoro in server_da_aggiornare[-1:]:           # piu' richieste insieme: basta l'ultima
         try:
             testo = aggiorna_server(lavoro)
@@ -1619,6 +2060,78 @@ def cmd_lavora(a) -> int:
     for lavoro in server_da_aggiornare[:-1]:
         scrivi_esito(lavoro, "ok", "sostituito da una richiesta piu' recente")
     return 0
+
+
+# ---- comando dei ponti via SSH (dalla 1.10.0): lo lancia sshd, con l'utente del ponte, senza terminale ----
+
+RE_FASE = re.compile(r"^(attesa|configurazione|scarico|installo|riavvio|fatto|errore)$")
+
+
+def scrivi_avanzamento(nome: str, fase: str, testo: str) -> None:
+    """A che punto e' l'installazione del ponte: lo legge la pagina della rete. Scritto dall'utente del ponte nella
+    cartella con il bit sticky: un ponte scrive solo il suo file."""
+    testo = re.sub(r"[\x00-\x1f\x7f]+", " ", testo).strip()[:300]
+    finale = P(f"{AVANZAMENTO_DIR}/{nome}.json")
+    nuovo = finale + ".nuovo"
+    try:
+        os.unlink(nuovo)
+    except OSError:
+        pass
+    fd = os.open(nuovo, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    try:
+        os.write(fd, json.dumps({"formato": 1, "fase": fase, "testo": testo, "quando": int(time.time())},
+                                ensure_ascii=False).encode("utf-8"))
+        os.fchmod(fd, 0o644)
+    finally:
+        os.close(fd)
+    os.replace(nuovo, finale)
+
+
+def cmd_ponte(a) -> int:
+    """Il comando forzato degli utenti dei ponti. Il Raspberry chiede:
+         configurazione               la configurazione da installare (certificato, canale, scheda), se c'e'
+         avanzamento FASE TESTO       a che punto e' l'installazione; con FASE "fatto" la configurazione si toglie
+    Qualunque altra cosa: rifiutata. Il ponte e' quello dell'utente SSH, non quello che dice il Raspberry."""
+    utente = os.environ.get("RETE_PROVA_UTENTE", "") if RADICE else ""
+    if not utente:
+        try:
+            utente = pwd.getpwuid(os.getuid()).pw_name
+        except KeyError:
+            utente = ""
+    nome = utente[len("ponte-"):] if utente.startswith("ponte-") else ""
+    if not RE_NOME.match(nome):
+        print("Questo comando e' solo per i ponti della rete Meshtastic.", file=sys.stderr)
+        return 1
+    parti = os.environ.get("SSH_ORIGINAL_COMMAND", "").split(None, 2)
+    if not parti:
+        print("Questo utente serve solo al tunnel del ponte: niente terminale.", file=sys.stderr)
+        return 1
+    try:
+        if parti[0] == "configurazione" and len(parti) == 1:
+            try:
+                fd = os.open(file_configurazione(nome), os.O_RDONLY | os.O_NOFOLLOW)
+            except FileNotFoundError:
+                print("nessuna configurazione da installare per questo ponte", file=sys.stderr)
+                return 3
+            with os.fdopen(fd, "rb") as h:
+                dati = h.read(1 << 20)
+            sys.stdout.buffer.write(dati)
+            sys.stdout.flush()
+            scrivi_avanzamento(nome, "configurazione", "il Raspberry ha scaricato la configurazione")
+            return 0
+        if parti[0] == "avanzamento" and len(parti) >= 2 and RE_FASE.match(parti[1]):
+            scrivi_avanzamento(nome, parti[1], parti[2] if len(parti) > 2 else "")
+            if parti[1] == "fatto":
+                try:
+                    os.unlink(file_configurazione(nome))   # installato: certificato e canale non servono piu' qui
+                except FileNotFoundError:
+                    pass
+            return 0
+    except OSError as e:
+        print(f"non riesco ({e.strerror or e})", file=sys.stderr)
+        return 4
+    print("comando non previsto", file=sys.stderr)
+    return 2
 
 
 # ---- servizio della pagina (utente mesh2tak-rete, solo 127.0.0.1, dietro Caddy) ----
@@ -1769,9 +2282,21 @@ class Sorveglianza:
                           if not (m.get("ponte") == nome and m.get("codice") == codice and m.get("tipo") == tipo)]
         return len(self.s["coda"]) < prima
 
+    @staticmethod
+    def _in_installazione(nome: str) -> bool:
+        try:
+            with open(P(f"{AVANZAMENTO_DIR}/{nome}.json"), encoding="utf-8") as f:
+                return json.load(f).get("fase") != "fatto"
+        except (OSError, ValueError, AttributeError):
+            return False
+
     def _valuta(self, nome: str, st: Optional[dict], ora: float) -> None:
         p = self.s["ponti"].setdefault(nome, {})
         problemi = p.setdefault("problemi", {})
+        if st is None and not (p.get("visto") or p.get("avvio")) and self._in_installazione(nome):
+            return      # dalla 1.10.0: un ponte nuovo che si sta ancora installando non e' "irraggiungibile"
+        if st is not None:
+            p["visto"] = True
         sis = _d(_d(st).get("sistema"))
         avvio = sis.get("avvio") if isinstance(sis.get("avvio"), str) else None
         riavviato = bool(avvio and p.get("avvio") and avvio != p["avvio"])
@@ -2127,6 +2652,9 @@ class Servizio:
     LAVORO_FERMO_S = 120                # in coda da tanto: il passo dei lavori non parte
     LAVORO_PERSO_S = 180                # approvata ma il lavoro non c'e' piu'
     LAVORO_INTERROTTO_S = 50 * 60       # "in corso" da troppo (piu' del timeout dei lavori): server riavviato a meta'
+    INVITI_MAX = 10                     # inviti aperti tutti insieme
+    INVITO_S = 14 * 24 * 3600           # un invito non usato vale due settimane
+    INVITO_USATO_S = 7 * 24 * 3600      # poi resta in vista ancora una settimana
 
     def __init__(self, sorveglianza: Optional[Sorveglianza] = None, rilasci: Optional[Rilasci] = None):
         self.lock = threading.Lock()
@@ -2148,7 +2676,8 @@ class Servizio:
     @staticmethod
     def _scrivi_json(percorso: str, dati: dict) -> None:
         nuovo = percorso + ".nuovo"
-        with open(nuovo, "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(percorso), mode=0o700, exist_ok=True)
+        with open(os.open(nuovo, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
             json.dump(dati, f, ensure_ascii=False)
         os.replace(nuovo, percorso)
 
@@ -2230,7 +2759,8 @@ class Servizio:
         return sorted(elenco, key=lambda r: r.get("arrivata") or 0)
 
     def accoda(self, azione: str, nome: str, da: str, chiave: str = "", richiesta: Optional[str] = None,
-               sostituisci: bool = False, versione: Optional[str] = None) -> str:
+               sostituisci: bool = False, versione: Optional[str] = None, installa: Optional[dict] = None,
+               impostazioni: Optional[dict] = None) -> str:
         """Scrive il lavoro in tmp e lo sposta in coda gia' completo: il passo dei lavori parte appena la
         cartella non e' vuota e non deve mai trovare un file a meta'."""
         lavoro = secrets.token_hex(8)
@@ -2238,8 +2768,12 @@ class Servizio:
                 "sostituisci": sostituisci, "quando": int(time.time())}
         if versione:
             dati["versione"] = versione
+        if installa is not None:
+            dati["installa"] = installa
+        if impostazioni is not None:
+            dati["impostazioni"] = impostazioni      # certificato e canale: solo per root, che lo toglie subito
         provvisorio = P(f"{TMP_DIR}/{lavoro}.json")
-        with open(provvisorio, "w", encoding="utf-8") as f:
+        with open(os.open(provvisorio, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
             json.dump(dati, f, ensure_ascii=False)
         os.replace(provvisorio, P(f"{LAVORI_DIR}/{lavoro}.json"))
         print(f"lavoro {lavoro}: {azione} {nome} chiesto da {da}" + (" (sostituisce)" if sostituisci else ""),
@@ -2266,6 +2800,110 @@ class Servizio:
                 v.update(esito="errore", messaggio="lavoro interrotto a meta' (il server si e' riavviato?)")
             risultato.append(v)
         return risultato
+
+    # ---- ponti nuovi (dalla 1.10.0): inviti, impostazioni e avanzamento delle installazioni ----
+
+    def pagina_rete(self) -> str:
+        """L'indirizzo della pagina della rete (lo scrive root): va nella chiave d'invito."""
+        url = str((self._leggi_json(P(SORVEGLIANZA)) or {}).get("pagina") or "").rstrip("/")
+        return url if re.match(r"^https://[A-Za-z0-9.-]+(:\d+)?$", url) else ""
+
+    def riassunto_nuovi(self) -> dict:
+        d = self._leggi_json(P(RIASSUNTO_NUOVI))
+        return d if d and d.get("pronto") is True else {"pronto": False}
+
+    def inviti(self) -> List[dict]:
+        """Gli inviti, piu' vecchi prima; toglie quelli scaduti. Da chiamare con self.lock."""
+        ora = time.time()
+        elenco = []
+        for f in glob.glob(P(INVITI_DIR) + "/*.json"):
+            d = self._leggi_json(f)
+            if not d or not RE_IMPRONTA.match(str(d.get("id", ""))) or os.path.basename(f) != d["id"] + ".json":
+                togli(f)
+                continue
+            if ((d.get("stato") == "attesa" and ora - (d.get("creato") or 0) > self.INVITO_S) or
+                    (d.get("stato") != "attesa" and ora - (d.get("usato") or d.get("creato") or 0) > self.INVITO_USATO_S)):
+                togli(f)
+                continue
+            elenco.append(d)
+        return sorted(elenco, key=lambda d: d.get("creato") or 0)
+
+    def vista_invito(self, i: dict) -> dict:
+        v = {k: i.get(k) for k in ("id", "nome", "scheda", "posizione", "creato", "da", "stato", "usato")}
+        v["scade"] = int(i.get("creato") or 0) + self.INVITO_S
+        if i.get("stato") == "attesa":
+            v["riga"] = i.get("riga")          # la chiave d'invito: solo finche' non e' usata
+        return v
+
+    def avanzamento(self, nome: str) -> Optional[dict]:
+        """A che punto e' l'installazione del ponte nuovo (lo scrive il Raspberry, via SSH)."""
+        d = self._leggi_json(P(f"{AVANZAMENTO_DIR}/{nome}.json")) if RE_NOME.match(nome or "") else None
+        if not d or not RE_FASE.match(str(d.get("fase", ""))) or not isinstance(d.get("quando"), int):
+            return None
+        v = {"fase": d["fase"], "testo": str(d.get("testo") or "")[:300], "quando": d["quando"]}
+        scelte = self._leggi_json(P(f"{INSTALLAZIONI_DIR}/{nome}.json")) or {}
+        v.update({k: scelte.get(k) for k in ("scheda", "posizione") if isinstance(scelte.get(k), str)})
+        return v
+
+    def _salva_installazione(self, nome: str, installa: dict, utente: str) -> None:
+        self._scrivi_json(P(f"{INSTALLAZIONI_DIR}/{nome}.json"), dict(installa, da=utente, quando=int(time.time())))
+
+    def nuovo_invito(self, dati: dict, utente: str) -> Tuple[int, dict]:
+        try:
+            nome = valida_nome(str(dati.get("nome", "")))
+            posizione = valida_posizione(str(dati.get("posizione") or ""))
+        except Errore as e:
+            return 400, {"errore": str(e)}
+        scheda = str(dati.get("scheda") or "")
+        if scheda not in SCHEDE:
+            return 400, {"errore": "scegli la radio del ponte"}
+        if not self.riassunto_nuovi().get("pronto"):
+            return 409, {"errore": "prima carica certificato e canale per i ponti nuovi"}
+        rete = self.pagina_rete()
+        if not rete:
+            return 503, {"errore": "manca l'indirizzo della pagina: sul server  sudo bash rete-meshtastic.sh installa"}
+        if nome in self.ponti():
+            return 409, {"errore": f"il nome '{nome}' e' gia' di un ponte della rete: scegline un altro"}
+        with self.lock:
+            aperti = [i for i in self.inviti() if i.get("stato") == "attesa"]
+            if any(i.get("nome") == nome for i in aperti):
+                return 409, {"errore": f"c'e' gia' un invito per il ponte '{nome}': usa quello, o annullalo"}
+            if len(aperti) >= self.INVITI_MAX:
+                return 429, {"errore": "troppi inviti aperti: annulla quelli che non servono"}
+            # una chiave pubblica SSH a caso, di cui nessuno ha la chiave privata: Raspberry Pi Imager la scrive sul
+            # Raspberry come una delle sue chiavi autorizzate, e il Raspberry la manda indietro. E' il segreto
+            # dell'invito; dopo il nome c'e' l'indirizzo della pagina della rete, che cosi' non sta nell'immagine
+            blob = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20" + secrets.token_bytes(32)
+            inv = {"id": hashlib.sha256(blob).hexdigest(), "nome": nome, "scheda": scheda, "posizione": posizione,
+                   "riga": f"ssh-ed25519 {base64.b64encode(blob).decode()} mesh2tak-invito {rete}",
+                   "creato": int(time.time()), "da": utente, "stato": "attesa"}
+            self._scrivi_json(P(f"{INVITI_DIR}/{inv['id']}.json"), inv)
+        print(f"invito per il ponte nuovo '{nome}' preparato da {utente}", flush=True)
+        return 200, {"esito": "ok", "invito": self.vista_invito(inv)}
+
+    @staticmethod
+    def _leggi_nuovo(d) -> Optional[dict]:
+        """Le notizie di un Raspberry appena acceso con l'immagine dei ponti nuovi (dalla 1.10.0)."""
+        if not isinstance(d, dict):
+            return None
+        modello = re.sub(r"[^\w .,()+/-]", "", str(d.get("modello") or ""))[:80].strip()
+        inviti = []
+        for b in (d.get("inviti") if isinstance(d.get("inviti"), list) else [])[:3]:
+            try:
+                blob = base64.b64decode(str(b), validate=True)
+            except (binascii.Error, ValueError):
+                continue
+            if len(blob) == 51 and blob.startswith(b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20"):
+                inviti.append(hashlib.sha256(blob).hexdigest())
+        return {"modello": modello, "radio_usb": d.get("radio_usb") is True, "inviti": inviti}
+
+    def _invito_valido(self, ids: List[str]) -> Optional[dict]:
+        ora = time.time()
+        for i in ids:
+            d = self._leggi_json(P(f"{INVITI_DIR}/{i}.json"))
+            if d and d.get("id") == i and d.get("stato") == "attesa" and ora - (d.get("creato") or 0) <= self.INVITO_S:
+                return d
+        return None
 
     # ---- richieste dei Raspberry (pubbliche) ----
 
@@ -2297,6 +2935,7 @@ class Servizio:
         controllo = codice_controllo(impronta)
         if self.registrato(impronta):
             return 200, {"esito": "registrato", "controllo": controllo}
+        nuovo = self._leggi_nuovo(dati.get("nuovo"))
         ora = time.time()
         with self.lock:
             percorso = P(f"{RICHIESTE_DIR}/{impronta}.json")
@@ -2321,15 +2960,41 @@ class Servizio:
                     self.per_ip = {k: v for k, v in self.per_ip.items() if any(ora - x < 3600 for x in v)}
                 if sum(1 for r in self.richieste() if r.get("stato") != "rifiutata") >= self.RICHIESTE_MAX:
                     return 429, {"errore": "troppe richieste in attesa sulla pagina della rete"}
+            if vecchia and vecchia.get("invito"):
+                nome = vecchia.get("nome") or nome        # il nome l'ha deciso l'invito, non il Raspberry
             r = dict(vecchia or {}, id=impronta, nome=nome, chiave=chiave, macchina=macchina, versione=versione,
                      ip=ip, controllo=controllo, ultima=int(ora))
             r.setdefault("arrivata", int(ora))
             r.setdefault("stato", "attesa")
+            invito = None
+            if nuovo is not None:
+                r["nuovo"] = {"modello": nuovo["modello"], "radio_usb": nuovo["radio_usb"]}
+                invito = self._invito_valido(nuovo["inviti"]) if r["stato"] == "attesa" else None
+            if invito is not None:
+                # Raspberry con la chiave d'invito: si installa da solo, con le scelte fatte nell'invito
+                nome = invito["nome"]
+                installa = {"scheda": invito["scheda"], "posizione": invito.get("posizione") or ""}
+                r.update(nome=nome, invito=invito["id"], installa=installa)
+                if nome in self.ponti():
+                    r["errore"] = (f"nel frattempo c'e' un altro ponte '{nome}': toglilo dalla rete o rifiuta "
+                                   "questa richiesta")
+                else:
+                    lavoro = self.accoda("aggiungi", nome, invito["da"], chiave, impronta, installa=installa)
+                    r.update(stato="in_corso", lavoro=lavoro, approvata=int(ora), da=invito["da"], errore=None,
+                             dettagli=None)
+                    self._salva_installazione(nome, installa, invito["da"])
+                    print(f"il Raspberry {macchina} ({ip}) ha la chiave d'invito del ponte nuovo '{nome}': lo "
+                          "aggiungo", flush=True)
+                invito.update(stato="usato", usato=int(ora), richiesta=impronta)
+                self._scrivi_json(P(f"{INVITI_DIR}/{invito['id']}.json"), invito)
             self._scrivi_json(percorso, r)
+        if r.get("stato") == "in_corso":
+            return 202, {"esito": "in_attesa", "controllo": controllo, "in_corso": True}
         sostituisce = nome in self.ponti()
         if not vecchia:
             print(f"richiesta del ponte '{nome}' da {macchina} ({ip}), codice di controllo {controllo}"
-                  + (" (c'e' gia' un ponte con questo nome)" if sostituisce else ""), flush=True)
+                  + (" (c'e' gia' un ponte con questo nome)" if sostituisce else "")
+                  + (" (Raspberry nuovo, senza una chiave d'invito valida)" if nuovo is not None else ""), flush=True)
         return 202, {"esito": "in_attesa", "controllo": controllo, "sostituisce": sostituisce}
 
     # ---- azioni degli amministratori ----
@@ -2339,38 +3004,59 @@ class Servizio:
             tutte = self.richieste()
             ponti = self.ponti()
             lavori = self.lavori()
+            inviti = self.inviti()
         aperte = [r for r in tutte if r.get("stato") in ("attesa", "in_corso")]
         nomi = [r.get("nome") for r in aperte]
         richieste = []
         for r in aperte:
             v = {k: r.get(k) for k in ("id", "nome", "macchina", "versione", "ip", "controllo", "arrivata", "ultima",
-                                       "stato", "errore", "dettagli", "da")}
+                                       "stato", "errore", "dettagli", "da", "nuovo", "installa")}
             v.update(stesso_nome=nomi.count(r.get("nome")) > 1, sostituisce=r.get("nome") in ponti,
-                     fermo=bool(r.get("fermo")))
+                     fermo=bool(r.get("fermo")), invito=bool(r.get("invito")))
             richieste.append(v)
+        installazioni = {}
+        for n in ponti:
+            av = self.avanzamento(n)
+            if av:
+                installazioni[n] = av
         rifiutate = [dict({k: r.get(k) for k in ("id", "nome", "macchina", "ip", "controllo", "ultima", "da", "motivo")},
                           presente=r.get("nome") in ponti, chiave=bool(r.get("chiave")))
                      for r in tutte if r.get("stato") == "rifiutata" and not self.registrato(r.get("id", ""))]
         rifiutate.sort(key=lambda r: -(r.get("ultima") or 0))
         return {"formato": 1, "utente": utente, "richieste": richieste, "rifiutate": rifiutate, "lavori": lavori,
                 "versione": VERSIONE, "avvisi": self.sorveglianza.vista() if self.sorveglianza else None,
-                "rilasci": self.rilasci.vista() if self.rilasci else None}
+                "rilasci": self.rilasci.vista() if self.rilasci else None,
+                "ponti_nuovi": self.riassunto_nuovi(), "inviti": [self.vista_invito(i) for i in inviti],
+                "installazioni": installazioni, "imager": f"{GITHUB}/{REPO}/releases/latest/download/imager.json"}
 
-    def _approva(self, f: str, r: dict, utente: str, sostituisci_ok: bool) -> Tuple[int, dict]:
+    def _approva(self, f: str, r: dict, utente: str, sostituisci_ok: bool,
+                 installa: Optional[dict] = None) -> Tuple[int, dict]:
         if not r.get("chiave"):
             # (ponte tolto prima che la registrazione avesse la chiave): via il rifiuto, il Raspberry richiede
             togli(f)
             return 200, {"esito": "riammessa", "messaggio": f"Fatto: il Raspberry {r.get('nome')} ripete la "
                                                             "richiesta entro un'ora, poi la approvi qui."}
+        if installa is None and isinstance(r.get("installa"), dict):
+            installa = r["installa"]          # scelte dell'invito: "Riprova" dopo un errore
+        if installa is not None:
+            if not r.get("nuovo"):
+                return 400, {"errore": "questo Raspberry e' stato installato a mano: approvalo senza installazione"}
+            if not self.riassunto_nuovi().get("pronto"):
+                return 409, {"errore": "prima carica certificato e canale per i ponti nuovi"}
         sostituisci = r["nome"] in self.ponti()
         if sostituisci and not sostituisci_ok:
             return 409, {"errore": f"c'e' gia' un ponte '{r['nome']}' nella rete: ricarica la pagina e scegli "
                                    "'Sostituisci' se questo Raspberry deve prenderne il posto"}
-        lavoro = self.accoda("aggiungi", r["nome"], utente, r["chiave"], r["id"], sostituisci=sostituisci)
+        lavoro = self.accoda("aggiungi", r["nome"], utente, r["chiave"], r["id"], sostituisci=sostituisci,
+                             installa=installa)
         r.update(stato="in_corso", lavoro=lavoro, approvata=int(time.time()), da=utente, errore=None, dettagli=None)
+        if installa is not None:
+            r["installa"] = installa
+            self._salva_installazione(r["nome"], installa, utente)
         r.pop("fermo", None)
         self._scrivi_json(f, r)
-        return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": f"Sto aggiungendo il ponte {r['nome']}."}
+        return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": f"Sto aggiungendo il ponte {r['nome']}." +
+                     (" Poi il Raspberry si installa da solo: qui vedi a che punto e'." if installa else "")}
 
     def azione(self, percorso: str, dati, utente: str) -> Tuple[int, dict]:
         if not isinstance(dati, dict):
@@ -2410,7 +3096,59 @@ class Servizio:
                                                                         versione=versione),
                              "messaggio": f"Chiedo ai ponti di aggiornarsi alla {versione}: lo fanno da soli entro "
                                           "qualche minuto."}
+        if percorso == "/api/invita":
+            return self.nuovo_invito(dati, utente)
+        if percorso == "/api/impostazioni-nuovi":
+            try:
+                impostazioni = controlla_impostazioni(dati)
+            except Errore as e:
+                return 400, {"errore": str(e)}
+            with self.lock:
+                if any(lv.get("azione") == "impostazioni-nuovi" and lv.get("esito") in ("in_coda", "in_corso")
+                       for lv in self.lavori()):
+                    return 409, {"errore": "sto gia' salvando le impostazioni: aspetta un momento"}
+                lavoro = self.accoda("impostazioni-nuovi", "ponti-nuovi", utente, impostazioni=impostazioni)
+            return 202, {"esito": "in_corso", "lavoro": lavoro,
+                         "messaggio": "Controllo e salvo certificato e canale per i ponti nuovi."}
         with self.lock:
+            if percorso == "/api/annulla-invito":
+                iid = str(dati.get("id", ""))
+                f = P(f"{INVITI_DIR}/{iid}.json") if RE_IMPRONTA.match(iid) else ""
+                inv = self._leggi_json(f) if f else None
+                if not inv or inv.get("stato") != "attesa":
+                    return 404, {"errore": "invito non trovato (gia' usato o scaduto?): ricarica la pagina"}
+                togli(f)
+                print(f"invito del ponte '{inv.get('nome')}' annullato da {utente}", flush=True)
+                return 200, {"esito": "annullato", "messaggio": f"Invito per {inv.get('nome')} annullato: quella "
+                                                                "chiave non vale piu'."}
+            if percorso == "/api/riprova-installazione":
+                nome = str(dati.get("nome", ""))
+                if not RE_NOME.match(nome) or nome not in self.ponti():
+                    return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+                av = self.avanzamento(nome)
+                if not av or av["fase"] == "fatto":
+                    return 409, {"errore": f"il ponte {nome} non sta installando: niente da riprovare"}
+                installa = {}
+                if dati.get("scheda"):
+                    if dati["scheda"] not in SCHEDE:
+                        return 400, {"errore": "radio del ponte non prevista"}
+                    installa["scheda"] = dati["scheda"]
+                if "posizione" in dati:
+                    try:
+                        installa["posizione"] = valida_posizione(str(dati.get("posizione") or ""))
+                    except Errore as e:
+                        return 400, {"errore": str(e)}
+                if any(lv.get("azione") == "installa" and lv.get("nome") == nome and lv.get("esito") in
+                       ("in_coda", "in_corso") for lv in self.lavori()):
+                    return 409, {"errore": "l'ho gia' chiesto: il Raspberry riprova entro un paio di minuti"}
+                lavoro = self.accoda("installa", nome, utente, installa=installa)
+                prima = self._leggi_json(P(f"{INSTALLAZIONI_DIR}/{nome}.json")) or {}
+                self._salva_installazione(nome, {"scheda": installa.get("scheda", prima.get("scheda") or ""),
+                                                 "posizione": installa.get("posizione", prima.get("posizione") or "")},
+                                          utente)
+                return 202, {"esito": "in_corso", "lavoro": lavoro,
+                             "messaggio": f"Chiesto: il Raspberry di {nome} riprova l'installazione entro un paio di "
+                                          "minuti."}
             if percorso in ("/api/approva", "/api/rifiuta", "/api/riammetti"):
                 rid = str(dati.get("id", ""))
                 f = P(f"{RICHIESTE_DIR}/{rid}.json") if RE_IMPRONTA.match(rid) else ""
@@ -2427,7 +3165,20 @@ class Servizio:
                     print(f"richiesta del ponte '{r.get('nome')}' rifiutata da {utente}", flush=True)
                     return 200, {"esito": "rifiutata", "messaggio": f"Rifiutata: il Raspberry {r.get('nome')} non "
                                                                     "rientra da solo."}
-                return self._approva(f, r, utente, dati.get("sostituisci") is True)
+                installa = None
+                if percorso == "/api/approva" and isinstance(dati.get("installa"), dict):
+                    # Raspberry nuovo arrivato senza una chiave d'invito valida: l'amministratore sceglie lui
+                    d = dati["installa"]
+                    try:
+                        nome = valida_nome(str(d.get("nome") or r.get("nome") or ""))
+                        installa = {"scheda": str(d.get("scheda") or ""),
+                                    "posizione": valida_posizione(str(d.get("posizione") or ""))}
+                    except Errore as e:
+                        return 400, {"errore": str(e)}
+                    if installa["scheda"] not in SCHEDE:
+                        return 400, {"errore": "scegli la radio del ponte"}
+                    r["nome"] = nome
+                return self._approva(f, r, utente, dati.get("sostituisci") is True, installa)
             if percorso == "/api/aggiungi":
                 try:
                     nome = valida_nome(str(dati.get("nome", "")))
@@ -2445,6 +3196,7 @@ class Servizio:
                 if not RE_NOME.match(nome) or nome not in self.ponti():
                     return 404, {"errore": "ponte non trovato: ricarica la pagina"}
                 lavoro = self.accoda("rimuovi", nome, utente)
+                togli(P(f"{INSTALLAZIONI_DIR}/{nome}.json"))
                 impronta, chiave = self.registrazione_di(nome)
                 if impronta:
                     # se il Raspberry e' ancora acceso non rientra da solo: per riprenderlo, "Lascia rientrare"
@@ -2455,6 +3207,9 @@ class Servizio:
                         "macchina": "", "ip": "", "versione": ""})
                 return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": f"Sto togliendo il ponte {nome}."}
         return 404, {"errore": "azione sconosciuta"}
+
+
+CORPO_IMPOSTAZIONI_MAX = 400 << 10       # pacchetto del certificato (fino a 256 kB) in base64, con il resto
 
 
 def gestore_per(servizio: Servizio):
@@ -2475,12 +3230,12 @@ def gestore_per(servizio: Servizio):
             self.end_headers()
             self.wfile.write(corpo)
 
-        def _corpo(self):
+        def _corpo(self, massimo: int = 16384):
             try:
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 n = -1
-            if n < 0 or n > 16384:
+            if n < 0 or n > massimo:
                 return None, 413
             try:
                 return json.loads(self.rfile.read(n).decode("utf-8") or "null"), 0
@@ -2508,7 +3263,8 @@ def gestore_per(servizio: Servizio):
 
         def do_POST(self):  # noqa: N802
             percorso = urllib.parse.urlsplit(self.path).path
-            dati, errore = self._corpo()
+            # il certificato dei ponti nuovi (dalla 1.10.0) e' piu' grande delle altre richieste
+            dati, errore = self._corpo(CORPO_IMPOSTAZIONI_MAX if percorso == "/api/impostazioni-nuovi" else 16384)
             if errore:
                 return self._manda(errore, {"errore": "richiesta non valida"})
             if percorso == "/accesso/richiesta":
@@ -2573,11 +3329,13 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_servi)
     s = sotto.add_parser("lavora", help="(lo usa il servizio dei lavori, non lanciarlo a mano)")
     s.set_defaults(fn=cmd_lavora)
+    s = sotto.add_parser("ponte", help="(lo lancia sshd per i Raspberry dei ponti, non lanciarlo a mano)")
+    s.set_defaults(fn=cmd_ponte)
     a = ap.parse_args(argv)
     if not getattr(a, "fn", None):
         ap.print_help()
         return 2
-    if a.comando == "servi":
+    if a.comando in ("servi", "ponte"):
         return a.fn(a)                                         # senza privilegi, niente registro di root
     if os.geteuid() != 0 and not RADICE:
         print("Va avviato da root:  sudo bash rete-meshtastic.sh " + " ".join(sys.argv[1:2]))

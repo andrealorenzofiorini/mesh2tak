@@ -3,6 +3,24 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.10.0
+
+- Ponti nuovi senza terminale: sulla pagina della rete si caricano una volta certificato e canale, poi per ogni
+  Raspberry si prepara un invito. Chi ha il Raspberry scrive la microSD con Raspberry Pi Imager (elenco
+  "Ponte Meshtastic", da questa release), incolla la chiave d'invito tra le chiavi SSH e lo accende con la radio:
+  il Raspberry si presenta da solo, riceve certificato e canale cifrati, si installa e compare tra i ponti. La
+  pagina mostra a che punto è e, se qualcosa va storto, "Riprova l'installazione".
+- Certificato e chiave del canale restano sul server leggibili solo da root; ogni ponte nuovo può scaricare solo
+  la sua configurazione, con la sua chiave, e a installazione finita viene cancellata. Nell'immagine non c'è
+  nessun indirizzo né chiave.
+- Radio della squadra gestite da lontano: nella scheda "Radio", "Gestisci da lontano" legge e cambia nome,
+  posizione fissa, tutte le impostazioni (come nell'app Meshtastic) e i canali, e riavvia la radio, attraverso il
+  nodo di un ponte. Serve una volta, da vicino, la chiave di amministrazione del ponte sulla radio (firmware 2.5 o
+  successivo). Le chiavi dei canali non escono mai dal ponte.
+- Nell'elenco delle radio e sulla mappa solo quelle del canale della squadra: le radio estranee sentite sul canale
+  pubblico non entrano più nemmeno al riavvio del ponte.
+- Niente avvisi "ponte che non risponde" per un ponte nuovo che si sta ancora installando.
+
 ## 1.9.0
 
 - Ponti nuovi installati da casa: si prepara la microSD con Raspberry Pi Imager (con Raspberry Pi Connect)

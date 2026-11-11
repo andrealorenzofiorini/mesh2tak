@@ -18,6 +18,9 @@ import time
 import urllib.error
 import urllib.request
 
+import base64
+import pwd
+
 import pytest
 
 from authentik_finto import TOKEN, AuthentikFinto
@@ -32,7 +35,8 @@ CADDY = "/opt/prova-caddy/caddy-2.10.2"
 DOMINIO = "prova.lan"
 RETE = f"https://meshtastic.{DOMINIO}:8443"
 PONTE = f"https://meshtastic-casa.{DOMINIO}:8443"
-NOMI = [f"meshtastic.{DOMINIO}", f"meshtastic-casa.{DOMINIO}", f"meshtastic-altro.{DOMINIO}"]
+NOMI = [f"meshtastic.{DOMINIO}", f"meshtastic-casa.{DOMINIO}", f"meshtastic-altro.{DOMINIO}",
+        f"meshtastic-velate.{DOMINIO}"]
 REPO = "andrealorenzofiorini/mesh2tak"
 FILE_RELEASE = ("installa-ponte-meshtastic.sh", "rete-meshtastic.sh", "SHA256SUMS")
 
@@ -615,6 +619,108 @@ def test_6_l_utente_del_ponte_non_puo_fare_altro(rete):
     assert "refused local port forward" in rete.sshd_log() or "open failed" in tunnel.stderr.read()
 
 
+def ssh_ponte(chiave, utente, *comando, attesa=30):
+    return subprocess.run(["ssh", "-F", "/dev/null", "-i", str(chiave), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+                           "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-p", "2222",
+                           f"{utente}@127.0.0.1", *comando], capture_output=True, text=True, timeout=attesa,
+                          stdin=subprocess.DEVNULL)
+
+
+def test_6b_il_comando_dei_ponti_dal_vero(rete):
+    """1.10.0: con sshd vero un ponte puo' solo leggere la sua configurazione e scrivere a che punto e'."""
+    assert pwd.getpwnam("ponte-casa").pw_shell == "/bin/sh"          # per sshd, che lancia il comando forzato
+    p = ssh_ponte(rete.chiave, "ponte-casa", "configurazione")
+    assert p.returncode == 3 and "nessuna configurazione" in p.stderr and p.stdout == ""
+    p = ssh_ponte(rete.chiave, "ponte-casa", "avanzamento installo 3/9 Meshtastic (prova)")
+    assert p.returncode == 0, p.stderr
+    f = rete.r / "var/lib/mesh2tak-rete/avanzamento/casa.json"
+    assert pwd.getpwuid(f.stat().st_uid).pw_name == "ponte-casa" and oct(f.stat().st_mode)[-3:] == "644"
+    assert rete.stato_api()["installazioni"]["casa"]["testo"] == "3/9 Meshtastic (prova)"
+    # niente terminale, nessun altro comando (neanche nascosto nel testo), niente sftp
+    for comando in ("sh", "/bin/sh -c id", "configurazione; id", "id"):
+        p = ssh_ponte(rete.chiave, "ponte-casa", comando)
+        assert p.returncode != 0 and "uid=" not in p.stdout + p.stderr, comando
+    p = ssh_ponte(rete.chiave, "ponte-casa", "avanzamento installo $(id) `id`")
+    assert p.returncode == 0 and rete.stato_api()["installazioni"]["casa"]["testo"] == "$(id) `id`"
+    # sftp come lo chiede il programma sftp (sottosistema): il primo messaggio SFTP (INIT, versione 3) non ha risposta
+    p = subprocess.run(["ssh", "-F", "/dev/null", "-i", str(rete.chiave), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+                        "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-p", "2222", "-s",
+                        "ponte-casa@127.0.0.1", "sftp"], input=b"\x00\x00\x00\x05\x01\x00\x00\x00\x03",
+                       capture_output=True, timeout=30)
+    assert p.returncode != 0 and b"\x02\x00\x00\x00\x03" not in p.stdout, (p.returncode, p.stdout[:40])
+    p = ssh_ponte(rete.chiave, "ponte-casa", "-tt", "configurazione")
+    assert "PTY allocation request failed" in p.stderr or p.returncode == 3
+    # il tunnel del ponte intanto non si e' mai chiuso
+    assert rete.accesso.stato()["collegato"]
+    f.unlink()
+    assert "casa" not in rete.stato_api()["installazioni"]
+
+
+def aspetta_operazione(rete, ponte, op, limite=30):
+    fine = time.time() + limite
+    while time.time() < fine:
+        codice, d = rete.api("GET", f"/radio/{ponte}/op?id={op}")
+        assert codice == 200, d
+        if d["stato"] in ("fatto", "errore"):
+            return d
+        time.sleep(0.2)
+    raise AssertionError("operazione mai finita")
+
+
+def test_6c_radio_gestite_dalla_pagina_attraverso_il_ponte(rete):
+    """1.10.0: dalla pagina della rete (Caddy, Authentik) al tunnel, al ponte, al suo nodo e via radio alla radio."""
+    from test_gestione_radio import IfaceRadio, RadioLontana
+    rete.lontana = RadioLontana()
+    rete.ponte.iface = IfaceRadio(rete.lontana)
+    rete.ponte.nodo_chiave_pubblica = base64.b64encode(b"N" * 32).decode()
+    rete.g.radio = m.GestioneRadio(rete.ponte)
+    rete.g.radio.ATTESA_RISPOSTA_S = 3.0
+    stato, corpo, _ = rete.chiedi(f"{RETE}/stato/casa.json")
+    d = json.loads(corpo)
+    assert d["gestione"]["radio"] is True and d["chiave_pubblica"] == rete.ponte.nodo_chiave_pubblica
+    leggi = {"radio": "!7c3a91e2", "azione": "leggi", "sezioni": ["proprietario", "info"]}
+    codice, r = rete.api("POST", "/radio/casa/op", leggi)
+    assert codice == 202, r
+    op = aspetta_operazione(rete, "casa", r["op"])
+    assert op["stato"] == "fatto" and op["risultato"]["proprietario"] == {"nome": "Rip Velate", "nome_breve": "VELA"}
+    assert op["chi"] == "andrea" and op["nome"] == "07-BIANCHI"          # il nome vero, messo da Authentik
+    # senza sessione ad Authentik; da un altro sito o senza l'intestazione della pagina: rifiutata
+    assert rete.api("POST", "/radio/casa/op", leggi, cookie=None)[0] == 302
+    assert rete.api("POST", "/radio/casa/op", leggi, intestazioni={"X-Mesh2tak": ""})[0] == 403
+    assert rete.api("POST", "/radio/casa/op", leggi, intestazioni={"Origin": "https://cattivo.example"})[0] == 403
+    assert rete.api("POST", "/radio/casa/op", leggi, intestazioni={"X-Authentik-Username": "mallory"})[0] == 202
+    assert rete.api("GET", "/radio/casa/ops")[1]["operazioni"][-1]["chi"] == "andrea"
+    assert rete.api("GET", "/radio/altro/schema")[0] == 404           # ponte che non c'e'
+    assert rete.api("POST", "/radio/casa/op", {"radio": "!12345678", "azione": "riavvia"})[0] == 400
+    codice, schema = rete.api("GET", "/radio/casa/schema")
+    assert codice == 200 and any(x["nome"] == "lora" for x in schema["sezioni"])
+    # troppo grande per Caddy
+    codice, _ = rete.api("POST", "/radio/casa/op", dict(leggi, riempitivo="x" * 20000))
+    assert codice == 413
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
+def test_6d_radio_gestite_dal_browser(rete):
+    foto = os.environ.get("RETE_FOTO", "")
+    senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+    p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_gestione_radio.js"), f"{RETE}/",
+                        foto.replace(".png", "-gestione-radio.png") if foto else ""], capture_output=True, text=True,
+                       timeout=180, env=senza_proxy)
+    r = json.loads(p.stdout.strip().splitlines()[-1])
+    assert "errore" not in r, r
+    assert r["errori"] == [], r["errori"]
+    assert dict(r["bottoni"]) == {"07-BIANCHI": True, "<img src=x onerror=alert(1)>": True}
+    assert r["titolo"] == "07-BIANCHI" and r["chiaveAdmin"] == base64.b64encode(b"N" * 32).decode()
+    assert r["lettura"][0] == "fatto" and r["nome"] == ["Rip Velate", "VELA"]
+    assert r["letturaSezione"][0] == "fatto" and r["salvataggio"][0] == "fatto", r["salvataggio"]
+    assert rete.lontana.position.position_broadcast_secs == 300 and rete.lontana.position.fixed_position is False
+    assert len(r["finestre"]) == 1 and "Salvo" in r["finestre"][0]            # ha chiesto conferma
+    assert r["canali"][0] == "fatto" and r["moduliCanali"][:2] == ["Canale 0: CNSAS", "Canale 1"]
+    assert r["sceltaChiave0"].startswith("Lascia la chiave com'è (privata, uguale a quella del canale")
+    assert base64.b64encode(bytes(range(32))).decode() not in r["testoFinestra"]
+    assert r["chiusa"]
+
+
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
 def test_7_un_altro_raspberry_approvato_dal_browser(rete, tmp_path):
     altra = nuova_chiave(tmp_path, "altra")
@@ -718,3 +824,94 @@ def test_12_sostituito_da_un_raspberry_reinstallato(rete, tmp_path):
         assert aspetta(lambda: rete.accesso.stato()["richiesta"] == "rifiutata", 30)
     finally:
         g.ferma()
+
+
+def test_13_ponte_nuovo_dalla_pagina_all_installazione(rete, pki, tmp_path):
+    """1.10.0, dall'inizio alla fine: certificato e canale caricati dal browser, invito, Raspberry che si accende con
+    la chiave d'invito (primo_avvio.py vero, ssh vero, HTTPS vero), configurazione via SSH, installatore da GitHub,
+    avanzamento sulla pagina, certificato tolto dal server a installazione finita."""
+    from test_primo_avvio import INSTALLATORE
+    psk = base64.b64encode(b"k" * 32).decode()
+    pacchetto = pki / "meshtastic-cnsas-integration.zip"
+    senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+    if shutil.which("node"):
+        foto = os.environ.get("RETE_FOTO", "")
+        p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_nuovi.js"), f"{RETE}/",
+                            str(pacchetto), psk, foto.replace(".png", "-nuovi.png") if foto else ""],
+                           capture_output=True, text=True, timeout=180, env=senza_proxy)
+        r = json.loads(p.stdout.strip().splitlines()[-1])
+        assert "errore" not in r, (r, rete.esiti_lavora[-3:])
+        # il ponte "altro" a questo punto e' spento: il browser segnala solo il suo stato che non arriva (502)
+        assert [e for e in r["errori"] if "status of 502" not in e] == [] and r["finestre"] == [], r["errori"]
+        # "casa" manda uno stato ridotto (Raspberry reinstallato del test 12): la pagina si disegna lo stesso
+        assert r["ponti"] == ["altro", "casa"], r["ponti"]
+        assert r["prima"].startswith("Prima, una volta sola") and r["impostazioniAperte"] and not r["moduloInvitoVisibile"]
+        assert "certificato \"meshtastic-cnsas\"" in r["dopo"] and "canale CNSAS-VA" in r["dopo"], r["dopo"]
+        assert psk not in r["dopo"] + r["invito"] + r["copiate"]             # la chiave del canale non torna indietro
+        assert r["campoChiaveVuoto"] == ""
+        assert "velate" in r["invito"] and "Radio Meshtastic collegata via USB" in r["invito"]
+        assert r["istruzioniAperte"] and len(r["chiaviInvito"]) == 2
+        imager, riga = r["chiaviInvito"]
+        assert imager == f"{rete.github.url}/{REPO}/releases/latest/download/imager.json"     # GitHub finto delle prove
+        assert riga.startswith("ssh-ed25519 ") and riga.endswith(f" mesh2tak-invito {RETE}")
+        assert riga in r["copiate"] and '"Opzioni app" (in basso a sinistra)' in r["copiate"] and "ponte-velate" in r["copiate"]
+        assert r["dopoRicarica"] == r["chiaviInvito"]
+    else:
+        codice, d = rete.api("POST", "/api/impostazioni-nuovi", {
+            "nome_pacchetto": pacchetto.name, "pacchetto": base64.b64encode(pacchetto.read_bytes()).decode(),
+            "password": "atakatak", "canale": "CNSAS-VA", "chiave": psk})
+        assert codice == 202, d
+        assert aspetta(lambda: rete.stato_api()["ponti_nuovi"]["pronto"], 60)
+        codice, d = rete.api("POST", "/api/invita", {"nome": "velate", "scheda": "usb", "posizione": "45.8205, 8.8257"})
+        assert codice == 200, d
+    # sul server: certificato e canale leggibili solo da root, niente nella pagina
+    impostazioni = rete.r / "etc/mesh2tak-rete/ponti-nuovi/impostazioni.json"
+    assert oct(impostazioni.stat().st_mode)[-3:] == "600" and impostazioni.stat().st_uid == 0
+    st = rete.stato_api()
+    assert psk not in json.dumps(st) and "atakatak" not in json.dumps(st)
+    [inv] = [i for i in st["inviti"] if i["nome"] == "velate"]
+    riga = inv["riga"]
+    # il Raspberry: microSD scritta da Imager con la chiave d'invito tra le chiavi SSH
+    versione = st["versione"]
+    installatore = INSTALLATORE.replace(b"1.10.0", versione.encode())
+    base = f"/{REPO}/releases/download/v{versione}"
+    rete.github.risposte[f"{base}/installa-ponte-meshtastic.sh"] = installatore
+    rete.github.risposte[f"{base}/SHA256SUMS"] = somme({"installa-ponte-meshtastic.sh": installatore})
+    pi = tmp_path / "raspberry"
+    (pi / "home/andrea/.ssh").mkdir(parents=True)
+    (pi / "home/andrea/.ssh/authorized_keys").write_text(f"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIandrea andrea@mac\n{riga}\n")
+    amb = dict(senza_proxy, MESH2TAK_PROVA_RADICE=str(pi), MESH2TAK_PROVA_GITHUB=rete.github.url,
+               SSL_CERT_FILE=rete.ca_caddy()[0], MESH2TAK_PROVA_UN_GIRO="1")
+    agente = os.path.join(RADICE, "dist", "mesh2tak-primo-avvio.py")
+    fine = time.time() + 240
+    while time.time() < fine:
+        p = subprocess.run([sys.executable, "-I", agente], env=amb, capture_output=True, text=True, timeout=120)
+        if p.returncode == 0:
+            break
+        assert p.returncode == 75, p.stdout + p.stderr
+        time.sleep(1)
+    else:
+        raise AssertionError((p.stdout[-3000:], rete.esiti_lavora[-2:]))
+    registro = (pi / "var/log/mesh2tak-primo-avvio.log").read_text()
+    assert "invito riconosciuto" in registro and "primo avvio finito" in registro, registro
+    assert "Accepted publickey for ponte-velate" in rete.sshd_log()
+    # l'installatore ha avuto tutto senza domande
+    lancio = (pi / "lanci").read_text(errors="replace")
+    assert "ARGOMENTI --scheda usb --canale-squadra --accesso-esterno=velate " in lancio
+    for atteso in (f"MESH2TAK_CHIAVE_CANALE={psk}", "MESH2TAK_PASSWORD=atakatak", "MESH2TAK_CANALE_SQUADRA=CNSAS-VA",
+                   "MESH2TAK_POSIZIONE=45.8205,8.8257", f"MESH2TAK_ACCESSO_RETE={RETE}"):
+        assert atteso in lancio.splitlines(), atteso
+    assert f"PACCHETTO {pacchetto.read_bytes()[:2].decode()}" in lancio
+    # la pagina ha seguito l'installazione; il server non ha piu' certificato e canale per questo ponte
+    st = rete.stato_api()
+    assert st["installazioni"]["velate"]["fase"] == "fatto" and "installato" in st["installazioni"]["velate"]["testo"]
+    assert "[installo] 1/9 Certificato del ponte" in registro and "[fatto] installato" in registro
+    assert not (rete.r / "etc/mesh2tak-rete/configurazioni/velate.json").exists()
+    assert [i["stato"] for i in st["inviti"] if i["nome"] == "velate"] == ["usato"]
+    assert ("aggiungi", "velate", "ok", "andrea") in [(x["azione"], x["nome"], x["esito"], x["da"]) for x in st["lavori"]]
+    assert "velate" in [x["nome"] for x in json.loads(rete.chiedi(f"{RETE}/ponti.json")[1])["ponti"]]
+    # sul Raspberry: la chiave d'invito tolta, nessun segreto rimasto, il primo avvio non c'e' piu'
+    assert "mesh2tak-invito" not in (pi / "home/andrea/.ssh/authorized_keys").read_text()
+    for f in (pi / "var/lib/mesh2tak-primo-avvio").iterdir():
+        assert f.name in ("stato.json", "installazione.log"), f
+    assert psk not in (pi / "var/lib/mesh2tak-primo-avvio/stato.json").read_text()

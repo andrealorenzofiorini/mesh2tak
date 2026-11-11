@@ -1,5 +1,6 @@
 # Pubblica una release quando su main cambia la versione (VERSIONE in mesh2tak.py): costruisce i due file da
-# consegnare, scrive SHA256SUMS e prende le novita' da NOVITA.md. Server e Raspberry si aggiornano solo da qui.
+# consegnare e l'immagine per Raspberry Pi Imager (dalla 1.10.0), scrive SHA256SUMS e prende le novita' da
+# NOVITA.md. Server e Raspberry si aggiornano solo da qui. Se un passo non riesce non si pubblica niente.
 name: Rilascio
 
 on:
@@ -40,13 +41,14 @@ jobs:
         env:
           V: ${{ steps.v.outputs.versione }}
         run: |
-          python3 -m py_compile mesh2tak.py scorta.py aggiorna.py server/rete_meshtastic.py
+          python3 -m py_compile mesh2tak.py scorta.py aggiorna.py primo_avvio.py server/rete_meshtastic.py
           python3 build.py
           bash -n dist/installa-ponte-meshtastic.sh
           bash -n dist/rete-meshtastic.sh
+          python3 -m py_compile dist/mesh2tak-primo-avvio.py
           grep -qx "VERSIONE=\"$V\"" dist/installa-ponte-meshtastic.sh
           grep -qx "VERSIONE = \"$V\"" dist/rete-meshtastic.sh
-          cd dist && sha256sum installa-ponte-meshtastic.sh rete-meshtastic.sh > SHA256SUMS && cat SHA256SUMS
+          grep -qx "VERSIONE = \"$V\"" dist/mesh2tak-primo-avvio.py
 
       - name: Novita'
         if: steps.v.outputs.nuova == 'si'
@@ -58,6 +60,21 @@ jobs:
           grep -q '[^[:space:]]' note.md || { echo "::error::manca la sezione '## $V' in NOVITA.md"; exit 1; }
           cat note.md
 
+      - name: Immagine per Raspberry Pi Imager
+        if: steps.v.outputs.nuova == 'si'
+        env:
+          V: ${{ steps.v.outputs.versione }}
+        run: |
+          # parte dall'immagine ufficiale di Raspberry Pi OS Lite 64 bit (controllata) e ci aggiunge solo il primo
+          # avvio del ponte: nessun indirizzo, chiave o certificato dentro
+          sudo python3 immagine/costruisci.py --versione "$V" --agente dist/mesh2tak-primo-avvio.py \
+            --uscita dist --lavoro "$RUNNER_TEMP/immagine" \
+            --url-base "https://github.com/$GITHUB_REPOSITORY/releases/download/v$V"
+          sudo chown -R "$(id -u):$(id -g)" dist
+          python3 -c "import json; j = json.load(open('dist/imager.json')); print(json.dumps(j['os_list'], indent=1))"
+          cd dist && sha256sum installa-ponte-meshtastic.sh rete-meshtastic.sh "ponte-meshtastic-$V.img.xz" \
+            imager.json icona-imager.png > SHA256SUMS && cat SHA256SUMS
+
       - name: Pubblica
         if: steps.v.outputs.nuova == 'si'
         env:
@@ -65,4 +82,5 @@ jobs:
           V: ${{ steps.v.outputs.versione }}
         run: |
           gh release create "v$V" dist/installa-ponte-meshtastic.sh dist/rete-meshtastic.sh dist/SHA256SUMS \
+            "dist/ponte-meshtastic-$V.img.xz" dist/imager.json dist/icona-imager.png \
             --title "mesh2tak $V" --notes-file note.md --target "$GITHUB_SHA"

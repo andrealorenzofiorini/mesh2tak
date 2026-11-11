@@ -379,8 +379,10 @@ def passo(sv, monkeypatch):
     monkeypatch.setattr(rete, "carica_registro", lambda: {"ponti": {}, "authentik": {"ponti": {}}})
     monkeypatch.setattr(rete, "registra", lambda t: chiamate.append(("registro", t)))
 
-    def aggiungi(imp, reg, nome, chiave_, impronta_, ignora_dns=False, cambio_chiave=True):
+    def aggiungi(imp, reg, nome, chiave_, impronta_, ignora_dns=False, cambio_chiave=True, installa=None, da=""):
         chiamate.append(("aggiungi", nome, chiave_, impronta_, cambio_chiave))
+        if installa is not None:
+            chiamate.append(("installa", nome, installa, da))
         print("1/5  Indirizzi ...")
         if nome == "rotto":
             raise rete.Errore("indirizzi mancanti nel DNS")
@@ -415,6 +417,26 @@ def test_passo_dei_lavori(sv, passo):
     assert es[c]["esito"] == "errore" and "inatteso" in es[c]["messaggio"]
     assert es[d]["esito"] == "ok" and es[d]["da"] == "maria" and es[e]["esito"] == "ok"
     assert "chiave" not in json.dumps(list(es.values())) or all("ssh-ed25519" not in json.dumps(x) for x in es.values())
+
+
+def test_passo_dei_lavori_ponti_nuovi(sv, passo, monkeypatch):
+    """1.10.0: aggiunta con installazione, impostazioni e "Riprova" arrivano a root come previsto."""
+    salvate, riprovate = [], []
+    monkeypatch.setattr(rete, "salva_impostazioni_nuovi", lambda lv: salvate.append(lv) or "Impostazioni salvate: ok.")
+    monkeypatch.setattr(rete, "riprova_installazione", lambda imp, reg, lv: riprovate.append(lv))
+    a = sv.accoda("aggiungi", "velate", "andrea", chiave(1), impronta(1), installa={"scheda": "usb", "posizione": ""})
+    b = sv.accoda("impostazioni-nuovi", "ponti-nuovi", "andrea", impostazioni={
+        "nome_pacchetto": "a.zip", "pacchetto": "UEs=", "password": "", "host": "", "canale": "CNSAS-VA",
+        "chiave": base64.b64encode(b"k" * 32).decode(), "secondario": ""})
+    c = sv.accoda("installa", "velate", "andrea", installa={"scheda": "waveshare"})
+    d = sv.accoda("aggiungi", "male", "andrea", chiave(2), impronta(2), installa={"scheda": "boh"})
+    assert rete.cmd_lavora(None) == 0
+    assert ("installa", "velate", {"scheda": "usb", "posizione": ""}, "andrea") in passo
+    assert salvate[0]["impostazioni"]["canale"] == "CNSAS-VA" and riprovate[0]["installa"] == {"scheda": "waveshare"}
+    es = esiti()
+    assert es[a]["esito"] == "ok" and es[b]["esito"] == "ok" and es[c]["esito"] == "ok"
+    assert es[b]["messaggio"] == "Impostazioni salvate: ok." and "k" * 10 not in json.dumps(es[b])
+    assert d not in es and "male" not in [x[1] for x in passo]             # lavoro strano: scartato
 
 
 def test_passo_dei_lavori_scarta_i_file_strani(sv, passo, tmp_path):

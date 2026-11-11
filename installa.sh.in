@@ -86,8 +86,9 @@ passo()  { printf '\n%s%s%s\n' "$B" "$*" "$N"; }
 ok()     { printf '  %s✔%s %s\n' "$V" "$N" "$*"; }
 info()   { printf '    %s\n' "$*"; }
 avviso() { printf '  %s!%s %s\n' "$G" "$N" "$*"; }
-fallisci() { printf '\n%s✘ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
-fallisci_log() { printf '\n%s✘ %s%s\n' "$R" "$1" "$N" >&2; echo "    Ultime righe di $LOG:" >&2; tail -n 12 "$LOG" 2>/dev/null | sed 's/^/      /' >&2; exit 1; }
+ULTIMO_ERRORE=""
+fallisci() { ULTIMO_ERRORE="$*"; printf '\n%s✘ %s%s\n' "$R" "$*" "$N" >&2; exit 1; }
+fallisci_log() { ULTIMO_ERRORE="$1"; printf '\n%s✘ %s%s\n' "$R" "$1" "$N" >&2; echo "    Ultime righe di $LOG:" >&2; tail -n 12 "$LOG" 2>/dev/null | sed 's/^/      /' >&2; exit 1; }
 
 INTERATTIVO=0; [ -t 0 ] && INTERATTIVO=1
 APT_OPZ=(-o DPkg::Lock::Timeout=600)   # al primo avvio gli aggiornamenti automatici possono tenere occupato apt
@@ -222,6 +223,10 @@ fi
 mkdir -p "$CONF_DIR"; chmod 755 "$CONF_DIR"
 IN_CORSO="$CONF_DIR/.in-corso"            # PID dell'installazione che lavora staccata dal terminale
 SCHERMO="$CONF_DIR/installazione-schermo.log"
+# Com'e' andata (dalla 1.10.0): in_corso | riavvio | ok VERSIONE | errore MESSAGGIO. La legge il primo avvio dei
+# ponti nuovi, che riferisce alla pagina della rete: li' nessuno guarda il terminale.
+ESITO_FILE="$CONF_DIR/esito-installazione"
+segna_esito() { printf '%s\n' "$*" > "$ESITO_FILE" 2>/dev/null || true; }
 if [ -n "${MESH2TAK_DOPO_RIAVVIO:-}" ]; then
   # lanciata da mesh2tak-installazione.service dopo il riavvio a meta': senza domande, una volta sola
   export MESH2TAK_STACCATO=1
@@ -237,6 +242,7 @@ fi
 [ -n "${MESH2TAK_STACCATO:-}" ] || printf '%sPonte Meshtastic <-> TAK Server%s (versione %s)\n' "$B" "$N" "$VERSIONE"
 touch "$LOG"; chmod 600 "$LOG"
 echo "=== $(date '+%F %T') installazione mesh2tak $VERSIONE" >>"$LOG"
+segna_esito in_corso
 if [ -z "${MESH2TAK_STACCATO:-}" ] && [ -f "$UNITA_RIPRESA" ]; then
   # la ripresa automatica dopo il riavvio non e' partita (o non ancora): la fa questa esecuzione
   systemctl disable --now mesh2tak-installazione.service >/dev/null 2>&1 || true
@@ -250,6 +256,12 @@ togli_ripresa() {
   systemctl daemon-reload >/dev/null 2>&1 || true
 }
 alla_fine() {
+  local codice=$?
+  if [ "$codice" != 0 ]; then
+    # chi segue soltanto un'installazione staccata non sovrascrive l'errore che quella ha gia' scritto
+    if [ -n "$ULTIMO_ERRORE" ]; then segna_esito "errore $ULTIMO_ERRORE"
+    elif grep -q '^in_corso' "$ESITO_FILE" 2>/dev/null; then segna_esito "errore installazione interrotta (codice $codice): vedi $LOG"; fi
+  fi
   rm -rf "$TMP"
   if [ -n "${MESH2TAK_STACCATO:-}" ]; then rm -f "$IN_CORSO"; fi
   if [ -n "${MESH2TAK_DOPO_RIAVVIO:-}" ] && [ "$RIPRESA_PROGRAMMATA" = 0 ]; then togli_ripresa; fi
@@ -704,6 +716,7 @@ if [ "$RIAVVIO" = 1 ]; then
     info "    sudo bash installa-ponte-meshtastic.sh"
     info "Riprende da dove si e' fermato."
   fi
+  segna_esito riavvio
   sleep 5
   systemctl reboot
   exit 0
@@ -1208,6 +1221,7 @@ if [ -f "$SE_STESSO" ] && [ "$SE_STESSO" != "$DIR/installatore.sh" ]; then
   install -m 700 -o root -g root "$SE_STESSO" "$DIR/installatore.sh" 2>/dev/null || true
 fi
 togli_ripresa    # dopo la copia: dopo il riavvio "questo installatore" e' proprio la copia della ripresa
+segna_esito "ok $VERSIONE"
 printf '\n%sFatto.%s\n' "$B" "$N"
 [ "$ESITO_TAK" = ok ] || avviso "Il TAK Server non ha accettato il collegamento: il ponte riprova da solo, ma leggi il messaggio al passo 8."
 [ "$ESITO_NODO" = ok ] || avviso "Il nodo Meshtastic non ha risposto alla prova: il ponte riprova da solo, ma leggi il messaggio al passo 8."

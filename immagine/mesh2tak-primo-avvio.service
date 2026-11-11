@@ -1,0 +1,17 @@
+[Unit]
+Description=Ponte Meshtastic: primo avvio (si installa da solo dalla pagina della rete)
+Documentation=https://github.com/andrealorenzofiorini/mesh2tak
+After=network.target
+ConditionPathExists=/usr/local/lib/mesh2tak/primo-avvio.py
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I /usr/local/lib/mesh2tak/primo-avvio.py
+Environment=HOME=/root
+Restart=on-failure
+RestartSec=60
+# l'installatore lanciato da qui riavvia il Raspberry a meta': niente attese lunghe allo spegnimento
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Genera i due file da consegnare:
+"""Genera i file da consegnare:
   dist/installa-ponte-meshtastic.sh   (Raspberry: incorpora mesh2tak.py, scorta.py e aggiorna.py)
-  dist/rete-meshtastic.sh             (server infra-TAK: incorpora server/rete_meshtastic.py e la pagina)"""
+  dist/rete-meshtastic.sh             (server infra-TAK: incorpora server/rete_meshtastic.py e la pagina)
+  dist/mesh2tak-primo-avvio.py        (va nell'immagine per Raspberry Pi Imager: immagine/costruisci.py)"""
 import base64, hashlib, os, re
 QUI = os.path.dirname(os.path.abspath(__file__))
 
@@ -36,3 +37,7 @@ rete = (rete.replace('VERSIONE = "@@VERSIONE@@"', f'VERSIONE = "{versione}"')
 assert "@@" not in rete and "\nFINE_RETE_PY\n" not in rete
 salva("rete-meshtastic.sh",
       leggi("server", "rete.sh.in").replace("@@VERSIONE@@", versione).replace("@@RETE_PY@@", rete.rstrip("\n")))
+
+primo = leggi("primo_avvio.py").replace("@@VERSIONE@@", versione)
+assert "@@" not in primo
+salva("mesh2tak-primo-avvio.py", primo)

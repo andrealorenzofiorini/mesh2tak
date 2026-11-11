@@ -207,6 +207,39 @@ dialog ul { padding-left: 1.2rem; }
 .togli { font: 600 0.9rem/1 var(--testo); background: none; border: 0; padding: 0.3rem 0; color: var(--ardesia); cursor: pointer; text-decoration: underline; }
 .togli:hover { color: var(--soccorso); }
 .piccolo { font-size: 0.9rem; padding: 0.6rem 0.9rem; }
+.aggiungi h3 { font: 700 1.3rem/1.15 var(--titoli); margin: 2rem 0 0.4rem; }
+.aggiungi h4, .gestione-radio h4 { font: 700 1.1rem/1.2 var(--titoli); margin: 1.4rem 0 0; }
+.aggiungi label small, .gestione-radio label small { display: block; font-weight: 400; color: var(--ardesia); font-size: 0.85rem; }
+.aggiungi select, .gestione-radio select, .gestione-radio input, .gestione-radio textarea, #riprova select, #riprova input { width: 100%; font: 400 1rem/1.4 var(--testo); padding: 0.6rem 0.7rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); }
+.aggiungi input[type="file"] { padding: 0.45rem; }
+.aggiungi .nota, .gestione-radio .nota { color: var(--ardesia); font-size: 0.9rem; max-width: 44rem; }
+.aggiungi .nuovi > .spiega { background: var(--lago-tenue); margin-top: 0.8rem; }
+.inviti { list-style: none; margin: 1rem 0 0; padding: 0; }
+.aggiungi .invito { margin: 0; padding: 1rem 0; border-top: 1px solid var(--nebbia); }
+.invito h4 { font-size: 1.35rem; margin: 0; }
+.invito .da, .gestione-radio .da { margin: 0.2rem 0 0.4rem; color: var(--ardesia); font-size: 0.95rem; }
+.stato-invito { margin: 0.3rem 0; color: var(--ambra); font-weight: 600; }
+.chiave-invito code { font-size: 0.8rem; word-break: break-all; max-width: 100%; }
+.riga-pulsanti { display: flex; gap: 0.8rem 1.2rem; flex-wrap: wrap; align-items: center; margin-top: 0.9rem; }
+.riga-pulsanti select { width: auto; flex: 1 1 14rem; }
+.installa-richiesta { grid-column: 1 / -1; max-width: 30rem; }
+.installa-richiesta label { display: block; margin: 0.7rem 0 0.25rem; font-weight: 600; }
+.installa-richiesta input, .installa-richiesta select { width: 100%; font: 400 1rem/1.4 var(--testo); padding: 0.55rem 0.7rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); }
+.installa-richiesta label small { display: block; font-weight: 400; color: var(--ardesia); font-size: 0.85rem; }
+.ponte .riprova { grid-column: 1 / -1; margin-top: 0.6rem; }
+#radio { max-width: 46rem; width: calc(100% - 2rem); }
+.gestione-radio h3 { font: 700 1.2rem/1.2 var(--titoli); margin: 1.5rem 0 0.5rem; padding-top: 1.1rem; border-top: 1px solid var(--nebbia); }
+.gestione-radio label { display: block; margin: 0.75rem 0 0.25rem; font-weight: 600; font-size: 0.95rem; }
+.gestione-radio .si-no { display: flex; gap: 0.55rem; align-items: baseline; font-weight: 400; flex-wrap: wrap; }
+.gestione-radio .si-no input { width: auto; }
+.gestione-radio .si-no small { flex-basis: 100%; }
+.gestione-radio fieldset { border: 1px solid var(--nebbia); border-radius: 6px; margin: 0.9rem 0; padding: 0.1rem 0.9rem 0.8rem; }
+.gestione-radio legend { font-weight: 600; padding: 0 0.3rem; }
+.gestione-radio summary { cursor: pointer; color: var(--lago); font-weight: 600; margin-top: 0.8rem; }
+.gestione-radio .stato-op { position: sticky; bottom: 0; margin: 1.4rem 0 0; padding: 0.7rem 1rem; border-radius: 6px; background: var(--lago-tenue); border: 1px solid var(--curve); }
+.gestione-radio .stato-op[data-esito="errore"] { background: var(--soccorso-tenue); border-color: var(--soccorso); }
+.gestione-radio .stato-op[data-esito="fatto"] { border-color: var(--larice); }
+.voce .gestisci { margin-top: 0.45rem; }
 
 @media (max-width: 760px) {
   h1 { font-size: 2.1rem; }
@@ -286,6 +319,21 @@ dialog ul { padding-left: 1.2rem; }
   <div class="pulsanti">
     <button class="bottone secondario" type="button" id="aggiorna-annulla">Annulla</button>
     <button class="bottone" type="button" id="aggiorna-conferma">Aggiorna</button>
+  </div>
+</dialog>
+
+<dialog id="radio" aria-labelledby="radio-titolo">
+  <div class="gestione-radio" id="radio-dentro"></div>
+</dialog>
+
+<dialog id="riprova" aria-labelledby="riprova-titolo">
+  <h2 id="riprova-titolo">Riprovare l'installazione?</h2>
+  <p id="riprova-testo"></p>
+  <p><label for="riprova-scheda">Radio del ponte</label><select id="riprova-scheda"></select></p>
+  <p><label for="riprova-posizione">Dove sta (coordinate, vuoto se la radio ha il suo GPS)</label><input id="riprova-posizione" autocomplete="off"></p>
+  <div class="pulsanti">
+    <button class="bottone secondario" type="button" id="riprova-annulla">Annulla</button>
+    <button class="bottone" type="button" id="riprova-conferma">Riprova l'installazione</button>
   </div>
 </dialog>
 
@@ -397,6 +445,7 @@ function giornoOra(ts) {
 }
 
 function durata(s) {
+  if (!Number.isFinite(s)) return "?";          // dato che manca nello stato del ponte
   s = Math.max(0, Math.round(s));
   if (s < 90) return s < 60 ? "meno di un minuto" : "1 minuto";
   const m = Math.round(s / 60);
@@ -629,14 +678,36 @@ function disegnaRadio(sez, p, d) {
   sez.append(box);
 }
 
-function disegnaPonte(p) {
+function valutaPonte(p) {
+  // come valuta(), ma sa che un ponte nuovo si sta ancora installando (dalla 1.10.0)
   const st = stati.get(p.nome);
   const v = valuta(st);
   const d = st && st.dati;
+  const ins = installazioneDi(p.nome);
   if (!d && p.aggiunto && Date.now() - Date.parse(p.aggiunto) < 10 * 60 * 1000) {
     v.parole = "In attesa del primo collegamento";
     v.spiega = "Appena aggiunto: il Raspberry se ne accorge entro qualche minuto e apre il tunnel da solo.";
   }
+  if (!ins || (d && ins.fase === "fatto")) return v;
+  const eta = Date.now() / 1000 - ins.quando;
+  if (ins.fase === "errore") {
+    return {classe: "guasto", parole: "Installazione non riuscita", riprova: ins,
+            spiega: maiuscola(frase(ins.testo || "errore")) + " (" + fa(eta) + ")"};
+  }
+  if (ins.fase === "fatto") {
+    if (eta < 20 * 60) { v.parole = "Installato, in attesa del primo collegamento"; v.spiega = "Il ponte è installato: apre il tunnel da solo entro qualche minuto."; }
+    return v;
+  }
+  if (d) return v;                       // risponde gia': quello che conta e' lo stato vero
+  return {classe: "pausa", parole: "Si sta installando", riprova: eta > 3600 ? ins : null,
+          spiega: maiuscola(frase(ins.testo || "in corso")) + " (" + fa(eta) + "). Tutta l'installazione dura 30-60 minuti e il " +
+                  "Raspberry si riavvia una volta." + (eta > 3600 ? " Nessuna notizia da più di un'ora: Raspberry spento o senza internet?" : "")};
+}
+
+function disegnaPonte(p) {
+  const st = stati.get(p.nome);
+  const v = valutaPonte(p);
+  const d = st && st.dati;
   const sez = el("section", "ponte");
   sez.dataset.stato = v.classe;
   sez.setAttribute("aria-labelledby", "ponte-" + p.nome);
@@ -669,16 +740,25 @@ function disegnaPonte(p) {
   }
   capo.append(azione);
   if (v.spiega) capo.append(el("p", "spiega", v.spiega));
+  if (v.riprova && gestione) {
+    const r = el("button", "bottone secondario piccolo riprova", "Riprova l'installazione");
+    r.type = "button";
+    r.addEventListener("click", () => chiediRiprova(p, v.riprova));
+    const riga = el("div", "riprova");
+    riga.append(r);
+    capo.append(riga);
+  }
   sez.append(capo);
 
   if (d) {
     const dl = el("dl", "fatti");
-    fatto(dl, "TAK Server", d.tak.collegato ? "collegato da " + durata(d.ora - d.tak.dal) : "non collegato");
+    const tak = d.tak || {};
+    fatto(dl, "TAK Server", tak.collegato ? "collegato da " + durata(d.ora - tak.dal) : "non collegato");
     fatto(dl, "Radio del ponte", (d.nodo.collegato ? "collegata, " : (d.pausa && d.pausa.attiva ? "lasciata alla gestione, " : "non collegata, ")) + (d.nodo.preset || ""));
     fatto(dl, "Canali", canali(d));
     const c = d.conteggi || {};
     const finestra = d.ora - (d.conteggi_dal || d.avviato);
-    fatto(dl, finestra < 90 ? "Nell'ultimo minuto" : (finestra >= 3600 ? "Nell'ultima ora" : "Negli ultimi " + durata(finestra)), (c.inoltrate || 0) + " posizioni al TAK Server, " + (c.radio_al_server || 0) + " messaggi dalla radio, " + (c.radio_trasmessi || 0) + " alle radio");
+    fatto(dl, !Number.isFinite(finestra) ? "Contatori" : finestra < 90 ? "Nell'ultimo minuto" : (finestra >= 3600 ? "Nell'ultima ora" : "Negli ultimi " + durata(finestra)), (c.inoltrate || 0) + " posizioni al TAK Server, " + (c.radio_al_server || 0) + " messaggi dalla radio, " + (c.radio_trasmessi || 0) + " alle radio");
     fatto(dl, "Programma", "mesh2tak " + (d.versione || "?") + ", acceso da " + durata(d.ora - d.avviato));
     const cr = d.canale_radio;
     if (cr && cr.occupato !== null && cr.occupato !== undefined) {
@@ -703,9 +783,18 @@ function disegnaRichiesta(r) {
   if (r.stesso_nome) chi.append(el("p", "avviso", "C'è un'altra richiesta con lo stesso nome: approva solo quella con il codice giusto."));
   const codice = el("div", "controllo");
   codice.append(el("small", null, "codice di controllo"), el("b", null, r.controllo || "?"));
+  if (r.nuovo) {
+    chi.append(el("p", "da", "Raspberry nuovo" + (r.nuovo.modello ? " (" + r.nuovo.modello + ")" : "") + ", " +
+                             (r.nuovo.radio_usb ? "con una radio USB collegata" : "senza radio USB (scheda sui pin?)") + "."));
+    if (!r.invito) chi.append(el("p", "avviso", "Non ha una chiave d'invito valida (mai messa, già usata o scaduta): nessuno può " +
+                                               "confrontare il codice. Approvalo solo se sei sicuro che è il tuo."));
+  }
   li.append(chi, codice);
-  if (r.stato === "in_corso") {
-    const lav = el("p", "lavora", "Sto aggiungendo il ponte, ci vuole un paio di minuti.");
+  if (r.stato !== "in_corso" && r.nuovo && !r.installa) {
+    li.append(moduloInstalla(r));
+  } else if (r.stato === "in_corso") {
+    const lav = el("p", "lavora", r.installa ? "Sto aggiungendo il ponte; poi il Raspberry si installa da solo." :
+                                                "Sto aggiungendo il ponte, ci vuole un paio di minuti.");
     lav.append(el("small", null, r.fermo ? "Il server non ha ancora cominciato: se resta così, sul server  sudo bash rete-meshtastic.sh installa"
                                          : "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
     li.append(lav);
@@ -734,6 +823,8 @@ function cosaLavoro(l) {
   if (l.azione === "aggiorna-server") return "Aggiornamento del server alla " + (l.versione || "?");
   if (l.azione === "aggiorna-ponti") return "Richiesta di aggiornamento " + (l.nome === "tutti" ? "ai ponti" : "al ponte " + l.nome) +
                                             " alla " + (l.versione || "?");
+  if (l.azione === "impostazioni-nuovi") return "Certificato e canale per i ponti nuovi";
+  if (l.azione === "installa") return "Nuova installazione del ponte " + (l.nome || "?");
   return (PAROLE_AZIONE[l.azione] || "Lavoro sul ponte ") + (l.nome || "?");
 }
 
@@ -747,8 +838,9 @@ function disegnaLavoro(l) {
     else if (l.azione === "aggiungi") p.append(el("small", null, "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
     else if (l.azione === "aggiorna-server") p.append(el("small", null, "Il servizio della pagina riparte: per circa un minuto la pagina può non rispondere, poi riprende da sola."));
   } else if (l.esito === "ok") {
-    p.textContent = cosa + ": fatta alle " + oraDi(l.quando) + "." +
-                    (l.azione === "aggiorna-ponti" ? " I ponti si aggiornano da soli entro qualche minuto." : "");
+    p.textContent = cosa + ": " + (l.azione === "impostazioni-nuovi" ? "salvati alle " : "fatta alle ") + oraDi(l.quando) + "." +
+                    (l.azione === "aggiorna-ponti" ? " I ponti si aggiornano da soli entro qualche minuto." : "") +
+                    (l.azione === "installa" ? " Il Raspberry riparte da solo entro un paio di minuti." : "");
   } else {
     p.textContent = cosa + ": non riuscita alle " + oraDi(l.quando) + ".";
     const pr = el("div", "problema", maiuscola(frase(l.messaggio || "errore")));
@@ -785,6 +877,280 @@ function disegnaNovita() {
   return sez;
 }
 
+// ---- ponti nuovi (dalla 1.10.0): certificato e canale una volta, poi un invito per ogni Raspberry ----
+
+const SCHEDE_RADIO = [["waveshare", "Scheda Waveshare SX1262 (sui pin del Raspberry)"],
+                      ["usb", "Radio Meshtastic collegata via USB"],
+                      ["meshadv", "Scheda MeshAdv (sui pin)"], ["meshadv-mini", "Scheda MeshAdv Mini (sui pin)"],
+                      ["rak", "Scheda RAK6421 con RAK13300 (sui pin)"]];
+let zonaStatoNuovi = null, dettagliImpostazioni = null, zonaInviti = null, moduloInvito = null;
+
+function nomeScheda(s) {
+  const v = SCHEDE_RADIO.find(x => x[0] === s);
+  return v ? v[1] : (s || "radio non scelta");
+}
+
+function sceltaScheda(id, predefinita) {
+  const s = el("select");
+  s.id = id;
+  SCHEDE_RADIO.forEach(([valore, testo]) => { const o = el("option", null, testo); o.value = valore; s.append(o); });
+  s.value = predefinita || "waveshare";
+  return s;
+}
+
+function campo(etichetta, controllo, nota) {
+  const l = el("label", null, etichetta);
+  if (nota) l.append(el("small", null, nota));
+  l.htmlFor = controllo.id;
+  return [l, controllo];
+}
+
+async function copiaTesto(bottone, testo, dopo) {
+  const prima = bottone.textContent;
+  try { await navigator.clipboard.writeText(testo); bottone.textContent = dopo || "Copiato"; }
+  catch (e) { bottone.textContent = "Non riesco a copiare: selezionalo a mano"; }
+  setTimeout(() => { bottone.textContent = prima; }, 4000);
+}
+
+function fileInBase64(file) {
+  return new Promise((ok, no) => {
+    const lettore = new FileReader();
+    lettore.onload = () => ok(String(lettore.result).split(",")[1] || "");
+    lettore.onerror = () => no(new Error("non riesco a leggere il file"));
+    lettore.readAsDataURL(file);
+  });
+}
+
+function passiMicroSD(inv) {
+  const elencoImager = (gestione && gestione.imager) || "";
+  return [
+    "Sul computer installa Raspberry Pi Imager (versione 2 o successiva) da https://www.raspberrypi.com/software/ e aprilo.",
+    "Solo la prima volta: premi \"Opzioni app\" (in basso a sinistra), alla voce \"Repository dei contenuti\" premi \"Modifica\", scegli \"Usa URL personalizzato\", incolla questo indirizzo e premi \"Applica & Riavvia\":\n" + elencoImager,
+    "Scegli il modello del Raspberry, poi il sistema \"Ponte Meshtastic (mesh2tak)\", poi la microSD.",
+    "Personalizzazione. Hostname: ponte-" + inv.nome + ". Localizzazione: Europe/Rome, tastiera it. Utente: un nome e una password a scelta (servono solo per la manutenzione). Wi-Fi: nome e password della rete del posto dove starà il ponte (con il cavo di rete si salta).",
+    "Accesso remoto: attiva \"Abilita SSH\", scegli \"Usa autenticazione con chiave pubblica\", incolla la chiave d'invito qui sotto e premi \"Add\". Senza questa chiave il Raspberry non sa a quale rete presentarsi.\n" + (inv.riga || ""),
+    "Raspberry Pi Connect e Interfacce: vai avanti senza toccare nulla, poi scrivi la microSD.",
+    "Metti la microSD nel Raspberry, collega la radio e l'antenna (mai accenderlo senza antenna) e l'alimentatore. Non serve altro: in 5-10 minuti compare sulla pagina della rete e si installa da solo in 30-60 minuti.",
+  ];
+}
+
+function disegnaInvito(inv) {
+  const li = el("li", "invito");
+  li.append(el("h4", null, inv.nome));
+  li.append(el("p", "da", nomeScheda(inv.scheda) + (inv.posizione ? ", posizione " + inv.posizione : ", senza posizione fissa") +
+                          ". Preparato da " + (inv.da || "?") + " " + giornoOra(inv.creato) + "."));
+  if (inv.stato !== "attesa") {
+    const ins = gestione.installazioni && gestione.installazioni[inv.nome];
+    li.append(el("p", "stato-invito", ins ? "Il Raspberry è arrivato: lo vedi tra i ponti qui sopra." :
+                                            "Il Raspberry è arrivato " + giornoOra(inv.usato || inv.creato) + ": lo sto aggiungendo alla rete."));
+    return li;
+  }
+  li.append(el("p", "stato-invito", "In attesa che il Raspberry si accenda. La chiave d'invito vale una volta sola, fino al " +
+                                    new Date(inv.scade * 1000).toLocaleDateString("it-IT", {day: "numeric", month: "long"}) + "."));
+  const passi = passiMicroSD(inv);
+  const ol = el("ol");
+  passi.forEach(t => {
+    const [testo, daCopiare] = t.split("\n");
+    const voce = el("li", null, testo);
+    if (daCopiare) {
+      const riga = el("div", "comando chiave-invito");
+      const copia = el("button", "bottone secondario piccolo", "Copia");
+      copia.type = "button";
+      copia.addEventListener("click", () => copiaTesto(copia, daCopiare));
+      riga.append(el("code", null, daCopiare), copia);
+      voce.append(riga);
+    }
+    ol.append(voce);
+  });
+  li.append(dettagli("invito:" + inv.id, "Istruzioni per chi prepara la microSD", ol));
+  const riga = el("div", "riga-pulsanti");
+  const tutte = el("button", "bottone piccolo", "Copia le istruzioni da mandare");
+  tutte.type = "button";
+  tutte.addEventListener("click", () => copiaTesto(tutte, "Ponte Meshtastic \"" + inv.nome + "\": come preparare la microSD\n\n" +
+    passi.map((t, i) => (i + 1) + ". " + t).join("\n\n") + "\n", "Copiate: incollale in un messaggio"));
+  const annulla = el("button", "togli", "Annulla l'invito");
+  annulla.type = "button";
+  annulla.addEventListener("click", () => azioneRichiesta(annulla, "annulla-invito", {id: inv.id}));
+  riga.append(tutte, annulla);
+  li.append(riga);
+  return li;
+}
+
+function costruisciNuovi() {
+  const zona = el("div", "nuovi");
+  zona.append(el("h3", null, "Raspberry nuovo, preparato con Raspberry Pi Imager"));
+  zona.append(el("p", null, "Chi ha il Raspberry scrive la microSD con Raspberry Pi Imager incollando una chiave d'invito preparata qui, " +
+    "collega la radio e lo accende. Il Raspberry si presenta da solo a questa pagina, riceve certificato e canale, si installa e " +
+    "compare tra i ponti: nessun terminale, nessun file da copiare."));
+  zonaStatoNuovi = el("p", "spiega");
+  zona.append(zonaStatoNuovi);
+
+  // certificato e canale: una volta
+  const f = el("form");
+  const file = el("input"); file.type = "file"; file.id = "nuovi-file"; file.accept = ".zip,.p12,.pfx"; file.required = true;
+  const password = el("input"); password.type = "password"; password.id = "nuovi-password"; password.autocomplete = "off";
+  password.placeholder = "atakatak, se non l'hai cambiata";
+  const host = el("input"); host.id = "nuovi-host"; host.autocomplete = "off"; host.placeholder = "di solito non serve";
+  const canale = el("input"); canale.id = "nuovi-canale"; canale.required = true; canale.maxLength = 11; canale.autocomplete = "off";
+  canale.placeholder = "es. CNSAS-VA";
+  const chiave = el("input"); chiave.type = "password"; chiave.id = "nuovi-chiave"; chiave.required = true; chiave.autocomplete = "off";
+  chiave.placeholder = "44 caratteri, finisce con =";
+  const secondario = el("input"); secondario.id = "nuovi-secondario"; secondario.maxLength = 11; secondario.autocomplete = "off";
+  secondario.placeholder = "vuoto = LongFast, il pubblico standard";
+  const invia = el("button", "bottone", "Controlla e salva");
+  invia.type = "submit";
+  const esito = el("p", "esito");
+  esito.setAttribute("aria-live", "polite");
+  f.append(...campo("Pacchetto del certificato", file, "il file .zip che la console infra-TAK fa scaricare per il certificato del ponte"),
+           ...campo("Password del certificato", password),
+           ...campo("Indirizzo del TAK Server", host, "solo se il pacchetto non lo contiene"),
+           ...campo("Nome del canale della squadra", canale),
+           ...campo("Chiave del canale della squadra", chiave, "dall'app Meshtastic: Canali, il canale della squadra, chiave"),
+           ...campo("Canale pubblico secondario", secondario),
+           el("p", "nota", "Restano sul server, leggibili solo da root. Da qui non si possono rileggere: si possono solo sostituire. " +
+                           "A ogni Raspberry approvato arrivano cifrati, e solo a lui."),
+           invia, esito);
+  f.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    invia.disabled = true;
+    esito.textContent = "Mando...";
+    try {
+      if (!file.files.length) throw new Error("scegli il pacchetto del certificato");
+      if (file.files[0].size > 256 * 1024) throw new Error("il file è troppo grande: serve il pacchetto .zip della console infra-TAK");
+      const d = await manda("impostazioni-nuovi", {
+        nome_pacchetto: file.files[0].name, pacchetto: await fileInBase64(file.files[0]), password: password.value,
+        host: host.value.trim(), canale: canale.value.trim(), chiave: chiave.value.trim(), secondario: secondario.value.trim()});
+      esito.textContent = (d.messaggio || "Mandato.") + " L'esito compare in cima alla pagina tra qualche secondo.";
+      f.reset();
+      await giro();
+    } catch (e) {
+      esito.textContent = "Non accettato: " + e.message;
+    } finally {
+      invia.disabled = false;
+    }
+  });
+  dettagliImpostazioni = el("details");
+  dettagliImpostazioni.append(el("summary", null, "Certificato e canale per i ponti nuovi"), f);
+  zona.append(dettagliImpostazioni);
+
+  // un invito per ogni Raspberry
+  zonaInviti = el("ul", "inviti");
+  zona.append(zonaInviti);
+  moduloInvito = el("form");
+  const nome = el("input");
+  nome.id = "invito-nome"; nome.required = true; nome.maxLength = 20; nome.pattern = "[a-z0-9]([a-z0-9\\-]{0,18}[a-z0-9])?";
+  nome.placeholder = "es. velate"; nome.autocomplete = "off";
+  nome.title = "minuscole, numeri e trattini (non all'inizio o alla fine), al massimo 20 caratteri";
+  const scheda = sceltaScheda("invito-scheda");
+  const posizione = el("input");
+  posizione.id = "invito-posizione"; posizione.autocomplete = "off"; posizione.placeholder = "es. 45.8205, 8.8257";
+  const prepara = el("button", "bottone", "Prepara l'invito");
+  prepara.type = "submit";
+  const esitoInvito = el("p", "esito");
+  esitoInvito.setAttribute("aria-live", "polite");
+  moduloInvito.append(el("h4", null, "Prepara un ponte nuovo"),
+                      ...campo("Nome del ponte", nome, "diventa anche il nome sulla mappa: Ponte CNSAS Velate"),
+                      ...campo("Radio del ponte", scheda),
+                      ...campo("Dove sta", posizione, "coordinate copiate da Google Maps; vuoto se la radio ha il suo GPS"),
+                      el("p"), prepara, esitoInvito);
+  moduloInvito.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    prepara.disabled = true;
+    esitoInvito.textContent = "Preparo...";
+    try {
+      const d = await manda("invita", {nome: nome.value.trim(), scheda: scheda.value, posizione: posizione.value.trim()});
+      dettagliAperti.add("invito:" + d.invito.id);
+      esitoInvito.textContent = "Invito pronto: qui sopra ci sono le istruzioni da mandare a chi prepara la microSD.";
+      moduloInvito.reset();
+      await giro();
+    } catch (e) {
+      esitoInvito.textContent = "Non riuscito: " + e.message;
+    } finally {
+      prepara.disabled = false;
+    }
+  });
+  zona.append(moduloInvito);
+  return zona;
+}
+
+function aggiornaNuovi() {
+  if (!zonaStatoNuovi) return;
+  const n = gestione && gestione.ponti_nuovi;
+  zonaStatoNuovi.parentNode.hidden = !gestione || !n;      // server piu' vecchio della 1.10.0: niente
+  if (!gestione || !n) return;
+  if (n.pronto) {
+    zonaStatoNuovi.textContent = "Per i ponti nuovi: certificato " + (n.certificato ? "\"" + n.certificato + "\"" : "caricato") +
+      (n.scade ? " (scade il " + new Date(n.scade * 1000).toLocaleDateString("it-IT") + ")" : "") + ", TAK Server " + (n.server || "?") +
+      ", canale " + n.canale + ", secondario " + (n.secondario || "LongFast") + ". Caricati da " + (n.da || "?") + " " +
+      giornoOra(n.aggiornato) + ".";
+    dettagliImpostazioni.firstChild.textContent = "Cambia certificato o canale";
+  } else {
+    zonaStatoNuovi.textContent = "Prima, una volta sola: carica qui sotto il certificato e la chiave del canale che i ponti nuovi devono usare.";
+    dettagliImpostazioni.firstChild.textContent = "Certificato e canale per i ponti nuovi";
+    if (!dettagliImpostazioni.dataset.aperto) { dettagliImpostazioni.open = true; dettagliImpostazioni.dataset.aperto = "1"; }
+  }
+  moduloInvito.hidden = !n.pronto;
+  zonaInviti.replaceChildren(...(gestione.inviti || []).map(disegnaInvito));
+}
+
+// un Raspberry nuovo arrivato senza una chiave d'invito valida: si puo' installare lo stesso, ma lo decide chi approva
+const moduliRichiesta = new Map();     // i moduli restano gli stessi tra un aggiornamento e l'altro della pagina
+
+function moduloInstalla(r) {
+  if (moduliRichiesta.has(r.id)) return moduliRichiesta.get(r.id);
+  const f = el("form", "installa-richiesta");
+  const nome = el("input");
+  nome.id = "inst-nome-" + r.id.slice(0, 8); nome.required = true; nome.maxLength = 20; nome.value = r.nome === "nuovo" ? "" : r.nome;
+  nome.pattern = "[a-z0-9]([a-z0-9\\-]{0,18}[a-z0-9])?"; nome.autocomplete = "off";
+  const scheda = sceltaScheda("inst-scheda-" + r.id.slice(0, 8), r.nuovo && r.nuovo.radio_usb ? "usb" : "waveshare");
+  const posizione = el("input");
+  posizione.id = "inst-pos-" + r.id.slice(0, 8); posizione.autocomplete = "off"; posizione.placeholder = "es. 45.8205, 8.8257";
+  const no = el("button", "bottone secondario piccolo", "Rifiuta");
+  no.type = "button";
+  no.addEventListener("click", () => azioneRichiesta(no, "rifiuta", {id: r.id}));
+  const si = el("button", "bottone piccolo", "Approva e installa");
+  si.type = "submit";
+  const riga = el("div", "riga-pulsanti");
+  riga.append(no, si);
+  f.append(...campo("Nome del ponte", nome), ...campo("Radio del ponte", scheda), ...campo("Dove sta", posizione, "vuoto se la radio ha il suo GPS"), riga);
+  f.addEventListener("submit", ev => {
+    ev.preventDefault();
+    if (!window.confirm("Questo Raspberry non ha una chiave d'invito valida. Approvandolo riceve il certificato del TAK Server e la " +
+                        "chiave del canale: fallo solo se sei sicuro che è il tuo (stesso nome, acceso adesso). Continuo?")) return;
+    azioneRichiesta(si, "approva", {id: r.id, sostituisci: !!r.sostituisce,
+                                    installa: {nome: nome.value.trim(), scheda: scheda.value, posizione: posizione.value.trim()}});
+  });
+  moduliRichiesta.set(r.id, f);
+  return f;
+}
+
+// installazione di un ponte nuovo: a che punto e', e "Riprova"
+function installazioneDi(nome) {
+  return (gestione && gestione.installazioni && gestione.installazioni[nome]) || null;
+}
+
+let daRiprovare = null;
+
+function chiediRiprova(p, ins) {
+  daRiprovare = p;
+  document.getElementById("riprova-testo").textContent = "Il Raspberry del ponte " + p.nome + " riscarica la configurazione (con il " +
+    "certificato e il canale salvati adesso) e rifà l'installazione da dove serve. Parte entro un paio di minuti.";
+  const scelta = document.getElementById("riprova-scheda");
+  if (!scelta.options.length) SCHEDE_RADIO.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; scelta.append(o); });
+  scelta.value = ins.scheda || "waveshare";
+  document.getElementById("riprova-posizione").value = ins.posizione || "";
+  document.getElementById("riprova").showModal();
+}
+
+document.getElementById("riprova-annulla").addEventListener("click", () => document.getElementById("riprova").close());
+document.getElementById("riprova-conferma").addEventListener("click", async ev => {
+  const p = daRiprovare;
+  document.getElementById("riprova").close();
+  if (p) await azioneRichiesta(ev.target, "riprova-installazione", {nome: p.nome, scheda: document.getElementById("riprova-scheda").value,
+                                                                   posizione: document.getElementById("riprova-posizione").value.trim()});
+  ev.target.disabled = false;
+});
+
 let sezAggiungi = null, zonaServizio = null, zonaModulo = null, zonaRifiutate = null;
 
 function costruisciAggiungi() {
@@ -792,6 +1158,8 @@ function costruisciAggiungi() {
   const sez = el("section", "aggiungi");
   sez.id = "aggiungi";
   sez.append(el("h2", null, "Aggiungere un ponte"));
+  sez.append(costruisciNuovi());
+  sez.append(el("h3", null, "Raspberry installato a mano, dal terminale"));
   const ol = el("ol");
   const passo1 = el("li", null, "Sul Raspberry del nuovo ponte lancia:");
   const riga = el("div", "comando");
@@ -864,6 +1232,7 @@ function aggiornaAggiungi() {
                                           ": senza, le richieste non arrivano. Sul server, una volta: sudo bash rete-meshtastic.sh installa"));
   }
   zonaModulo.hidden = !gestione;
+  aggiornaNuovi();
   const rif = gestione ? (gestione.rifiutate || []) : [];
   zonaRifiutate.replaceChildren(...(rif.length ? [disegnaRifiutate(rif)] : []));
 }
@@ -1119,6 +1488,356 @@ function chiediTogli(p) {
   document.getElementById("togli").showModal();
 }
 
+// ---- radio della squadra gestite da lontano (dalla 1.10.0), attraverso il nodo di un ponte ----
+
+const SEZIONI_IT = {device: "Dispositivo e ruolo", position: "Posizione e GPS", power: "Alimentazione e risparmio",
+                    network: "Rete (Wi-Fi)", display: "Schermo", lora: "Radio LoRa (frequenze, preset)",
+                    bluetooth: "Bluetooth", security: "Sicurezza (solo lettura)", mqtt: "MQTT",
+                    telemetry: "Telemetria (batteria, sensori)", neighbor_info: "Radio vicine",
+                    external_notification: "Avvisi esterni (cicalino, LED)", store_forward: "Store & Forward",
+                    range_test: "Prova di portata", serial: "Porta seriale", canned_message: "Messaggi pronti",
+                    detection_sensor: "Sensore di presenza", ambient_lighting: "Luci", paxcounter: "Contapersone",
+                    remote_hardware: "Hardware remoto", audio: "Audio"};
+const CAMPI_IT = {
+  "device.role": "Ruolo della radio", "device.rebroadcast_mode": "Che cosa ripete",
+  "device.node_info_broadcast_secs": "Manda il suo nome ogni (secondi)", "device.tzdef": "Fuso orario",
+  "device.led_heartbeat_disabled": "LED lampeggiante spento", "device.button_gpio": "Pin del pulsante",
+  "position.position_broadcast_secs": "Manda la posizione ogni (secondi)",
+  "position.position_broadcast_smart_enabled": "Posizione intelligente (più spesso se si muove)",
+  "position.fixed_position": "Usa una posizione fissa", "position.gps_mode": "GPS",
+  "position.gps_update_interval": "Legge il GPS ogni (secondi)",
+  "position.broadcast_smart_minimum_distance": "Posizione intelligente: distanza minima (metri)",
+  "position.broadcast_smart_minimum_interval_secs": "Posizione intelligente: intervallo minimo (secondi)",
+  "power.is_power_saving": "Risparmio di energia", "power.on_battery_shutdown_after_secs": "A batteria si spegne dopo (secondi)",
+  "lora.region": "Regione (frequenze di legge)", "lora.use_preset": "Usa un preset", "lora.modem_preset": "Preset (velocità e portata)",
+  "lora.hop_limit": "Salti al massimo", "lora.tx_enabled": "Trasmissione accesa",
+  "lora.tx_power": "Potenza di trasmissione (dBm, 0 = la massima consentita)", "lora.channel_num": "Slot di frequenza (0 = automatico)",
+  "lora.override_duty_cycle": "Ignora il limite di tempo radio (non in Europa)",
+  "bluetooth.enabled": "Bluetooth acceso", "bluetooth.mode": "Abbinamento", "bluetooth.fixed_pin": "PIN fisso",
+  "display.screen_on_secs": "Schermo acceso per (secondi)",
+  "telemetry.device_update_interval": "Manda batteria e canale ogni (secondi)",
+  "security.public_key": "Chiave pubblica della radio", "security.admin_key": "Chiavi amministratore",
+  "security.is_managed": "Gestita solo da lontano", "security.serial_enabled": "Porta seriale attiva",
+};
+const RISCHI = {
+  lora: "Se cambi regione, preset o frequenza questa radio non si sente più con le altre finché non le cambi tutte: da lontano non la recuperi.",
+  bluetooth: "Se spegni il Bluetooth o cambi il PIN, da vicino ci si rientra solo con il cavo.",
+  network: "Impostazioni di rete sbagliate possono rendere la radio irraggiungibile dal Wi-Fi.",
+  power: "Con il risparmio di energia la radio dorme e da lontano risponde molto più lentamente, o per niente.",
+  device: "Un ruolo sbagliato cambia come la radio ripete i messaggi degli altri (i ripetitori vanno messi solo in punti alti).",
+};
+let schemaRadio = null;             // sezioni e campi, come li conosce il ponte
+let radioAperta = null;             // {v, ponte, ...}
+
+function pontiCheGestiscono(v) {
+  return v.ponti.filter(x => { const d = (stati.get(x.ponte) || {}).dati; return d && d.gestione && d.gestione.radio; });
+}
+
+async function chiamaRadio(ponte, percorso, corpo) {
+  const opzioni = {cache: "no-store", redirect: "manual", credentials: "same-origin"};
+  if (corpo) Object.assign(opzioni, {method: "POST", headers: {"Content-Type": "application/json", "X-Mesh2tak": "1"},
+                                     body: JSON.stringify(corpo)});
+  const r = await fetch("radio/" + encodeURIComponent(ponte) + percorso, opzioni);
+  if (r.type === "opaqueredirect") { document.getElementById("sessione").hidden = false; throw new Error("sessione scaduta: ricarica la pagina"); }
+  let d = {};
+  try { d = await r.json(); } catch (e) { d = {}; }
+  if (!r.ok) throw new Error(d.errore || (r.status === 502 ? "il ponte " + ponte + " non risponde" : "il ponte risponde " + r.status));
+  return d;
+}
+
+function statoRadio(testo, esito) {
+  const s = document.getElementById("radio-stato");
+  s.textContent = testo;
+  s.dataset.esito = esito || "";
+}
+
+async function operazioneRadio(corpo, cosa) {
+  // una richiesta alla radio passa dal ponte e torna via radio: si aspetta l'esito chiedendolo al ponte
+  const a = radioAperta;
+  if (a.occupata) { statoRadio("Aspetta che finisca l'operazione in corso.", "errore"); return null; }
+  a.occupata = true;
+  document.getElementById("radio-dentro").querySelectorAll("button").forEach(b => { b.disabled = true; });
+  statoRadio(cosa + ": mando la richiesta al ponte " + a.ponte + "...");
+  try {
+    const {op} = await chiamaRadio(a.ponte, "/op", Object.assign({radio: a.v.id}, corpo));
+    const inizio = Date.now();
+    for (;;) {
+      await new Promise(ok => setTimeout(ok, 2000));
+      if (radioAperta !== a) return null;                 // finestra chiusa: l'operazione va avanti sul ponte
+      const o = await chiamaRadio(a.ponte, "/op?id=" + encodeURIComponent(op));
+      if (o.stato === "fatto") { statoRadio(cosa + ": " + ((o.risultato && o.risultato.messaggio) || "fatto."), "fatto"); return o; }
+      if (o.stato === "errore") { a.parziale = o.risultato || {}; throw new Error(o.errore || "non riuscito"); }
+      statoRadio(cosa + ": " + (o.passo || "in corso") + " (" + Math.round((Date.now() - inizio) / 1000) + " s)");
+      if (Date.now() - inizio > 12 * 60 * 1000) throw new Error("il ponte non ha finito in 12 minuti");
+    }
+  } catch (e) {
+    statoRadio(cosa + " non riuscito: " + frase(e.message), "errore");
+    return null;
+  } finally {
+    a.occupata = false;
+    if (radioAperta === a) document.getElementById("radio-dentro").querySelectorAll("button").forEach(b => { b.disabled = false; });
+  }
+}
+
+function controlloCampo(c, valore, prefisso) {
+  // un controllo per un campo dello schema; .leggi() rida' il valore nel formato del protocollo
+  const id = "rc-" + prefisso.replace(/\W/g, "-");
+  const etichetta = CAMPI_IT[prefisso] || c.nome;
+  if (c.tipo === "gruppo" && !c.ripetuto) {
+    const fs = el("fieldset");
+    fs.append(el("legend", null, etichetta));
+    const figli = c.campi.map(f => controlloCampo(f, (valore || {})[f.nome], prefisso + "." + f.nome));
+    figli.forEach(f => fs.append(...f.nodi));
+    return {nodi: [fs], leggi: () => Object.fromEntries(c.campi.map((f, i) => [f.nome, figli[i].leggi()]))};
+  }
+  let i;
+  if (c.ripetuto || c.tipo === "gruppo") {
+    i = el("textarea");
+    const righe = Array.isArray(valore) ? valore.map(x => typeof x === "object" ? JSON.stringify(x) : String(x)) : [];
+    i.value = righe.join("\n");
+    i.rows = Math.max(2, righe.length + 1);
+    i.spellcheck = false;
+    i.id = id;
+    const l = el("label", null, etichetta);
+    l.append(el("small", null, "uno per riga" + (CAMPI_IT[prefisso] ? " (" + c.nome + ")" : "")));
+    l.htmlFor = id;
+    return {nodi: [l, i], leggi: () => i.value.split("\n").map(x => x.trim()).filter(Boolean).map(x => {
+      if (c.tipo === "gruppo") return JSON.parse(x);
+      if (c.tipo === "intero" || c.tipo === "decimale") return Number(x);
+      return x;
+    })};
+  }
+  if (c.tipo === "si_no") {
+    i = el("input"); i.type = "checkbox"; i.checked = !!valore; i.id = id;
+    const l = el("label", "si-no");
+    l.append(i, document.createTextNode(etichetta));
+    if (CAMPI_IT[prefisso]) l.append(el("small", null, c.nome));
+    return {nodi: [l], leggi: () => i.checked};
+  }
+  if (c.tipo === "scelta") {
+    i = el("select");
+    c.opzioni.forEach(o => { const op = el("option", null, (c.nome === "role" && RUOLI[o]) ? o + " (" + RUOLI[o] + ")" : o); op.value = o; i.append(op); });
+    i.value = valore === undefined || valore === null ? c.opzioni[0] : String(valore);
+  } else {
+    i = el("input");
+    i.autocomplete = "off"; i.spellcheck = false;
+    if ((c.tipo === "intero" || c.tipo === "decimale") && typeof valore !== "string") { i.type = "number"; i.step = c.tipo === "decimale" ? "any" : "1"; }
+    i.value = valore === undefined || valore === null ? "" : String(valore);
+  }
+  i.id = id;
+  const l = el("label", null, etichetta);
+  if (CAMPI_IT[prefisso]) l.append(el("small", null, c.nome));
+  l.htmlFor = id;
+  return {nodi: [l, i], leggi: () => {
+    if (c.tipo === "intero" || c.tipo === "decimale") return i.type === "number" ? Number(i.value || 0) : i.value.trim();
+    return i.value;
+  }};
+}
+
+function moduloSezione(sez, valori) {
+  const f = el("form");
+  const controlli = sez.campi.map(c => controlloCampo(c, valori[c.nome], sez.nome + "." + c.nome));
+  controlli.forEach(c => f.append(...c.nodi));
+  if (sez.sola_lettura) {
+    f.querySelectorAll("input, select, textarea").forEach(x => { x.disabled = true; });
+    f.append(el("p", "nota", "Da lontano la sicurezza si può solo leggere: si cambia da vicino, con l'app Meshtastic."));
+    return f;
+  }
+  const salva = el("button", "bottone piccolo", "Salva sulla radio");
+  salva.type = "submit";
+  f.append(el("p"), salva);
+  f.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    let nuovi;
+    try { nuovi = Object.fromEntries(sez.campi.map((c, i) => [c.nome, controlli[i].leggi()])); }
+    catch (e) { statoRadio("Un valore non è scritto bene: " + e.message, "errore"); return; }
+    const rischio = RISCHI[sez.nome];
+    if (!window.confirm((rischio ? rischio + "\n\n" : "") + "Salvo \"" + (SEZIONI_IT[sez.nome] || sez.nome) + "\" sulla radio " +
+                        (radioAperta.v.nome || radioAperta.v.id) + "? Dopo si riavvia da sola.")) return;
+    await operazioneRadio({azione: "scrivi", sezione: sez.nome, valori: nuovi}, "Salvataggio");
+  });
+  return f;
+}
+
+function moduloCanale(c, canaliPonte) {
+  const f = el("form", "canale");
+  const p = "rk-" + c.indice;
+  const nome = el("input"); nome.id = p + "-nome"; nome.maxLength = 11; nome.value = c.nome || ""; nome.autocomplete = "off";
+  const ruolo = el("select"); ruolo.id = p + "-ruolo";
+  (c.indice === 0 ? ["PRIMARY"] : ["SECONDARY", "DISABLED"]).forEach(r => {
+    const o = el("option", null, {PRIMARY: "primario", SECONDARY: "secondario", DISABLED: "spento"}[r]); o.value = r; ruolo.append(o);
+  });
+  ruolo.value = c.ruolo === "DISABLED" && c.indice ? "DISABLED" : (c.indice ? "SECONDARY" : "PRIMARY");
+  const chiave = el("select"); chiave.id = p + "-chiave";
+  const descr = c.chiave.tipo === "privata" ? "privata" + (c.chiave.come_ponte ? ", uguale a quella del canale " + c.chiave.come_ponte + " del ponte" : ", diversa da quelle del ponte")
+              : (c.chiave.tipo === "predefinita" ? "quella pubblica nota a tutti" : "nessuna (in chiaro)");
+  const scelte = [];
+  if (c.ruolo !== "DISABLED" || c.indice === 0) scelte.push(["tieni", "Lascia la chiave com'è (" + descr + ")"]);
+  canaliPonte.filter(x => x.privato).forEach(x => scelte.push(["ponte:" + x.indice, "Stessa chiave del canale " + x.nome + " del ponte"]));
+  scelte.push(["predefinita", "Chiave pubblica nota a tutti (come LongFast)"], ["nuova", "Un'altra chiave, la scrivo io"]);
+  scelte.forEach(([v, t]) => { const o = el("option", null, t); o.value = v; chiave.append(o); });
+  const nuova = el("input"); nuova.id = p + "-nuova"; nuova.type = "password"; nuova.autocomplete = "off"; nuova.hidden = true;
+  nuova.placeholder = "chiave in base64 (16 o 32 byte)";
+  chiave.addEventListener("change", () => { nuova.hidden = chiave.value !== "nuova"; });
+  const precisione = el("input"); precisione.id = p + "-prec"; precisione.type = "number"; precisione.min = 0; precisione.max = 32;
+  precisione.value = c.precisione || 0;
+  const salva = el("button", "bottone piccolo", "Salva il canale " + c.indice);
+  salva.type = "submit";
+  f.append(el("h4", null, "Canale " + c.indice + (c.nome ? ": " + c.nome : (c.ruolo === "DISABLED" ? " (spento)" : ""))),
+           ...campo("Nome", nome), ...campo("Stato", ruolo), ...campo("Chiave", chiave), nuova,
+           ...campo("Precisione della posizione su questo canale", precisione, "0 = non la manda, 32 = esatta, 13 = circa 3 km"),
+           el("p"), salva);
+  f.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const modo = chiave.value.startsWith("ponte:") ? {modo: "ponte", canale_ponte: Number(chiave.value.slice(6))}
+               : (chiave.value === "nuova" ? {modo: "nuova", valore: nuova.value.trim()} : {modo: chiave.value});
+    if (!window.confirm("Se sbagli nome o chiave del canale della squadra questa radio esce dalla rete e da lontano non la recuperi.\n\n" +
+                        "Salvo il canale " + c.indice + " sulla radio " + (radioAperta.v.nome || radioAperta.v.id) + "?")) return;
+    const o = await operazioneRadio({azione: "canale", indice: c.indice, ruolo: ruolo.value, nome: nome.value.trim(), chiave: modo,
+                                     precisione: Number(precisione.value || 0), uplink: !!c.uplink, downlink: !!c.downlink},
+                                    "Canale " + c.indice);
+    nuova.value = "";
+    return o;
+  });
+  return f;
+}
+
+function apriGestioneRadio(v) {
+  const adatti = pontiCheGestiscono(v);
+  if (!adatti.length) return;
+  const dentro = document.getElementById("radio-dentro");
+  const a = radioAperta = {v, ponte: adatti[0].ponte, occupata: false};
+  const titolo = el("h2", null, v.nome || "Radio " + v.id);
+  titolo.id = "radio-titolo";
+  const chi = el("p", "da", [v.nome_breve, v.id, nomeModello(v.modello)].filter(Boolean).join(", ") + ". Sentita " + fa(v.eta) + ".");
+
+  // da quale ponte: ogni comando parte dal nodo di quel ponte e arriva alla radio via radio
+  const scelta = el("select"); scelta.id = "radio-ponte";
+  adatti.forEach(x => {
+    const o = el("option", null, x.ponte + (x.salti === 0 ? " (la sente direttamente)" : (x.salti > 0 ? " (passando da " + x.salti + " radio)" : "")));
+    o.value = x.ponte; scelta.append(o);
+  });
+  const chiaveAdmin = el("div", "comando chiave-invito");
+  const spiegaChiave = el("div");
+  function mostraChiave() {
+    a.ponte = scelta.value;
+    const d = (stati.get(a.ponte) || {}).dati || {};
+    const copia = el("button", "bottone secondario piccolo", "Copia");
+    copia.type = "button";
+    copia.addEventListener("click", () => copiaTesto(copia, d.chiave_pubblica || ""));
+    chiaveAdmin.replaceChildren(el("code", null, d.chiave_pubblica || "il ponte non l'ha ancora letta dal suo nodo: riprova tra un minuto"), copia);
+  }
+  scelta.addEventListener("change", mostraChiave);
+  mostraChiave();
+  spiegaChiave.append(el("p", null, "La radio accetta comandi solo da chi ha messo tra le sue \"chiavi amministratore\". Va fatto una volta, da vicino, " +
+    "con il telefono: app Meshtastic collegata a quella radio, Impostazioni, Sicurezza, Chiave amministratore: incolla la chiave qui sotto " +
+    "(è la chiave pubblica del nodo del ponte) e salva. Serve il firmware 2.5 o successivo. Ogni ponte ha la sua: una radio ne tiene fino a tre."), chiaveAdmin);
+
+  const stato = el("p", "stato-op", "Ogni operazione è un messaggio radio che va e torna: può volerci da qualche secondo a più di un minuto.");
+  stato.id = "radio-stato";
+  stato.setAttribute("aria-live", "polite");
+
+  // nome, posizione fissa, riavvio
+  const zonaNome = el("div");
+  const leggiBase = el("button", "bottone piccolo", "Leggi dalla radio");
+  leggiBase.type = "button";
+  const fNome = el("form");
+  const lungo = el("input"); lungo.id = "radio-nome"; lungo.maxLength = 39; lungo.required = true; lungo.value = v.nome || ""; lungo.autocomplete = "off";
+  const corto = el("input"); corto.id = "radio-sigla"; corto.maxLength = 4; corto.required = true; corto.value = v.nome_breve || ""; corto.autocomplete = "off";
+  const salvaNome = el("button", "bottone piccolo", "Salva il nome");
+  salvaNome.type = "submit";
+  fNome.append(...campo("Nome", lungo), ...campo("Sigla", corto, "al massimo 4 caratteri"), el("p"), salvaNome);
+  fNome.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    await operazioneRadio({azione: "proprietario", nome: lungo.value.trim(), nome_breve: corto.value.trim()}, "Nome");
+  });
+  const info = el("p", "da");
+  leggiBase.addEventListener("click", async () => {
+    const o = await operazioneRadio({azione: "leggi", sezioni: ["proprietario", "info"]}, "Lettura");
+    const r = (o && o.risultato) || a.parziale || {};
+    if (r.proprietario) { lungo.value = r.proprietario.nome; corto.value = r.proprietario.nome_breve; }
+    if (r.info) info.textContent = "Firmware " + r.info.firmware + ", " + nomeModello(r.info.modello) + ", ruolo " + (RUOLI[r.info.ruolo] || r.info.ruolo) + ".";
+  });
+  zonaNome.append(el("h3", null, "Nome"), leggiBase, info, fNome);
+
+  const fPos = el("form");
+  const coord = el("input"); coord.id = "radio-coord"; coord.autocomplete = "off"; coord.placeholder = "es. 45.8700, 8.7700";
+  const quota = el("input"); quota.id = "radio-quota"; quota.type = "number"; quota.placeholder = "metri";
+  const metti = el("button", "bottone piccolo", "Imposta la posizione fissa");
+  metti.type = "submit";
+  const togliPos = el("button", "bottone secondario piccolo", "Torna al GPS");
+  togliPos.type = "button";
+  const rigaPos = el("div", "riga-pulsanti");
+  rigaPos.append(metti, togliPos);
+  fPos.append(...campo("Coordinate", coord, "copiate da Google Maps"), ...campo("Quota", quota), rigaPos);
+  fPos.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const m = coord.value.trim().split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (m.length < 2 || m.some(isNaN)) { statoRadio("Coordinate: latitudine e longitudine separate da una virgola.", "errore"); return; }
+    await operazioneRadio({azione: "posizione_fissa", lat: m[0], lon: m[1], quota: Number(quota.value || 0)}, "Posizione fissa");
+  });
+  togliPos.addEventListener("click", () => operazioneRadio({azione: "togli_posizione_fissa"}, "Posizione fissa"));
+  const zonaPos = el("div");
+  zonaPos.append(el("h3", null, "Posizione fissa"), el("p", "da", "Per ripetitori e radio senza GPS. Gli intervalli di invio stanno in \"Posizione e GPS\", più sotto."), fPos);
+
+  // tutte le impostazioni, una sezione alla volta
+  const zonaSez = el("div");
+  const sceltaSez = el("select"); sceltaSez.id = "radio-sezione";
+  const leggiSez = el("button", "bottone piccolo", "Leggi dalla radio");
+  leggiSez.type = "button";
+  const rigaSez = el("div", "riga-pulsanti");
+  rigaSez.append(sceltaSez, leggiSez);
+  const zonaModuloSez = el("div");
+  zonaSez.append(el("h3", null, "Impostazioni"), el("p", "da", "Le stesse dell'app Meshtastic, con i nomi originali accanto. Prima si leggono dalla radio, poi si cambiano."), rigaSez, zonaModuloSez);
+  leggiSez.addEventListener("click", async () => {
+    const sez = schemaRadio.sezioni.find(s => s.nome === sceltaSez.value);
+    const o = await operazioneRadio({azione: "leggi", sezioni: [sez.nome]}, "Lettura");
+    if (o && o.risultato && o.risultato[sez.nome]) zonaModuloSez.replaceChildren(moduloSezione(sez, o.risultato[sez.nome]));
+  });
+
+  // canali
+  const zonaCanali = el("div");
+  const leggiCanali = el("button", "bottone piccolo", "Leggi i canali dalla radio");
+  leggiCanali.type = "button";
+  const elencoCanali = el("div");
+  zonaCanali.append(el("h3", null, "Canali"), el("p", "da", "Le chiavi non escono mai dal ponte: qui vedi solo se sono uguali a quelle del ponte."), leggiCanali, elencoCanali);
+  leggiCanali.addEventListener("click", async () => {
+    const o = await operazioneRadio({azione: "leggi", sezioni: ["canali"]}, "Lettura dei canali");
+    if (!o || !o.risultato || !o.risultato.canali) return;
+    const canaliPonte = (((stati.get(a.ponte) || {}).dati || {}).nodo || {}).canali || [];
+    const letti = o.risultato.canali;
+    const moduli = letti.map(c => moduloCanale(c, canaliPonte));
+    if (letti.length < 8) moduli.push(moduloCanale({indice: letti.length, ruolo: "DISABLED", nome: "", chiave: {tipo: "nessuna"}, precisione: 0}, canaliPonte));
+    elencoCanali.replaceChildren(...moduli);
+  });
+
+  const zonaRiavvia = el("div");
+  const riavvia = el("button", "bottone secondario piccolo", "Riavvia la radio");
+  riavvia.type = "button";
+  riavvia.addEventListener("click", () => { if (window.confirm("Riavvio la radio " + (v.nome || v.id) + "?")) operazioneRadio({azione: "riavvia"}, "Riavvio"); });
+  zonaRiavvia.append(el("h3", null, "Riavvio"), riavvia);
+
+  const chiudi = el("button", "bottone secondario", "Chiudi");
+  chiudi.type = "button";
+  chiudi.addEventListener("click", () => document.getElementById("radio").close());
+  const fondo = el("div", "pulsanti");
+  fondo.append(chiudi);
+  dentro.replaceChildren(titolo, chi, ...campo("Attraverso il ponte", scelta),
+                         dettagli("radio-chiave", "La prima volta: la chiave di amministrazione da mettere sulla radio", spiegaChiave),
+                         zonaNome, zonaPos, zonaSez, zonaCanali, zonaRiavvia, stato, fondo);
+  document.getElementById("radio").showModal();
+  (async () => {
+    try {
+      if (!schemaRadio) schemaRadio = await chiamaRadio(a.ponte, "/schema");
+      schemaRadio.sezioni.forEach(s => { const o = el("option", null, SEZIONI_IT[s.nome] || s.nome); o.value = s.nome; sceltaSez.append(o); });
+    } catch (e) {
+      statoRadio("Non riesco a parlare con il ponte " + a.ponte + ": " + frase(e.message), "errore");
+    }
+  })();
+}
+
+document.getElementById("radio").addEventListener("close", () => { radioAperta = null; });
+
 let schedaPonti = null, schedaRadio = null;
 let riassuntoRadio = null, avvisiRadio = null, cercaRadio = null, testaVoci = null, elencoRadio = null;
 
@@ -1296,6 +2015,12 @@ function disegnaVoce(v) {
     }
     ponti.append(s);
   });
+  if (!v.ponte && pontiCheGestiscono(v).length) {
+    const g = el("button", "bottone secondario piccolo gestisci", "Gestisci da lontano");
+    g.type = "button";
+    g.addEventListener("click", () => apriGestioneRadio(v));
+    ponti.append(g);
+  }
   li.append(nome, bat, quando, ponti);
   return li;
 }
@@ -1353,18 +2078,35 @@ function disegnaRadioRete() {
 function disegna() {
   const sintesi = document.getElementById("sintesi");
   if (!schedaPonti) costruisciSchede();
-  const novita = disegnaNovita();
-  zonaNovita.replaceChildren(...(novita ? [novita] : []));
+  const attivo = document.activeElement;
+  if (!(attivo && zonaNovita.contains(attivo) && ["INPUT", "SELECT", "TEXTAREA"].includes(attivo.tagName))) {
+    const novita = disegnaNovita();
+    zonaNovita.replaceChildren(...(novita ? [novita] : []));
+  }
   zonaPonti.replaceChildren();
   if (!elenco.length) {
     sintesi.textContent = "Nessun ponte nella rete per ora.";
   } else {
     const conta = {ok: 0, pausa: 0, guasto: 0, giu: 0};
-    elenco.forEach(p => { conta[valuta(stati.get(p.nome)).classe]++; zonaPonti.append(disegnaPonte(p)); });
+    elenco.forEach(p => {
+      // uno stato strano di un ponte non deve fermare il resto della pagina
+      try {
+        conta[valutaPonte(p).classe]++;
+        zonaPonti.append(disegnaPonte(p));
+      } catch (e) {
+        console.error("ponte " + p.nome + ": " + e);
+        conta.guasto++;
+        const sez = el("section", "ponte");
+        sez.dataset.stato = "guasto";
+        sez.append(el("h2", null, p.nome), el("p", "spiega", "Lo stato mandato da questo ponte non si legge: " +
+                                                     "aggiornalo all'ultima versione."));
+        zonaPonti.append(sez);
+      }
+    });
     const n = elenco.length;
     const parti = [];
     if (conta.ok) parti.push(conta.ok === n ? (n === 1 ? "in linea" : "tutti in linea") : conta.ok + " in linea");
-    if (conta.pausa) parti.push(conta.pausa + " in pausa");
+    if (conta.pausa) parti.push(conta.pausa + " in pausa o in installazione");
     if (conta.guasto) parti.push(conta.guasto + " con un problema");
     if (conta.giu) parti.push(conta.giu + " non raggiungibil" + (conta.giu === 1 ? "e" : "i"));
     sintesi.textContent = (n === 1 ? "1 ponte" : n + " ponti") + ": " + parti.join(", ") + ".";

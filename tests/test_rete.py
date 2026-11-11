@@ -153,14 +153,18 @@ def test_aggiungi_il_primo_ponte(server):
     # sshd: regole per il gruppo dei ponti, controllate dal vero sshd 8.9 (Ubuntu 22.04)
     dropin = s.file("/etc/ssh/sshd_config.d/mesh2tak-ponti.conf")
     for riga in ("Match Group ponti-meshtastic", f"AuthorizedKeysFile {s.radice}/etc/mesh2tak-rete/chiavi/%u",
-                 "AllowTcpForwarding remote", "PermitOpen none", "ForceCommand /usr/sbin/nologin", "PermitTTY no",
+                 "AllowTcpForwarding remote", "PermitOpen none", "PermitTTY no",
                  "ClientAliveInterval 30", "AuthenticationMethods publickey"):
         assert f"\t{riga}" in dropin or riga in dropin
+    # dalla 1.10.0 il solo comando possibile e' quello dei ponti (configurazione e avanzamento dell'installazione)
+    forzato = (f"/usr/bin/env RETE_PROVA_RADICE={s.radice} /usr/bin/python3 -I "
+               f"{s.radice}/opt/mesh2tak-rete/rete_meshtastic.py ponte")
+    assert f"\tForceCommand {forzato}\n" in dropin
     assert "sshd -t" in s.chiamate() and "systemctl reload ssh" in s.chiamate()
     autorizzata = s.file("/etc/mesh2tak-rete/chiavi/ponte-casa")
-    assert autorizzata == f'restrict,port-forwarding,permitlisten="127.0.0.1:19443",command="/usr/sbin/nologin" {chiave(1)}\n'
+    assert autorizzata == f'restrict,port-forwarding,permitlisten="127.0.0.1:19443",command="{forzato}" {chiave(1)}\n'
     assert oct((s.radice / "etc/mesh2tak-rete/chiavi/ponte-casa").stat().st_mode)[-3:] == "644"
-    assert any(c.startswith("useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "
+    assert any(c.startswith("useradd --system --no-create-home --home-dir /nonexistent --shell /bin/sh "
                             "--gid ponti-meshtastic") and c.endswith(" ponte-casa") for c in s.chiamate())
     assert "usermod -p * ponte-casa" in s.chiamate()
     # registrazione per il Raspberry, letta come la legge il Raspberry
@@ -464,11 +468,18 @@ def test_caddy_richieste_pubbliche_e_azioni_dietro_authentik(server):
     i_richiesta, i_auth, i_api = (pagina.index("handle /accesso/richiesta {"), pagina.index("forward_auth"),
                                   pagina.index("handle /api/* {"))
     assert i_richiesta < i_auth < i_api        # la richiesta dei Raspberry e' pubblica, le azioni no
-    assert pagina.count("reverse_proxy 127.0.0.1:19400 {") == 2 and pagina.count("max_size 16KB") == 2
+    # dalla 1.10.0: certificato dei ponti nuovi (piu' grande) e radio gestite attraverso i ponti, solo dopo Authentik
+    i_impostazioni, i_radio = pagina.index("handle /api/impostazioni-nuovi {"), pagina.index("handle_path /radio/casa/* {")
+    assert i_auth < i_impostazioni < i_api and i_auth < i_radio
+    assert pagina.index("handle /radio/* {") > i_radio            # le radio di un ponte che non c'e': 404
+    assert pagina.count("reverse_proxy 127.0.0.1:19400 {") == 3 and pagina.count("max_size 16KB") == 3
+    assert pagina.count("max_size 400KB") == 1
+    radio = pagina[i_radio:].split("\n\t\t}\n", 1)[0]
+    assert "rewrite * /mesh2tak/radio{uri}" in radio and "reverse_proxy https://127.0.0.1:19443 {" in radio
     # nessun cookie del browser (sessione di Authentik) arriva al servizio o ai Raspberry
     for blocco in re.findall(r"reverse_proxy (?:https://)?127\.0\.0\.1:\d+ \{(.*?)\n\t\t\t?\}", rete, re.S):
         assert "header_up -Cookie" in blocco and "header_up -Authorization" in blocco, blocco
-    assert rete.count("header_up -Cookie") == 4
+    assert rete.count("header_up -Cookie") == 6
 
 
 def lavoro_in_coda(s, **dati):
