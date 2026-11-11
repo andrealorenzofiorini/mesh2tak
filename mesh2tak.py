@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-VERSIONE = "1.13.0"
+VERSIONE = "1.14.0"
 CONFIG_PREDEFINITA = "/etc/mesh2tak/mesh2tak.conf"
 
 log = logging.getLogger("mesh2tak")
@@ -1379,6 +1379,149 @@ class IconeMappa:
             return {"versione": self.versione, "numero": len(self.mappa)}
 
 
+# Sotto questo rapporto segnale/rumore (dB) un pacchetto LoRa non si decifra piu': dipende dallo "spreading factor"
+# del preset (SF7 -7,5 dB ... SF12 -20 dB). Quanto il segnale sta sopra questo limite dice quanto e' solido il
+# collegamento: e' il margine che la pagina della rete colora nella mappa della copertura.
+SF_DEI_PRESET = {"SHORT_TURBO": 7, "SHORT_FAST": 7, "SHORT_SLOW": 8, "MEDIUM_FAST": 9, "MEDIUM_SLOW": 10,
+                 "LONG_TURBO": 11, "LONG_FAST": 11, "LONG_MODERATE": 11, "LONG_SLOW": 12, "VERY_LONG_SLOW": 12}
+
+
+def limite_snr(preset: str) -> float:
+    return -2.5 * (SF_DEI_PRESET.get(preset, 11) - 4)
+
+
+class Copertura:
+    """Mappa della copertura (dalla 1.14.0): per ogni quadretto in cui si trovava una radio della squadra quando il
+    ponte l'ha sentita, con che segnale l'ha sentita. Il quadretto e' il riquadro della mappa a zoom 17 (circa 210 m
+    alle nostre latitudini). Si tengono solo quadretto, segnale e giorno: non quale radio ne' a che ora, cosi' la mappa
+    non diventa lo storico degli spostamenti dei volontari.
+
+    Su file ogni quadretto e' [x, y, dirette, somma dei segnali, segnale migliore, potenza migliore, tramite altre
+    radio, giorno AAAAMMGG]; alla pagina va la media al posto della somma."""
+
+    ZOOM = 17
+    MASSIMO = 20000                 # quadretti tenuti (qualche centinaio di kB): oltre, escono i piu' vecchi
+    SALVA_OGNI_S = 600.0            # su file al massimo ogni 10 minuti: la microSD non va consumata
+    ERRORE_MASSIMO_M = 100.0        # una posizione piu' approssimata finirebbe nel quadretto sbagliato
+
+    def __init__(self, percorso: Optional[str] = None):
+        self.percorso = percorso
+        self._lock = threading.Lock()
+        self.celle: Dict[Tuple[int, int], list] = {}
+        self.dal: Optional[int] = None          # da quando raccoglie (dall'ultimo azzeramento)
+        self._da_salvare = False
+        self._salvata = time.monotonic()
+        if percorso:
+            try:
+                with open(percorso, encoding="utf-8") as f:
+                    self._carica(json.load(f))
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError) as e:
+                log.warning("Mappa della copertura: %s non valido (%s), riparto da zero", percorso, e)
+
+    @classmethod
+    def quadretto(cls, lat: float, lon: float) -> Tuple[int, int]:
+        n = 1 << cls.ZOOM
+        lat = max(-85.05112878, min(85.05112878, lat))
+        x = int((lon + 180.0) / 360.0 * n)
+        y = int((1.0 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2.0 * n)
+        return min(n - 1, max(0, x)), min(n - 1, max(0, y))
+
+    def _carica(self, d) -> None:
+        if not isinstance(d, dict) or d.get("formato") != 1 or d.get("zoom") != self.ZOOM:
+            raise ValueError("formato sconosciuto")
+        n = 1 << self.ZOOM
+
+        def intero(v, minimo, massimo):
+            return isinstance(v, int) and not isinstance(v, bool) and minimo <= v <= massimo
+
+        def segnale(v, minimo, massimo):
+            return v is None or (isinstance(v, (int, float)) and not isinstance(v, bool) and minimo <= v <= massimo)
+        for c in d.get("celle") or []:
+            if len(self.celle) >= self.MASSIMO:
+                break
+            if (not isinstance(c, list) or len(c) != 8 or not intero(c[0], 0, n - 1) or not intero(c[1], 0, n - 1)
+                    or not intero(c[2], 0, 10 ** 9) or not segnale(c[3], -40.0 * 10 ** 9, 40.0 * 10 ** 9)
+                    or not segnale(c[4], -40, 40) or not segnale(c[5], -200, 0) or not intero(c[6], 0, 10 ** 9)
+                    or not intero(c[7], 19700101, 29991231) or (c[2] > 0) != (c[4] is not None)):
+                continue
+            self.celle[(c[0], c[1])] = [c[2], float(c[3] or 0.0), c[4], c[5], c[6], c[7]]
+        dal = d.get("dal")
+        self.dal = dal if intero(dal, 0, 4102444800) else None
+
+    def annota(self, lat: float, lon: float, salti: int, snr: Optional[float], rssi: Optional[int],
+               giorno: int) -> None:
+        """Una posizione ricevuta: diretta (salti 0, con il suo segnale) o arrivata tramite altre radio."""
+        chiave = self.quadretto(lat, lon)
+        with self._lock:
+            c = self.celle.get(chiave)
+            if c is None:
+                if len(self.celle) >= self.MASSIMO:
+                    self._fai_spazio()
+                c = self.celle[chiave] = [0, 0.0, None, None, 0, giorno]
+            if salti == 0 and snr is not None:
+                c[0] += 1
+                c[1] += snr
+                c[2] = snr if c[2] is None else max(c[2], snr)
+                if rssi is not None:
+                    c[3] = rssi if c[3] is None else max(c[3], rssi)
+            else:
+                c[4] += 1
+            c[5] = max(c[5], giorno)
+            if self.dal is None:
+                self.dal = int(time.time())
+            self._da_salvare = True
+
+    def _fai_spazio(self) -> None:
+        """Pieno: escono i quadretti visti meno di recente (e, a parita', con meno ricezioni)."""
+        via = sorted(self.celle, key=lambda k: (self.celle[k][5], self.celle[k][0] + self.celle[k][4]))
+        for k in via[:max(1, len(via) // 10)]:
+            del self.celle[k]
+
+    def dati(self) -> dict:
+        """Per la pagina della rete: [x, y, dirette, segnale medio, migliore, potenza migliore, tramite altre radio,
+        giorno]."""
+        with self._lock:
+            celle = [[x, y, c[0], round(c[1] / c[0], 1) if c[0] else None, c[2], c[3], c[4], c[5]]
+                     for (x, y), c in sorted(self.celle.items(), key=lambda kv: (kv[0][1], kv[0][0]))]
+            return {"formato": 1, "zoom": self.ZOOM, "dal": self.dal, "celle": celle}
+
+    def salva(self, subito: bool = False) -> None:
+        if not self.percorso:
+            return
+        with self._lock:
+            if not self._da_salvare or (not subito and time.monotonic() - self._salvata < self.SALVA_OGNI_S):
+                return
+            dati = {"formato": 1, "zoom": self.ZOOM, "dal": self.dal,
+                    "celle": [[x, y, c[0], round(c[1], 2), c[2], c[3], c[4], c[5]] for (x, y), c in self.celle.items()]}
+            self._da_salvare = False
+            self._salvata = time.monotonic()
+        try:
+            nuovo = self.percorso + ".nuovo"
+            with open(os.open(nuovo, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+                json.dump(dati, f, separators=(",", ":"))
+            os.replace(nuovo, self.percorso)
+        except OSError as e:
+            log.warning("Mappa della copertura: non riesco a salvarla (%s); riprovo piu' tardi", e)
+            with self._lock:
+                self._da_salvare = True
+
+    def azzera(self) -> None:
+        with self._lock:
+            self.celle.clear()
+            self.dal = None
+            self._da_salvare = False
+            self._salvata = time.monotonic()
+        if self.percorso:
+            try:
+                os.unlink(self.percorso)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                log.warning("Mappa della copertura: non riesco a cancellare %s (%s)", self.percorso, e)
+
+
 class Ponte:
     # Attese casuali prima di un inoltro, per lasciar fare a un altro ponte che l'ha gia' in mano
     ATTESA_VERSO_SERVER = (0.5, 2.5)
@@ -1406,6 +1549,7 @@ class Ponte:
         self._ultimo_riepilogo = time.time()
         self.nota_ponte: Optional[str] = None   # es. "IN PAUSA: ..." in testa alle note del ponte
         self.icone = IconeMappa()               # dalla 1.11.0: icone scelte dalla pagina della rete (main: su file)
+        self.copertura = Copertura()            # dalla 1.14.0: mappa della copertura (main: su file)
         # ultimo nodo visto (resta anche da scollegati, per la pagina della rete)
         self.nodo_nome = ""
         self.nodo_nome_breve = ""
@@ -1682,15 +1826,49 @@ class Ponte:
                 self._canale_del_ponte(p, rx)
         else:
             self._vista(p, num, canale, rx, porta)
+        fonte = None
         if porta == PORTA_POSITION:
             pos = p["decoded"].get("position") or {}
             if pos.get("latitudeI") or pos.get("longitudeI") or not p["decoded"].get("wantResponse"):
-                self._posizione(num, pos, canale, rx)  # una richiesta di posizione vuota non e' una posizione
+                fonte = self._posizione(num, pos, canale, rx)  # una richiesta di posizione vuota non e' una posizione
         elif porta == PORTA_ATAK_V2:
-            self._tak_v2(num, bytes(grezzo.decoded.payload), canale, rx)
+            fonte = self._tak_v2(num, bytes(grezzo.decoded.payload), canale, rx)
         elif porta == PORTA_ATAK_V1:
-            self._tak_v1(num, bytes(grezzo.decoded.payload), canale, rx)
+            fonte = self._tak_v1(num, bytes(grezzo.decoded.payload), canale, rx)
+        if fonte is not None and num != self.mio_num:
+            self._annota_copertura(p, fonte, rx)
         self._attivita(num, rx, porta)
+
+    def _annota_copertura(self, p: dict, fonte: "Fonte", rx: float) -> None:
+        """Mappa della copertura (dalla 1.14.0): dove si trovava la radio e con che segnale il ponte l'ha sentita.
+        Il segnale misurato e' quello dell'ultimo trasmettitore: vale per il punto della radio solo se e' arrivata
+        diretta; arrivata tramite altre radio, il quadretto dice soltanto che da li' si arriva alla rete."""
+        if p.get("viaMqtt") or (fonte.ce != NON_NOTO and fonte.ce > Copertura.ERRORE_MASSIMO_M):
+            return
+        inizio, resto = p.get("hopStart"), p.get("hopLimit", 0)
+        if not (isinstance(inizio, int) and 0 < inizio <= 7 and isinstance(resto, int) and 0 <= resto <= inizio):
+            return      # firmware che non dice i salti: non si sa se e' arrivata diretta
+        salti, snr, rssi = inizio - resto, None, None
+        if salti == 0:
+            if not p.get("rxRssi"):
+                return  # nessuna misura del segnale
+            snr = numero(p.get("rxSnr", 0.0), -40, 40, 2)
+            rssi = int(numero(p["rxRssi"], -200, 0, 0) or 0) or None
+        quando = datetime.fromtimestamp(rx, self.tz) if self.tz else datetime.fromtimestamp(rx)
+        self.copertura.annota(fonte.lat, fonte.lon, salti, snr, rssi, int(quando.strftime("%Y%m%d")))
+
+    def copertura_per_la_pagina(self, azzera: bool = False, chi: str = "") -> dict:
+        """/mesh2tak/copertura.json: i quadretti, dove sta il ponte e il limite del segnale del suo preset."""
+        if azzera:
+            self.copertura.azzera()
+            log.info("Mappa della copertura azzerata dalla pagina della rete (%s)", chi or "?")
+        d = self.copertura.dati()
+        pos = self._info(self.mio_num).get("position") or {}
+        lat_i, lon_i = pos.get("latitudeI"), pos.get("longitudeI")
+        d["ponte"] = ({"lat": round(lat_i * 1e-7, 4), "lon": round(lon_i * 1e-7, 4)}
+                      if isinstance(lat_i, int) and isinstance(lon_i, int) and (lat_i or lon_i) else None)
+        d["preset"], d["limite_snr"] = self.preset, limite_snr(self.preset)
+        return d
 
     def _scarta(self, num: int, motivo: str, spiegazione: str) -> None:
         self.contatori["scartate_" + motivo] += 1
@@ -1752,18 +1930,18 @@ class Ponte:
                      altsrc="USER" if manuale else "GPS", rotta=rotta, velocita=velocita,
                      quota_msl=quota_msl, precisione_bit=bit, canale=canale)
 
-    def _posizione(self, num: int, pos: dict, canale: int, rx: float) -> None:
+    def _posizione(self, num: int, pos: dict, canale: int, rx: float) -> Optional["Fonte"]:
         if num == self.mio_num and not self.cfg.includi_ponte:
-            return
+            return None
         if not self._canale_ok(num, canale):
-            return
+            return None
         if self._info(num).get("user", {}).get("role") == "TAK":
             # Radio abbinata ad ATAK: la posizione buona e' quella che manda ATAK (porta 78)
             self.contatori["scartate_doppione_tak"] += 1
-            return
+            return None
         fonte = self._fonte_mesh(num, pos, canale, rx)
         if fonte is None:
-            return
+            return None
         with self._lock:
             st = self.stato.get(num)
             if st is None:
@@ -1771,19 +1949,21 @@ class Ponte:
             else:
                 st.fonte, st.ultimo_segnale = fonte, max(st.ultimo_segnale, rx)
             self._invia(st, time.time())
+        return fonte
 
-    def _tak_v2(self, num: int, carico: bytes, canale: int, rx: float) -> None:
+    def _tak_v2(self, num: int, carico: bytes, canale: int, rx: float) -> Optional["Fonte"]:
+        """La posizione (Fonte) se il pacchetto la porta, per la mappa della copertura."""
         if not self._canale_ok(num, canale):
-            return
+            return None
         if self.sdk is None:
             self._scarta(num, "tak_senza_libreria", "pacchetto TAK non leggibile: manca la libreria meshtastic-tak "
                          "(rifai l'installazione)")
-            return
+            return None
         try:
             pkt = self.sdk.decodifica(carico)
         except PacchettoIllegibile as e:
             self._scarta(num, "tak_illeggibile", f"pacchetto TAK non decodificabile ({e})")
-            return
+            return None
         impronta = self.sdk.impronta(pkt)
         self._sentiti_in_radio.aggiungi(impronta)
         for v in self.coda_radio.togli_impronta(impronta):
@@ -1791,14 +1971,14 @@ class Ponte:
             log.info("<- radio: %s gia' trasmesso da %s (!%08x): non lo ripeto", v.descrizione, self._nome(num), num)
         tipo = tipo_cot_v2(self.sdk.pb, pkt)
         if pkt.WhichOneof("payload_variant") is None and tipo.startswith("a-"):
-            self._pli_v2(num, pkt, tipo, canale, rx)
-        else:
-            self._oggetto_dalla_radio(num, pkt, impronta)
+            return self._pli_v2(num, pkt, tipo, canale, rx)
+        self._oggetto_dalla_radio(num, pkt, impronta)
+        return None
 
-    def _pli_v2(self, num: int, pkt, tipo: str, canale: int, rx: float) -> None:
+    def _pli_v2(self, num: int, pkt, tipo: str, canale: int, rx: float) -> Optional["Fonte"]:
         lat, lon = pkt.latitude_i * 1e-7, pkt.longitude_i * 1e-7
         if (pkt.latitude_i == 0 and pkt.longitude_i == 0) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            return
+            return None
         id_radio = f"!{num:08x}"
         tracker = (not pkt.uid) or pkt.uid == id_radio
         takv = None
@@ -1819,25 +1999,26 @@ class Ponte:
                       droid=None if tracker else (pulisci(pkt.device_callsign, 80) or None),
                       endpoint=not tracker, tracker=tracker)
         self._salva_tak(num, fonte, rx)
+        return fonte
 
-    def _tak_v1(self, num: int, carico: bytes, canale: int, rx: float) -> None:
+    def _tak_v1(self, num: int, carico: bytes, canale: int, rx: float) -> Optional["Fonte"]:
         if not self._canale_ok(num, canale):
-            return
+            return None
         try:
             from meshtastic.protobuf import atak_pb2
             pkt = atak_pb2.TAKPacket.FromString(carico)
         except Exception as e:  # noqa
             self._scarta(num, "tak_illeggibile", f"pacchetto TAK (vecchio formato) non decodificabile ({e})")
-            return
+            return None
         if pkt.HasField("chat"):
             self._chat_v1(num, pkt)
-            return
+            return None
         if not pkt.HasField("pli"):
             self.contatori["tak_v1_altro"] += 1
-            return
+            return None
         lat, lon = pkt.pli.latitude_i * 1e-7, pkt.pli.longitude_i * 1e-7
         if (pkt.pli.latitude_i == 0 and pkt.pli.longitude_i == 0) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            return
+            return None
         id_radio = f"!{num:08x}"
         in_chiaro = not pkt.is_compressed
         utente_atak = (self._info(num).get("user", {}).get("role") == "TAK" and in_chiaro
@@ -1855,6 +2036,7 @@ class Ponte:
                       ruolo=RUOLI_TAK.get(pkt.group.role) or ("Team Member" if tracker else None),
                       batteria=pkt.status.battery or None, endpoint=utente_atak, tracker=tracker)
         self._salva_tak(num, fonte, rx)
+        return fonte
 
     def _chat_v1(self, num: int, pkt) -> None:
         """Chat ATAK nel formato precedente (radio con firmware 2.7): convertita nel formato
@@ -2340,6 +2522,7 @@ class Ponte:
             log.info("Ultima ora: dalla radio al server %d chat/oggetti; dal server %d eventi, %d trasmessi alle "
                      "radio, %d in coda, %d troppo grandi", c.get("radio_al_server", 0), c.get("server_eventi", 0),
                      c.get("radio_trasmessi", 0), len(self.coda_radio), c.get("server_troppo_grandi", 0))
+        self.copertura.salva()          # al massimo ogni 10 minuti, e solo se e' cambiata
 
 
 # --------------------------------------------------------------------------
@@ -2428,6 +2611,7 @@ class Gestione:
         self.fornisci_stato: Optional[Callable[[], dict]] = None   # /mesh2tak/stato.json
         self.radio: Optional["GestioneRadio"] = None                # /mesh2tak/radio/... (dalla 1.10.0)
         self.icone: Optional[Callable[[Optional[bytes]], Tuple[int, dict]]] = None   # /mesh2tak/icone (1.11.0)
+        self.copertura: Optional[Callable[[bool, str], dict]] = None   # /mesh2tak/copertura.json (1.14.0)
         # dalla 1.13.0: comandi dalla pagina della rete (li fa mesh2tak-aggiorna, da root) e registro per la pagina
         self.file_controlla = os.path.join(cfg.accesso_cartella_stato, "controlla-adesso")
         self.file_registro = Sistema.REGISTRO
@@ -2556,6 +2740,9 @@ class Gestione:
             return
         if percorso == "/mesh2tak/registro":    # dalla 1.13.0: il registro per la pagina della rete
             self._servi_registro(h)
+            return
+        if percorso == "/mesh2tak/copertura.json":   # dalla 1.14.0: la mappa della copertura
+            self._servi_copertura(h)
             return
         if percorso.startswith("/mesh2tak/radio/"):   # radio della squadra gestite dalla pagina della rete
             try:
@@ -2698,6 +2885,38 @@ class Gestione:
         errore = self._tocca_controlla()
         if errore:
             log.warning("avviso dei comandi della pagina non passato a mesh2tak-aggiorna: %s", errore)
+
+    def _servi_copertura(self, h) -> None:
+        """La mappa della copertura (dalla 1.14.0), solo per gli amministratori della pagina della rete: dal tunnel e
+        con il nome che Authentik ha messo, perche' dice dove erano le radio. POST {"azzera": true} la ricomincia
+        (dopo aver spostato l'antenna), solo dalla pagina stessa (intestazione X-Mesh2tak e stessa origine)."""
+        corpo, troppo = self._corpo_al_massimo(h, 1024)
+        chi = re.sub(r"[^\w.@+-]", "", pulisci(h.headers.get("X-Authentik-Username"), 40))
+        if troppo:
+            stato, dati = 413, {"errore": "richiesta troppo grande"}
+        elif h.command not in ("GET", "HEAD", "POST"):
+            stato, dati = 405, {"errore": "metodo non previsto"}
+        elif h.client_address[0] not in ("127.0.0.1", "::1") or not chi:
+            stato, dati = 403, {"errore": "La copertura si vede solo dalla pagina della rete."}
+        elif self.copertura is None:
+            stato, dati = 404, {"errore": "mappa della copertura non disponibile"}
+        elif h.command == "POST":
+            origine = urllib.parse.urlsplit(h.headers.get("Origin") or "").netloc
+            ospite = h.headers.get("X-Forwarded-Host") or h.headers.get("Host") or ""
+            try:
+                richiesta = json.loads((corpo or b"").decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                richiesta = None
+            if h.headers.get("X-Mesh2tak") != "1" or (origine and origine != ospite):
+                stato, dati = 403, {"errore": "richiesta non valida"}
+            elif not isinstance(richiesta, dict) or richiesta.get("azzera") is not True:
+                stato, dati = 400, {"errore": "richiesta non valida"}
+            else:
+                stato, dati = 200, self.copertura(True, chi)
+        else:
+            stato, dati = 200, self.copertura(False, chi)
+        self._rispondi(h, stato, json.dumps(dati, ensure_ascii=False, separators=(",", ":")),
+                       "application/json; charset=utf-8")
 
     def _servi_registro(self, h) -> None:
         """Il registro raccolto da mesh2tak-aggiorna (senza chiavi ne' password), solo per gli amministratori della
@@ -4564,6 +4783,7 @@ def main(argv=None) -> int:
         return 78
     ponte = Ponte(cfg, tak, sdk)
     ponte.icone = IconeMappa(os.path.join(cfg.accesso_cartella_stato, "icone.json"))
+    ponte.copertura = Copertura(os.path.join(cfg.accesso_cartella_stato, "copertura.json"))
     tak.su_evento = ponte.su_evento_tak
     if os.environ.get("MESH2TAK_ATTESE"):  # solo per le prove automatiche: attese piu' brevi
         f = float(os.environ["MESH2TAK_ATTESE"])
@@ -4599,6 +4819,7 @@ def main(argv=None) -> int:
             gestione = Gestione(cfg, pausa, ponte.tz)
             gestione.radio = GestioneRadio(ponte)
             gestione.icone = ponte.imposta_icone
+            gestione.copertura = ponte.copertura_per_la_pagina
             gestione.avvia()
             if gestione.nodo_pagina:
                 dove = [f"pagina nel browser sulla porta {cfg.gestione_porta_pagina}"] if cfg.gestione_porta_pagina else []
@@ -4702,6 +4923,7 @@ def main(argv=None) -> int:
     if gestione is not None:
         gestione.ferma()
     ponte.ferma_uscite()
+    ponte.copertura.salva(subito=True)
     tak.ferma()
     return 0
 

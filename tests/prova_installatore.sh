@@ -500,6 +500,21 @@ assert chiedi(\"/mesh2tak/registro\")[0] == 403
 s, t = chiedi(\"/mesh2tak/registro\", **{\"X-Authentik-Username\": \"andrea\"})
 assert s == 200 and b\"Registro del ponte\" in t
 "'
+controlla "mappa della copertura (1.14.0): solo dal tunnel, per gli amministratori" 'python3 -c "
+import json, ssl, urllib.error, urllib.request
+c = ssl._create_unverified_context()
+def chiedi(**testate):
+    r = urllib.request.Request(\"https://127.0.0.1:9443/mesh2tak/copertura.json\", headers=testate)
+    try:
+        with urllib.request.urlopen(r, context=c, timeout=10) as x:
+            return x.status, json.loads(x.read())
+    except urllib.error.HTTPError as e:
+        return e.code, None
+assert chiedi()[0] == 403
+s, d = chiedi(**{\"X-Authentik-Username\": \"andrea\"})
+assert s == 200 and d[\"formato\"] == 1 and d[\"zoom\"] == 17 and isinstance(d[\"celle\"], list), d
+assert d[\"preset\"] == \"LONG_FAST\" and d[\"limite_snr\"] == -17.5, d
+"'
 : > "$STUB/chiamate.log"
 aggiorna_dalla_pagina /tmp/pi-agg6.log
 controlla "comandi gia' fatti: non si rifanno" '! grep -q "systemctl restart mesh2tak" "$STUB/chiamate.log" && [ "$(grep -c "=== comando dalla pagina" /var/log/mesh2tak-aggiornamento.log)" = 4 ]'

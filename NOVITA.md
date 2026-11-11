@@ -3,6 +3,20 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.14.0
+
+- Scheda "Copertura" nella pagina della rete: una mappa a quadretti di circa 200 m che dice con che segnale i ponti
+  hanno sentito le radio della squadra in ogni punto: buono, discreto, debole, al limite, oppure arrivato solo
+  tramite un'altra radio. È una misura, non una stima: un quadretto vuoto vuol dire che lì non è passata nessuna
+  radio, non che manca il segnale.
+- Tutti i ponti insieme o uno alla volta; tutto il periodo, gli ultimi 30 o 7 giorni oppure oggi; mappa topografica
+  (OpenTopoMap) o stradale (OpenStreetMap). Passando sopra un quadretto si legge il segnale di ogni ponte.
+  "Scarica per ATAK" dà il file KML da importare in ATAK (o in Google Earth).
+- Ogni ponte tiene solo quadretto, segnale e giorno, non quale radio né a che ora. "Azzera" ricomincia la mappa di
+  un ponte, per esempio dopo aver spostato l'antenna. La mappa si vede solo dalla pagina della rete, dietro
+  Authentik.
+- La mappa si riempie dalle posizioni che arrivano dopo l'aggiornamento del ponte alla 1.14.0.
+
 ## 1.13.0
 
 - Gli aggiornamenti non cambiano più le impostazioni della radio del ponte: resta quello che si è scelto dall'app

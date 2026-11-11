@@ -87,6 +87,16 @@ avvisa dal tunnel (`POST /mesh2tak/controlla`); sul Raspberry `aggiorna.py` (roo
 scrive l'esito, che il ponte mostra nel suo stato. Il certificato nuovo resta sul server leggibile solo dall'utente
 SSH di quel ponte, che lo scarica con il comando forzato (`certificato`) e lo fa togliere (`certificato-fatto`).
 
+## Mappa della copertura (dalla 1.14.0)
+
+Ogni ponte annota, per ogni quadretto di circa 200 m (riquadri della mappa a zoom 17), con che segnale ha sentito le
+radio della squadra che erano lì: ricezioni dirette (rapporto segnale/rumore medio e migliore) e arrivate tramite
+altre radio. Solo quadretto, segnale e giorno, in `/var/lib/mesh2tak/copertura.json`; li dà alla pagina della rete
+da `GET /mesh2tak/copertura.json` (solo dal tunnel, con l'utente di Authentik). La scheda "Copertura" li unisce,
+li colora in base al margine sopra il minimo decifrabile del preset e li disegna su una mappa fatta nella pagina
+stessa (senza librerie esterne; da fuori arrivano solo le immagini di OpenTopoMap o OpenStreetMap). Esporta il KML
+per ATAK; "Azzera" (`POST` con `{"azzera": true}`, solo dalla pagina) ricomincia la mappa di un ponte.
+
 ## Aggiornare
 
 Dalla 1.8.0 non serve il terminale: quando esce una release nuova la pagina della rete lo dice, con le novità.

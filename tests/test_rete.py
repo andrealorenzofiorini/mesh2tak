@@ -482,10 +482,20 @@ def test_caddy_richieste_pubbliche_e_azioni_dietro_authentik(server):
     registro = pagina[i_registro:].split("\n\t\t}\n", 1)[0]
     assert i_auth < i_registro < pagina.index("handle /registro/* {")
     assert "rewrite * /mesh2tak/registro" in registro and "reverse_proxy https://127.0.0.1:19443 {" in registro
+    # dalla 1.14.0 la mappa della copertura del ponte, anche lei solo dopo Authentik
+    i_copertura = pagina.index("handle /copertura/casa.json {")
+    copertura = pagina[i_copertura:].split("\n\t\t}\n", 1)[0]
+    assert i_auth < i_copertura < pagina.index("handle /copertura/* {")
+    assert "rewrite * /mesh2tak/copertura.json" in copertura and "max_size 1KB" in copertura
+    assert "header_up X-Forwarded-Host {hostport}" in copertura and "reverse_proxy https://127.0.0.1:19443 {" in copertura
+    # le mappe di sfondo vengono da OpenTopoMap e OpenStreetMap; script e richieste solo dalla pagina stessa
+    csp = re.search(r'header Content-Security-Policy "([^"]*)"', pagina).group(1)
+    assert "img-src 'self' data: https://*.tile.opentopomap.org https://tile.openstreetmap.org;" in csp
+    assert "script-src 'self' 'unsafe-inline';" in csp and "connect-src 'self';" in csp
     # nessun cookie del browser (sessione di Authentik) arriva al servizio o ai Raspberry
     for blocco in re.findall(r"reverse_proxy (?:https://)?127\.0\.0\.1:\d+ \{(.*?)\n\t\t\t?\}", rete, re.S):
         assert "header_up -Cookie" in blocco and "header_up -Authorization" in blocco, blocco
-    assert rete.count("header_up -Cookie") == 7
+    assert rete.count("header_up -Cookie") == 8
 
 
 def lavoro_in_coda(s, **dati):

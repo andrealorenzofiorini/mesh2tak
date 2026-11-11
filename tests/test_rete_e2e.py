@@ -928,6 +928,78 @@ def test_6h_gestisci_il_raspberry_dal_browser(rete):
     assert "squadra = Red" in (pi / "mesh2tak.conf").read_text()
 
 
+def prepara_copertura(rete):
+    """1.14.0: la mappa della copertura del ponte casa, con cinque quadretti: vicino al ponte buono, poi discreto,
+    debole e al limite, e uno arrivato solo tramite un'altra radio."""
+    p = rete.ponte
+    p.copertura = m.Copertura(str(rete.c / "pi" / "copertura.json"))
+    rete.g.copertura = p.copertura_per_la_pagina
+    if p.iface is None:
+        p.iface = type("IfaceFinta", (), {"nodesByNum": {}})()
+    p.iface.nodesByNum[p.mio_num] = {"position": {"latitudeI": 458206000, "longitudeI": 88251000}}
+    oggi = int(time.strftime("%Y%m%d"))
+    for dlat, snr in ((0.0, 6.0), (0.004, -9.0), (0.008, -14.0), (0.012, -16.5)):
+        for _ in range(3):
+            p.copertura.annota(45.8206 + dlat, 8.8281, 0, snr, -100, oggi)
+    p.copertura.annota(45.8406, 8.8251, 2, None, None, oggi)
+    return oggi
+
+
+def test_6i_la_copertura_dalla_pagina(rete):
+    """1.14.0: la copertura del ponte dal tunnel, solo per gli amministratori; azzerarla solo dalla pagina stessa."""
+    prepara_copertura(rete)
+    stato, corpo, intestazioni = rete.chiedi(f"{RETE}/copertura/casa.json")
+    assert stato == 200, corpo
+    d = json.loads(corpo)
+    assert d["ponte"] == {"lat": 45.8206, "lon": 8.8251} and d["limite_snr"] == -17.5 and d["preset"] == "LONG_FAST"
+    assert sorted(q[3] for q in d["celle"] if q[3] is not None) == [-16.5, -14.0, -9.0, 6.0] and len(d["celle"]) == 5
+    assert intestazioni.get("Content-Type", "").startswith("application/json")
+    assert "Access-Control-Allow-Origin" not in intestazioni and intestazioni.get("Cache-Control") == "no-store"
+    assert rete.chiedi(f"{RETE}/copertura/casa.json", cookie=None)[0] == 302, "senza Authentik: al login"
+    assert rete.chiedi(f"{RETE}/copertura/altro.json")[0] == 404
+    assert rete.api("POST", "/copertura/casa.json", {"azzera": True}, intestazioni={"X-Mesh2tak": ""})[0] == 403
+    assert rete.api("POST", "/copertura/casa.json", {"azzera": True},
+                    intestazioni={"Origin": "https://cattivo.example"})[0] == 403
+    assert rete.api("POST", "/copertura/casa.json", {"azzera": False})[0] == 400
+    assert len(rete.ponte.copertura.dati()["celle"]) == 5, "niente azzerato"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
+def test_6j_la_copertura_nel_browser(rete):
+    oggi = prepara_copertura(rete)
+    foto = os.environ.get("RETE_FOTO", "")
+    senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+    p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_copertura.js"), f"{RETE}/",
+                        foto.replace(".png", "-copertura.png") if foto else ""], capture_output=True, text=True,
+                       timeout=300, env=senza_proxy)
+    r = json.loads(p.stdout.strip().splitlines()[-1])
+    assert "errore" not in r, r
+    assert r["errori"] == [], r["errori"]
+    assert r["indirizzo"] == "copertura"
+    assert r["riassunto"] == "Copertura misurata in 5 quadretti (1 solo tramite altre radio).", r["riassunto"]
+    assert r["legenda"] == ["Buono", "Discreto", "Debole", "Al limite", "Solo tramite un'altra radio", "Ponte"]
+    assert r["ponti"][0].startswith("casa: 5 quadretti: buono 1, discreto 1, debole 1, al limite 1, solo tramite "
+                                    "un'altra radio 1."), r["ponti"]
+    # la mappa di sfondo: la pagina la puo' caricare (CSP) e dice solo da che sito arriva, non quale pagina
+    assert r["sfondo"] and all("tile.opentopomap.org/" in x["url"] for x in r["sfondo"]), r["sfondo"]
+    assert all(x["referer"] == RETE + "/" for x in r["sfondo"]), r["sfondo"]
+    assert r["sfondoCaricato"] > 0 and "OpenTopoMap" in r["crediti"] and "OpenStreetMap" in r["crediti"]
+    assert r["buono"].startswith("Buono: i messaggi arrivano sicuri"), r["buono"]
+    assert "Ponte casa: buono, segnale medio 6 dB (migliore 6 dB), sentita diretta 3 volte." in r["buono"]
+    assert r["ripetuta"].startswith("Solo tramite un'altra radio"), r["ripetuta"]
+    assert "Ponte casa: solo tramite altre radio, 1 volta." in r["ripetuta"]
+    assert r["zoomLontano"] == r["zoom"] - 3 and 1 <= r["disegnatiLontano"] <= 5 and r["zoomTastiera"] == r["zoom"] - 2
+    assert r["kmlNome"] == f"copertura-tutti-{oggi}.kml" and r["statoKml"].startswith("Scaricato copertura-tutti-")
+    assert r["kml"].count("<Placemark>") == 5 and "<name>Copertura Meshtastic, tutti i ponti</name>" in r["kml"]
+    assert '<Style id="buono">' in r["kml"] and "<color>990ca30c</color>" in r["kml"]
+    assert re.search(r"<coordinates>8\.82\d+,45\.82\d+ ", r["kml"]), "longitudine, latitudine"
+    assert r["oggi"] == "5" and "OpenStreetMap" in r["creditiStrade"] and "OpenTopoMap" not in r["creditiStrade"]
+    assert r["azzeraPrima"] is False and r["azzeraBottone"] == "Azzera la copertura di casa"
+    assert len(r["finestre"]) == 1 and r["finestre"][0].startswith("Cancello la copertura raccolta dal ponte casa?")
+    assert r["statoAzzera"] == "Copertura del ponte casa azzerata: ricomincia da adesso."
+    assert r["riassuntoDopo"].startswith("Nessun quadretto") and rete.ponte.copertura.dati()["celle"] == []
+
+
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
 def test_7_un_altro_raspberry_approvato_dal_browser(rete, tmp_path):
     altra = nuova_chiave(tmp_path, "altra")

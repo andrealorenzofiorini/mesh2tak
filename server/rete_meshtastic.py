@@ -941,6 +941,21 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
               "\t\t\t\t\tresponse_header_timeout 30s",
               "\t\t\t\t}",
               "\t\t\t}",
+              "\t\t}",
+              # dalla 1.14.0: la mappa della copertura (lettura e "Azzera", solo amministratori)
+              f"\t\thandle /copertura/{n}.json {{",
+              "\t\t\trequest_body {",
+              "\t\t\t\tmax_size 1KB",
+              "\t\t\t}",
+              "\t\t\trewrite * /mesh2tak/copertura.json",
+              f"\t\t\treverse_proxy https://127.0.0.1:{p['porta']} {{"] + senza_cookie + [
+              "\t\t\t\theader_up X-Forwarded-Host {hostport}",
+              "\t\t\t\ttransport http {",
+              "\t\t\t\t\ttls_insecure_skip_verify",
+              "\t\t\t\t\tdial_timeout 5s",
+              "\t\t\t\t\tresponse_header_timeout 30s",
+              "\t\t\t\t}",
+              "\t\t\t}",
               "\t\t}"]
     r += ["\t\thandle /stato/* {",
           "\t\t\trespond 404",
@@ -951,11 +966,16 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
           "\t\thandle /registro/* {",
           "\t\t\trespond 404",
           "\t\t}",
+          "\t\thandle /copertura/* {",
+          "\t\t\trespond 404",
+          "\t\t}",
           "\t\theader Cache-Control no-store",
           "\t\theader X-Content-Type-Options nosniff",
           "\t\theader Referrer-Policy no-referrer",
           "\t\theader Content-Security-Policy \"default-src 'self'; script-src 'self' 'unsafe-inline'; "
-          "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+          # dalla 1.14.0 le mappe di sfondo della scheda Copertura (OpenTopoMap e OpenStreetMap)
+          "style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.opentopomap.org "
+          "https://tile.openstreetmap.org; connect-src 'self'; frame-ancestors 'none'; "
           "base-uri 'none'; form-action 'none'\"",
           f"\t\troot * {P(SITO_DIR)}",
           "\t\tfile_server",

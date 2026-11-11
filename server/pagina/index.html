@@ -201,6 +201,37 @@ dialog ul { padding-left: 1.2rem; }
 .schede button[aria-selected="true"] { color: var(--lago); border-bottom-color: var(--lago); }
 .schede button span { font-weight: 400; margin-left: 0.35rem; font-variant-numeric: tabular-nums; }
 .radio-rete { padding: 1.6rem 0 0.5rem; }
+/* Copertura (dalla 1.14.0): la mappa e' chiara anche nel tema scuro, come le carte; i suoi comandi pure */
+.copertura { padding: 1.6rem 0 0.5rem; }
+.copertura .riassunto { font-size: 1.1rem; margin: 0 0 0.4rem; max-width: 52rem; }
+.spiega-copertura { margin: 0 0 1rem; max-width: 52rem; color: var(--ardesia); }
+.comandi-copertura { display: flex; flex-wrap: wrap; gap: 0.8rem 1.2rem; align-items: flex-end; margin: 0 0 1rem; }
+.comandi-copertura label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; font-size: 0.9rem; }
+.comandi-copertura select { font: 400 1rem/1.3 var(--testo); padding: 0.45rem 0.6rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); }
+.azioni-copertura { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-left: auto; }
+.legenda { list-style: none; display: flex; flex-wrap: wrap; gap: 0.45rem 1.3rem; padding: 0; margin: 0 0 0.7rem; font-size: 0.95rem; }
+.legenda li { display: flex; align-items: center; gap: 0.45rem; }
+.legenda i { width: 0.95rem; height: 0.95rem; border-radius: 3px; flex: none; }
+.legenda i.segno-ripetuta { background: repeating-linear-gradient(45deg, #4f5a5f 0 1.5px, rgba(111, 123, 128, 0.3) 1.5px 5px); }
+.legenda i.segno-ponte { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: #0d4757; box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--nebbia); }
+.stato-copertura { margin: 0 0 0.6rem; min-height: 1.2em; color: var(--ardesia); }
+.mappa { position: relative; height: min(68vh, 640px); min-height: 22rem; overflow: hidden; border: 1px solid var(--nebbia); border-radius: 8px; background: #e4e9e6; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.mappa:active { cursor: grabbing; }
+.mappa .tessere { position: absolute; inset: 0; }
+.mappa .tessere img { position: absolute; left: 0; top: 0; width: 256px; height: 256px; max-width: none; pointer-events: none; }
+.mappa canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mappa .zoom { position: absolute; top: 0.7rem; left: 0.7rem; display: flex; flex-direction: column; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.mappa .zoom button { width: 2.5rem; height: 2.5rem; font: 600 1.35rem/1 var(--testo); border: 0; background: #fff; color: #1f2d34; cursor: pointer; }
+.mappa .zoom button + button { border-top: 1px solid #d3dcd9; }
+.mappa .zoom button:hover { background: #e1edef; }
+.mappa .crediti { position: absolute; right: 0; bottom: 0; padding: 0.15rem 0.45rem; font-size: 0.72rem; background: rgba(255, 255, 255, 0.85); color: #1f2d34; border-top-left-radius: 4px; }
+.mappa .crediti a { color: #0d4757; }
+.mappa .suggerimento { position: absolute; left: 0; top: 0; max-width: min(21rem, calc(100% - 2rem)); padding: 0.65rem 0.8rem; border-radius: 6px; background: #fff; color: #1f2d34; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28); font-size: 0.9rem; line-height: 1.4; pointer-events: none; }
+.mappa .suggerimento b { display: block; margin-bottom: 0.25rem; }
+.mappa .suggerimento span { display: block; }
+.ponti-copertura { list-style: none; padding: 0; margin: 1rem 0 0; max-width: 52rem; }
+.ponti-copertura li { padding: 0.6rem 0; border-top: 1px solid var(--nebbia); }
+.ponti-copertura small { display: block; color: var(--ardesia); margin-top: 0.15rem; }
 .radio-rete .riassunto { font-size: 1.1rem; margin: 0 0 0.8rem; max-width: 52rem; }
 .avvisi { list-style: none; padding: 0; margin: 0 0 1rem; }
 .avvisi li { margin: 0.4rem 0; padding: 0.6rem 0.9rem; border-radius: 6px; background: var(--ambra-tenue); max-width: 52rem; }
@@ -302,6 +333,12 @@ dialog ul { padding-left: 1.2rem; }
   .riga { grid-template-columns: 1fr auto; grid-template-areas: "nome quando" "traccia traccia" "batteria salti"; row-gap: 0.35rem; }
   .riga .nome { grid-area: nome; } .riga .traccia { grid-area: traccia; } .riga .quando { grid-area: quando; }
   .riga .batteria { grid-area: batteria; text-align: left; color: var(--ardesia); } .riga .salti { grid-area: salti; color: var(--ardesia); }
+  .schede { gap: 1.2rem; overflow-x: auto; }
+  .schede button { white-space: nowrap; }
+  .comandi-copertura label { flex: 1 1 8rem; }
+  .comandi-copertura select { width: 100%; }
+  .azioni-copertura { margin-left: 0; width: 100%; }
+  .mappa { height: 62vh; min-height: 18rem; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .punto { transition: left 0.6s ease; }
@@ -436,10 +473,11 @@ const zonaPonti = document.createElement("div");
 const schede = document.createElement("nav");
 const vistaPonti = document.createElement("div");
 const vistaRadio = document.createElement("div");
+const vistaCopertura = document.createElement("div");   // dalla 1.14.0
 const avvisoVersione = document.createElement("div");   // in cima: versione nuova o pagina da ricaricare
 avvisoVersione.className = "avviso-versione";
 avvisoVersione.hidden = true;
-zona.append(avvisoVersione, zonaNovita, schede, vistaPonti, vistaRadio);
+zona.append(avvisoVersione, zonaNovita, schede, vistaPonti, vistaRadio, vistaCopertura);
 vistaPonti.append(zonaPonti);
 const SILENZIO_S = 2 * 3600;       // una radio accesa si fa sentire almeno ogni mezz'ora (batteria e canale)
 
@@ -1940,14 +1978,17 @@ function costruisciSchede() {
   };
   schedaPonti = scheda("ponti", "Ponti");
   schedaRadio = scheda("radio", "Radio della rete");
+  schedaCopertura = scheda("copertura", "Copertura");
   schede.addEventListener("keydown", ev => {
     if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
-    const altra = document.activeElement === schedaPonti ? schedaRadio : schedaPonti;
+    const tutte = [schedaPonti, schedaRadio, schedaCopertura];
+    const i = tutte.indexOf(document.activeElement);
+    const altra = tutte[(Math.max(0, i) + (ev.key === "ArrowRight" ? 1 : tutte.length - 1)) % tutte.length];
     altra.focus();
     altra.click();
     ev.preventDefault();
   });
-  for (const [v, nome] of [[vistaPonti, "ponti"], [vistaRadio, "radio"]]) {
+  for (const [v, nome] of [[vistaPonti, "ponti"], [vistaRadio, "radio"], [vistaCopertura, "copertura"]]) {
     v.id = "vista-" + nome;
     v.setAttribute("role", "tabpanel");
     v.setAttribute("aria-labelledby", "scheda-" + nome);
@@ -1974,19 +2015,22 @@ function costruisciSchede() {
                              "tre ore, batteria ogni mezz'ora. I ponti ascoltano soltanto: per questo elenco non " +
                              "trasmettono nulla e non chiedono nulla alle radio."));
   vistaRadio.append(sez);
-  mostraVista(location.hash === "#radio" ? "radio" : "ponti", false);
-  window.addEventListener("hashchange", () => mostraVista(location.hash === "#radio" ? "radio" : "ponti", false));
+  costruisciCopertura();
+  mostraVista(location.hash.slice(1), false);
+  window.addEventListener("hashchange", () => mostraVista(location.hash.slice(1), false));
 }
 
 function mostraVista(nome, daClic) {
-  const radio = nome === "radio";
-  schedaPonti.setAttribute("aria-selected", String(!radio));
-  schedaRadio.setAttribute("aria-selected", String(radio));
-  schedaPonti.tabIndex = radio ? -1 : 0;
-  schedaRadio.tabIndex = radio ? 0 : -1;
-  vistaPonti.hidden = radio;
-  vistaRadio.hidden = !radio;
-  if (daClic) history.replaceState(null, "", radio ? "#radio" : location.pathname + location.search);
+  const viste = {ponti: [schedaPonti, vistaPonti], radio: [schedaRadio, vistaRadio],
+                 copertura: [schedaCopertura, vistaCopertura]};
+  if (!viste[nome]) nome = "ponti";
+  for (const [chiave, [scheda, vista]] of Object.entries(viste)) {
+    scheda.setAttribute("aria-selected", String(chiave === nome));
+    scheda.tabIndex = chiave === nome ? 0 : -1;
+    vista.hidden = chiave !== nome;
+  }
+  if (daClic) history.replaceState(null, "", nome === "ponti" ? location.pathname + location.search : "#" + nome);
+  if (nome === "copertura") apriCopertura();
 }
 
 function radioDellaRete() {
@@ -2683,6 +2727,671 @@ document.getElementById("raspberry").addEventListener("close", () => {
   raspberryAperto = null;
 });
 
+// ---- Copertura (dalla 1.14.0): con che segnale i ponti hanno sentito le radio della squadra, quadretto per quadretto.
+// Ogni ponte raccoglie i suoi quadretti (zoom 17, circa 200 m); la pagina li unisce e li disegna su una mappa fatta qui,
+// senza librerie esterne: da fuori arrivano solo le immagini della mappa di sfondo.
+const CLASSI_COPERTURA = [   // margine (dB) sopra il minimo che la radio decifra; colori di stato (buono -> critico)
+  {chiave: "buono", nome: "Buono", colore: "#0ca30c", da: 10, spiega: "i messaggi arrivano sicuri"},
+  {chiave: "discreto", nome: "Discreto", colore: "#fab219", da: 5, spiega: "arrivano quasi sempre"},
+  {chiave: "debole", nome: "Debole", colore: "#ec835a", da: 2, spiega: "qualcuno si può perdere"},
+  {chiave: "limite", nome: "Al limite", colore: "#d03b3b", da: -Infinity, spiega: "arrivano a fatica"}];
+const RIPETUTA = {chiave: "ripetuta", nome: "Solo tramite un'altra radio", colore: "#6f7b80",
+                  spiega: "il ponte non la sentiva diretta"};
+const SFONDI = {
+  topo: {max: 17, url: (z, x, y) => "https://" + "abc"[(x + y) % 3] + ".tile.opentopomap.org/" + z + "/" + x + "/" + y + ".png",
+         crediti: [["Dati © ", ""], ["OpenStreetMap", "https://www.openstreetmap.org/copyright"], [", SRTM. Mappa © ", ""],
+                   ["OpenTopoMap", "https://opentopomap.org/about"], [" (CC-BY-SA)", ""]]},
+  strade: {max: 19, url: (z, x, y) => "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png",
+           crediti: [["© ", ""], ["OpenStreetMap", "https://www.openstreetmap.org/copyright"]]}};
+const COPERTURA_OGNI_S = 60;
+const copertura = new Map();     // ponte -> {dati, errore, quando}
+const sceltaCopertura = {ponte: "", periodo: "0", sfondo: "topo"};
+let ultimaCopertura = 0;
+let mappaCopertura = null, schedaCopertura = null;
+let selPonteCopertura = null, riassuntoCopertura = null, statoCopertura = null, elencoCopertura = null,
+    bottoneAzzera = null;
+
+function classeCopertura(margine) {
+  if (margine === null || margine === undefined || !Number.isFinite(margine)) return RIPETUTA;
+  return CLASSI_COPERTURA.find(c => margine >= c.da);
+}
+
+function giornoNumero(d) {
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+function testoGiorno(n) {
+  return (n % 100) + "/" + (Math.floor(n / 100) % 100) + "/" + Math.floor(n / 10000);
+}
+
+function volte(n) {
+  return n === 1 ? "1 volta" : n + " volte";
+}
+
+function mondoX(lon, z) {
+  return (lon + 180) / 360 * 256 * 2 ** z;
+}
+
+function mondoY(lat, z) {
+  const s = Math.sin(lat * Math.PI / 180);
+  return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * 2 ** z;
+}
+
+function quadrettiCopertura() {
+  // i quadretti (zoom 17) del ponte scelto, o di tutti, nel periodo scelto. Per ogni quadretto conta il ponte che lo
+  // sente meglio: da li' una radio arriva alla rete attraverso quel ponte.
+  let dal = 0;
+  if (sceltaCopertura.periodo !== "0") {
+    const d = new Date();
+    d.setDate(d.getDate() - (Number(sceltaCopertura.periodo) - 1));
+    dal = giornoNumero(d);
+  }
+  const celle = new Map();
+  for (const [nome, c] of copertura) {
+    if (!c.dati || (sceltaCopertura.ponte && sceltaCopertura.ponte !== nome)) continue;
+    const limite = Number.isFinite(c.dati.limite_snr) ? c.dati.limite_snr : -17.5;
+    for (const q of c.dati.celle || []) {
+      if (!Array.isArray(q) || q.length < 8 || !(q[7] >= dal)) continue;
+      const [x, y, n, media, migliore, , rip, giorno] = q;
+      const voce = {ponte: nome, n, media, migliore, rip, giorno, margine: n > 0 && media !== null ? media - limite : null};
+      const k = x + "," + y;
+      let cella = celle.get(k);
+      if (!cella) celle.set(k, cella = {x, y, voci: []});
+      cella.voci.push(voce);
+    }
+  }
+  const risultato = [];
+  for (const c of celle.values()) {
+    let margine = null, n = 0, rip = 0, giorno = 0;
+    for (const v of c.voci) {
+      if (v.margine !== null && (margine === null || v.margine > margine)) margine = v.margine;
+      n += v.n;
+      rip += v.rip;
+      giorno = Math.max(giorno, v.giorno);
+    }
+    risultato.push(Object.assign(c, {margine, n, rip, giorno, classe: classeCopertura(margine)}));
+  }
+  return risultato;
+}
+
+function raggruppaQuadretti(celle, livello) {
+  // da lontano i quadretti si uniscono a gruppi (2x2, 4x4...): il colore e' la media dei margini, pesata sulle
+  // ricezioni dirette. Il dettaglio di ogni quadretto si vede avvicinando la mappa.
+  if (livello >= 17) return celle.map(c => Object.assign({lx: c.x, ly: c.y, quanti: 1}, c));
+  const s = 17 - livello, gruppi = new Map();
+  for (const c of celle) {
+    const k = (c.x >> s) + "," + (c.y >> s);
+    let g = gruppi.get(k);
+    if (!g) gruppi.set(k, g = {lx: c.x >> s, ly: c.y >> s, quanti: 0, n: 0, rip: 0, giorno: 0, somma: 0, pesi: 0});
+    g.quanti++;
+    g.n += c.n;
+    g.rip += c.rip;
+    g.giorno = Math.max(g.giorno, c.giorno);
+    if (c.margine !== null) {
+      const peso = Math.max(1, c.n);
+      g.somma += c.margine * peso;
+      g.pesi += peso;
+    }
+  }
+  return [...gruppi.values()].map(g => Object.assign(g, {margine: g.pesi ? g.somma / g.pesi : null,
+                                                         classe: classeCopertura(g.pesi ? g.somma / g.pesi : null)}));
+}
+
+function righeQuadretto(q) {
+  const righe = [];
+  if (q.quanti > 1) {
+    righe.push(q.quanti + " quadretti insieme: avvicina la mappa per vederli uno per uno.");
+    righe.push(q.n ? "Sentite dirette " + volte(q.n) + (q.rip ? ", tramite altre radio " + volte(q.rip) : "") + "."
+                   : "Arrivate solo tramite altre radio, " + volte(q.rip) + ".");
+  } else {
+    const voci = [...q.voci].sort((a, b) => (b.margine === null ? -999 : b.margine) - (a.margine === null ? -999 : a.margine));
+    for (const v of voci) {
+      righe.push("Ponte " + v.ponte + ": " + (v.n
+        ? classeCopertura(v.margine).nome.toLowerCase() + ", segnale medio " + numIt(v.media) + " dB (migliore " +
+          numIt(v.migliore) + " dB), sentita diretta " + volte(v.n) + (v.rip ? " e tramite altre radio " + volte(v.rip) : "")
+        : "solo tramite altre radio, " + volte(v.rip)) + ".");
+    }
+  }
+  righe.push("Ultimo dato: " + testoGiorno(q.giorno) + ".");
+  return righe;
+}
+
+class MappaCopertura {
+  constructor() {
+    const e = this.e = el("div", "mappa");
+    e.id = "mappa-copertura";
+    e.tabIndex = 0;
+    e.setAttribute("role", "application");
+    e.setAttribute("aria-label", "Mappa della copertura. Trascina per spostarla; rotella, + e - per avvicinare e allontanare.");
+    this.tessere = el("div", "tessere");
+    this.tela = document.createElement("canvas");
+    this.suggerimento = el("div", "suggerimento");
+    this.suggerimento.hidden = true;
+    const zoom = el("div", "zoom");
+    for (const [segno, nome, d] of [["+", "Avvicina", 1], ["−", "Allontana", -1]]) {
+      const b = el("button", null, segno);
+      b.type = "button";
+      b.setAttribute("aria-label", nome);
+      b.addEventListener("click", () => this.zoom(d));
+      zoom.append(b);
+    }
+    this.crediti = el("div", "crediti");
+    e.append(this.tessere, this.tela, zoom, this.crediti, this.suggerimento);
+    this.z = 6;
+    this.cx = mondoX(12.5, 6);
+    this.cy = mondoY(42.5, 6);
+    this.w = this.h = 0;
+    this.celle = [];
+    this.ponti = [];
+    this.mostrati = [];
+    this.dove = new Map();
+    this.adattata = false;
+    this.fisso = false;
+    this.vive = new Map();          // immagini della mappa di sfondo in pagina
+    this.ultimoZoom = 0;
+    this.sfondo("topo");
+    this.eventi();
+    new ResizeObserver(() => this.misura()).observe(e);
+    e.puntoSchermo = (lat, lon) => {     // per le prove automatiche: dove cade un punto sullo schermo
+      const r = e.getBoundingClientRect();
+      return {x: r.left + mondoX(lon, this.z) - this.cx + this.w / 2, y: r.top + mondoY(lat, this.z) - this.cy + this.h / 2};
+    };
+  }
+
+  sfondo(chiave) {
+    this.chiaveSfondo = chiave;
+    this.s = SFONDI[chiave];
+    for (const img of this.vive.values()) img.remove();
+    this.vive.clear();
+    this.crediti.replaceChildren();
+    for (const [testo, link] of this.s.crediti) {
+      if (!link) { this.crediti.append(testo); continue; }
+      const a = el("a", null, testo);
+      a.href = link;
+      a.target = "_blank";
+      a.rel = "noopener";
+      this.crediti.append(a);
+    }
+    if (this.z > this.s.max) this.zoom(this.s.max - this.z);
+    else this.ridisegna();
+  }
+
+  dati(celle, ponti) {
+    this.celle = celle;
+    this.ponti = ponti;
+    this.e.dataset.quadretti = String(celle.length);
+    if (!this.adattata) this.adatta();
+    else this.ridisegna();
+  }
+
+  misura() {
+    const w = this.e.clientWidth, h = this.e.clientHeight;
+    if (!w || !h || (w === this.w && h === this.h)) return;
+    this.w = w;
+    this.h = h;
+    if (!this.adattata) this.adatta();
+    else this.ridisegna();
+  }
+
+  adatta() {
+    // tutti i quadretti e i ponti in vista, non piu' vicino di zoom 15
+    if (!this.w || !this.h) return;
+    let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+    const aggiungi = (x, y) => {
+      minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y);
+    };
+    for (const c of this.celle) aggiungi((c.x + 0.5) / 2 ** 17, (c.y + 0.5) / 2 ** 17);
+    for (const p of this.ponti) aggiungi(mondoX(p.lon, 0) / 256, mondoY(p.lat, 0) / 256);
+    if (minx === Infinity) {
+      this.ridisegna();
+      return;
+    }
+    let z = 15;
+    while (z > 3 && ((maxx - minx) * 256 * 2 ** z > this.w * 0.8 || (maxy - miny) * 256 * 2 ** z > this.h * 0.8)) z--;
+    this.z = Math.min(z, this.s.max);
+    this.cx = (minx + maxx) / 2 * 256 * 2 ** this.z;
+    this.cy = (miny + maxy) / 2 * 256 * 2 ** this.z;
+    this.adattata = true;
+    this.ridisegna();
+  }
+
+  zoom(d, sx, sy) {
+    const nuovo = Math.max(3, Math.min(this.s.max, this.z + d));
+    if (nuovo === this.z) return;
+    if (sx === undefined) { sx = this.w / 2; sy = this.h / 2; }
+    const f = 2 ** (nuovo - this.z);
+    const wx = this.cx - this.w / 2 + sx, wy = this.cy - this.h / 2 + sy;
+    this.cx = wx * f - sx + this.w / 2;
+    this.cy = wy * f - sy + this.h / 2;
+    this.z = nuovo;
+    this.nascondi();
+    this.ridisegna();
+  }
+
+  sposta(dx, dy) {
+    this.cx += dx;
+    this.cy += dy;
+    this.nascondi();
+    this.ridisegna();
+  }
+
+  ridisegna() {
+    const lato = 256 * 2 ** this.z;
+    this.cx = Math.max(0, Math.min(lato, this.cx));
+    this.cy = Math.max(0, Math.min(lato, this.cy));
+    this.e.dataset.zoom = String(this.z);
+    if (!this.w || !this.h) return;
+    this.disegnaSfondo();
+    this.disegnaQuadretti();
+  }
+
+  disegnaSfondo() {
+    const n = 2 ** this.z, sx = this.cx - this.w / 2, sy = this.cy - this.h / 2, servono = new Set();
+    for (let ty = Math.max(0, Math.floor(sy / 256)); ty <= Math.min(n - 1, Math.floor((sy + this.h) / 256)); ty++) {
+      for (let tx = Math.max(0, Math.floor(sx / 256)); tx <= Math.min(n - 1, Math.floor((sx + this.w) / 256)); tx++) {
+        const k = this.z + "/" + tx + "/" + ty;
+        servono.add(k);
+        let img = this.vive.get(k);
+        if (!img) {
+          img = document.createElement("img");
+          img.alt = "";
+          img.draggable = false;
+          img.decoding = "async";
+          img.referrerPolicy = "strict-origin";      // OpenStreetMap vuole sapere da che sito arriva la richiesta
+          img.addEventListener("error", () => { img.style.visibility = "hidden"; });
+          img.src = this.s.url(this.z, tx, ty);
+          this.vive.set(k, img);
+          this.tessere.append(img);
+        }
+        img.style.transform = "translate(" + Math.round(tx * 256 - sx) + "px," + Math.round(ty * 256 - sy) + "px)";
+      }
+    }
+    for (const [k, img] of this.vive) {
+      if (!servono.has(k)) { img.remove(); this.vive.delete(k); }
+    }
+  }
+
+  disegnaQuadretti() {
+    const dpr = window.devicePixelRatio || 1, t = this.tela;
+    if (t.width !== Math.round(this.w * dpr) || t.height !== Math.round(this.h * dpr)) {
+      t.width = Math.round(this.w * dpr);
+      t.height = Math.round(this.h * dpr);
+    }
+    const ctx = t.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, this.w, this.h);
+    const sx = this.cx - this.w / 2, sy = this.cy - this.h / 2;
+    this.livello = Math.max(9, Math.min(17, this.z + 4));      // i quadretti mostrati restano larghi almeno 16 pixel
+    this.lato = 256 * 2 ** this.z / 2 ** this.livello;
+    this.mostrati = raggruppaQuadretti(this.celle, this.livello);
+    this.dove = new Map(this.mostrati.map(q => [q.lx + "," + q.ly, q]));
+    if (!this.trama) {
+      const r = document.createElement("canvas");
+      r.width = r.height = 8;
+      const c = r.getContext("2d");
+      c.strokeStyle = "#4f5a5f";
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.moveTo(-2, 10); c.lineTo(10, -2);
+      c.moveTo(-2, 2); c.lineTo(2, -2);
+      c.moveTo(6, 10); c.lineTo(10, 6);
+      c.stroke();
+      this.trama = ctx.createPattern(r, "repeat");
+    }
+    const lato = this.lato, spazio = lato >= 8 ? 1 : 0;     // un pixel tra un quadretto e l'altro
+    let disegnati = 0;
+    for (const q of this.mostrati) {
+      const x = q.lx * lato - sx, y = q.ly * lato - sy;
+      if (x > this.w || y > this.h || x + lato < 0 || y + lato < 0) continue;
+      disegnati++;
+      if (q.classe === RIPETUTA) {
+        ctx.fillStyle = "rgba(111, 123, 128, 0.22)";
+        ctx.fillRect(x + spazio, y + spazio, lato - spazio, lato - spazio);
+        ctx.fillStyle = this.trama;
+        ctx.fillRect(x + spazio, y + spazio, lato - spazio, lato - spazio);
+      } else {
+        ctx.globalAlpha = 0.62;
+        ctx.fillStyle = q.classe.colore;
+        ctx.fillRect(x + spazio, y + spazio, lato - spazio, lato - spazio);
+        ctx.globalAlpha = 1;
+        if (lato >= 14) {
+          ctx.strokeStyle = q.classe.colore;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + spazio + 0.5, y + spazio + 0.5, lato - spazio - 1, lato - spazio - 1);
+        }
+      }
+    }
+    this.e.dataset.disegnati = String(disegnati);
+    ctx.font = "600 13px " + getComputedStyle(this.e).fontFamily;
+    ctx.lineJoin = "round";
+    for (const p of this.ponti) {
+      const x = mondoX(p.lon, this.z) - sx, y = mondoY(p.lat, this.z) - sy;
+      if (x < -60 || y < -20 || x > this.w + 20 || y > this.h + 20) continue;
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, 2 * Math.PI);
+      ctx.fillStyle = "#0d4757";
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.strokeText(p.nome, x + 12, y + 4.5);
+      ctx.fillStyle = "#1f2d34";
+      ctx.fillText(p.nome, x + 12, y + 4.5);
+    }
+  }
+
+  nascondi() {
+    this.suggerimento.hidden = true;
+    this.fisso = false;
+  }
+
+  indica(ev, fisso) {
+    const r = this.e.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
+    const sx = this.cx - this.w / 2, sy = this.cy - this.h / 2;
+    const q = this.lato ? this.dove.get(Math.floor((px + sx) / this.lato) + "," + Math.floor((py + sy) / this.lato)) : null;
+    if (!q) {
+      if (fisso || !this.fisso) this.nascondi();
+      return;
+    }
+    const s = this.suggerimento;
+    s.replaceChildren(el("b", null, q.classe.nome + ": " + q.classe.spiega), ...righeQuadretto(q).map(t => el("span", null, t)));
+    s.hidden = false;
+    const x = px + 16 + s.offsetWidth > this.w ? px - 16 - s.offsetWidth : px + 16;
+    const y = py + 16 + s.offsetHeight > this.h ? Math.max(4, py - 16 - s.offsetHeight) : py + 16;
+    s.style.transform = "translate(" + Math.max(4, Math.round(x)) + "px," + Math.round(y) + "px)";
+    this.fisso = !!fisso;
+  }
+
+  eventi() {
+    const e = this.e, puntatori = new Map();
+    let trascina = null, pizzico = null, rotella = 0;
+    e.addEventListener("pointerdown", ev => {
+      if (ev.target.closest("button, a")) return;
+      e.setPointerCapture(ev.pointerId);
+      puntatori.set(ev.pointerId, {x: ev.clientX, y: ev.clientY});
+      if (puntatori.size === 2) {
+        const [a, b] = [...puntatori.values()];
+        pizzico = {d: Math.hypot(a.x - b.x, a.y - b.y) || 1};
+        trascina = null;
+      } else if (puntatori.size === 1) {
+        trascina = {x: ev.clientX, y: ev.clientY, cx: this.cx, cy: this.cy, mosso: false};
+      }
+    });
+    e.addEventListener("pointermove", ev => {
+      if (puntatori.has(ev.pointerId)) puntatori.set(ev.pointerId, {x: ev.clientX, y: ev.clientY});
+      if (pizzico && puntatori.size === 2) {
+        const [a, b] = [...puntatori.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d / pizzico.d > 1.6 || d / pizzico.d < 0.62) {
+          const r = e.getBoundingClientRect();
+          this.zoom(d > pizzico.d ? 1 : -1, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+          pizzico.d = d;
+        }
+        return;
+      }
+      if (trascina) {
+        const dx = ev.clientX - trascina.x, dy = ev.clientY - trascina.y;
+        if (!trascina.mosso && Math.abs(dx) + Math.abs(dy) < 5) return;
+        trascina.mosso = true;
+        this.nascondi();
+        this.cx = trascina.cx - dx;
+        this.cy = trascina.cy - dy;
+        this.ridisegna();
+        return;
+      }
+      if (ev.pointerType === "mouse") this.indica(ev, false);
+    });
+    const fine = ev => {
+      const t = trascina;
+      puntatori.delete(ev.pointerId);
+      if (puntatori.size < 2) pizzico = null;
+      if (!puntatori.size) trascina = null;
+      if (t && !t.mosso && ev.type === "pointerup") this.indica(ev, true);
+    };
+    e.addEventListener("pointerup", fine);
+    e.addEventListener("pointercancel", fine);
+    e.addEventListener("pointerleave", ev => { if (ev.pointerType === "mouse" && !this.fisso) this.nascondi(); });
+    e.addEventListener("wheel", ev => {
+      ev.preventDefault();
+      rotella += ev.deltaMode === 1 ? ev.deltaY * 40 : ev.deltaY;
+      if (Math.abs(rotella) < 60 || Date.now() - this.ultimoZoom < 200) return;
+      const r = e.getBoundingClientRect();
+      this.zoom(rotella < 0 ? 1 : -1, ev.clientX - r.left, ev.clientY - r.top);
+      this.ultimoZoom = Date.now();
+      rotella = 0;
+    }, {passive: false});
+    e.addEventListener("dblclick", ev => {
+      const r = e.getBoundingClientRect();
+      this.zoom(1, ev.clientX - r.left, ev.clientY - r.top);
+    });
+    e.addEventListener("keydown", ev => {
+      const passi = {ArrowLeft: [-100, 0], ArrowRight: [100, 0], ArrowUp: [0, -100], ArrowDown: [0, 100]};
+      if (ev.key === "+" || ev.key === "=") this.zoom(1);
+      else if (ev.key === "-" || ev.key === "_") this.zoom(-1);
+      else if (passi[ev.key]) this.sposta(...passi[ev.key]);
+      else if (ev.key === "Escape") this.nascondi();
+      else return;
+      ev.preventDefault();
+    });
+  }
+}
+
+function costruisciCopertura() {
+  const sez = el("section", "copertura");
+  riassuntoCopertura = el("p", "riassunto");
+  riassuntoCopertura.setAttribute("aria-live", "polite");
+  const comandi = el("div", "comandi-copertura");
+  const scelta = (etichetta, opzioni, chiave, cambia) => {
+    const l = el("label", null, etichetta);
+    const s = el("select");
+    for (const [v, t] of opzioni) {
+      const o = el("option", null, t);
+      o.value = v;
+      s.append(o);
+    }
+    s.value = sceltaCopertura[chiave];
+    s.addEventListener("change", () => { sceltaCopertura[chiave] = s.value; cambia(); });
+    l.append(s);
+    comandi.append(l);
+    return s;
+  };
+  selPonteCopertura = scelta("Ponte", [["", "Tutti i ponti"]], "ponte", () => {
+    mappaCopertura.adattata = false;
+    disegnaCopertura();
+  });
+  scelta("Periodo", [["0", "Tutto"], ["30", "Ultimi 30 giorni"], ["7", "Ultimi 7 giorni"], ["1", "Oggi"]], "periodo",
+         () => disegnaCopertura());
+  scelta("Mappa", [["topo", "Topografica"], ["strade", "Stradale"]], "sfondo",
+         () => mappaCopertura.sfondo(sceltaCopertura.sfondo));
+  const kml = el("button", "bottone secondario piccolo", "Scarica per ATAK");
+  kml.type = "button";
+  kml.addEventListener("click", scaricaCoperturaKml);
+  bottoneAzzera = el("button", "bottone secondario piccolo", "Azzera");
+  bottoneAzzera.type = "button";
+  bottoneAzzera.addEventListener("click", azzeraCopertura);
+  const azioni = el("div", "azioni-copertura");
+  azioni.append(kml, bottoneAzzera);
+  comandi.append(azioni);
+  const legenda = el("ul", "legenda");
+  legenda.setAttribute("aria-label", "Legenda");
+  for (const c of [...CLASSI_COPERTURA, RIPETUTA]) {
+    const li = el("li");
+    const segno = el("i", "segno-" + c.chiave);
+    if (c !== RIPETUTA) segno.style.background = c.colore;
+    li.append(segno, el("span", null, c.nome));
+    legenda.append(li);
+  }
+  const ponte = el("li");
+  ponte.append(el("i", "segno-ponte"), el("span", null, "Ponte"));
+  legenda.append(ponte);
+  statoCopertura = el("p", "stato-copertura");
+  statoCopertura.setAttribute("aria-live", "polite");
+  mappaCopertura = new MappaCopertura();
+  elencoCopertura = el("ul", "ponti-copertura");
+  sez.append(riassuntoCopertura,
+             el("p", "spiega-copertura", "Ogni quadretto è largo circa 200 metri. Il colore dice con che segnale un " +
+                "ponte ha sentito le radio della squadra che erano lì: è una misura, non una stima. Un quadretto " +
+                "vuoto vuol dire che lì non è passata nessuna radio, non che manca il segnale."),
+             comandi, legenda, statoCopertura, mappaCopertura.e, elencoCopertura,
+             el("p", "nota", "Buono, discreto, debole e al limite dicono di quanto il segnale medio sta sopra il " +
+                "minimo che la radio riesce a decifrare (−17,5 dB con LongFast): più di 10 dB, da 5 a 10, da 2 a 5, " +
+                "meno di 2. Ogni ponte tiene solo quadretto, segnale e giorno: non quale radio né a che ora. " +
+                "Dopo aver spostato l'antenna di un ponte scegli quel ponte e premi Azzera."));
+  vistaCopertura.append(sez);
+}
+
+async function caricaCopertura(forza) {
+  const mancano = elenco.some(p => !copertura.has(p.nome));
+  if (!elenco.length || (!forza && !mancano && Date.now() - ultimaCopertura < COPERTURA_OGNI_S * 1000)) return;
+  ultimaCopertura = Date.now();
+  await Promise.all(elenco.map(async p => {
+    const prima = copertura.get(p.nome);
+    try {
+      const r = await fetch("copertura/" + encodeURIComponent(p.nome) + ".json",
+                            {cache: "no-store", redirect: "manual", credentials: "same-origin"});
+      if (r.type === "opaqueredirect") {
+        document.getElementById("sessione").hidden = false;
+        throw new Error("sessione scaduta");
+      }
+      if (!r.ok) throw Object.assign(new Error("risposta " + r.status), {stato: r.status});
+      const d = await r.json();
+      if (!d || !Array.isArray(d.celle)) throw new Error("dati non validi");
+      copertura.set(p.nome, {dati: d, errore: "", quando: Date.now()});
+    } catch (e) {
+      copertura.set(p.nome, {dati: prima ? prima.dati : null, quando: Date.now(),
+                             errore: e.stato === 404 ? "vecchio" : (e.stato === 502 || e.stato === 504 ? "giu" : e.message)});
+    }
+  }));
+  for (const n of [...copertura.keys()]) if (!elenco.some(p => p.nome === n)) copertura.delete(n);
+}
+
+function disegnaCopertura() {
+  if (!mappaCopertura) return;
+  // elenco dei ponti nella scelta, tenendo quella fatta
+  const nomi = elenco.map(p => p.nome);
+  const attuali = [...selPonteCopertura.options].slice(1).map(o => o.value);
+  if (nomi.join("\n") !== attuali.join("\n")) {
+    selPonteCopertura.replaceChildren(selPonteCopertura.options[0]);
+    for (const n of nomi) {
+      const o = el("option", null, n);
+      o.value = n;
+      selPonteCopertura.append(o);
+    }
+    if (!nomi.includes(sceltaCopertura.ponte)) sceltaCopertura.ponte = "";
+    selPonteCopertura.value = sceltaCopertura.ponte;
+  }
+  bottoneAzzera.hidden = !sceltaCopertura.ponte;
+  bottoneAzzera.textContent = "Azzera la copertura di " + (sceltaCopertura.ponte || "un ponte");
+  const celle = quadrettiCopertura();
+  const ponti = [];
+  for (const [nome, c] of copertura) {
+    if (c.dati && c.dati.ponte && (!sceltaCopertura.ponte || sceltaCopertura.ponte === nome)) {
+      ponti.push({nome, lat: c.dati.ponte.lat, lon: c.dati.ponte.lon});
+    }
+  }
+  mappaCopertura.dati(celle, ponti);
+  const conDati = [...copertura.values()].filter(c => c.dati).length;
+  if (!copertura.size) riassuntoCopertura.textContent = "Carico la copertura dei ponti...";
+  else if (!celle.length) {
+    riassuntoCopertura.textContent = (conDati ? "Nessun quadretto" + (sceltaCopertura.periodo !== "0" ? " in questo periodo" : "") +
+      ": la mappa si riempie quando le radio della squadra mandano la loro posizione." : "Nessun ponte dà la copertura.");
+  } else {
+    const dirette = celle.filter(c => c.classe !== RIPETUTA).length;
+    riassuntoCopertura.textContent = "Copertura misurata in " + celle.length + (celle.length === 1 ? " quadretto" : " quadretti") +
+      (dirette < celle.length ? " (" + (celle.length - dirette) + " solo tramite altre radio)" : "") + ".";
+  }
+  // per ogni ponte: quanti quadretti per classe (la stessa informazione della mappa, da leggere)
+  const voci = [];
+  for (const p of elenco) {
+    if (sceltaCopertura.ponte && sceltaCopertura.ponte !== p.nome) continue;
+    const c = copertura.get(p.nome), li = el("li");
+    li.append(el("b", null, p.nome + ": "));
+    const st = stati.get(p.nome), v = st && st.dati && st.dati.versione;
+    if (!c) li.append("in caricamento.");
+    else if (c.errore === "vecchio") li.append("il ponte" + (v ? " è alla " + v + ":" : "") + " la copertura si raccoglie dalla 1.14.0. Aggiornalo dalla scheda Ponti.");
+    else if (!c.dati) li.append(c.errore === "giu" ? "non risponde adesso." : "copertura non letta (" + c.errore + ").");
+    else {
+      const sue = celle.filter(q => q.voci.some(x => x.ponte === p.nome)).map(q => q.voci.find(x => x.ponte === p.nome));
+      const conta = new Map();
+      for (const x of sue) {
+        const k = classeCopertura(x.margine);
+        conta.set(k, (conta.get(k) || 0) + 1);
+      }
+      const parti = [...CLASSI_COPERTURA, RIPETUTA].filter(k => conta.get(k)).map(k => k.nome.toLowerCase() + " " + conta.get(k));
+      li.append(sue.length ? sue.length + (sue.length === 1 ? " quadretto" : " quadretti") + ": " + parti.join(", ") + "." : "nessun quadretto" + (sceltaCopertura.periodo !== "0" ? " in questo periodo." : " ancora."));
+      if (c.dati.dal) li.append(el("small", null, "Raccolta iniziata: " + giorno(c.dati.dal) + (c.errore === "giu" ? ". Adesso non risponde: dati dell'ultima lettura." : ".")));
+    }
+    voci.push(li);
+  }
+  elencoCopertura.replaceChildren(...voci);
+}
+
+function apriCopertura() {
+  requestAnimationFrame(() => mappaCopertura.misura());
+  disegnaCopertura();
+  caricaCopertura(true).then(disegnaCopertura);
+}
+
+function scaricaCoperturaKml() {
+  const celle = quadrettiCopertura();
+  if (!celle.length) {
+    statoCopertura.textContent = "Niente da scaricare: nessun quadretto con le scelte di adesso.";
+    return;
+  }
+  const esc = s => String(s).replace(/[<>&'"]/g, c => ({"<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", "\"": "&quot;"}[c]));
+  const colore = (hex, alfa) => alfa + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);   // KML: aabbggrr
+  const n = 2 ** 17, lon = x => (x / n * 360 - 180).toFixed(6);
+  const lat = y => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI).toFixed(6);
+  const stili = [...CLASSI_COPERTURA, RIPETUTA].map(c => "<Style id=\"" + c.chiave + "\"><LineStyle><color>" +
+    colore(c.colore, "cc") + "</color><width>1</width></LineStyle><PolyStyle><color>" +
+    colore(c.colore, c === RIPETUTA ? "55" : "99") + "</color></PolyStyle></Style>").join("\n");
+  const posti = celle.map(c => {
+    const o = lon(c.x), e = lon(c.x + 1), no = lat(c.y), s = lat(c.y + 1);
+    const q = Object.assign({quanti: 1}, c);
+    return "<Placemark><name>" + esc(c.classe.nome) + "</name><description>" + esc(righeQuadretto(q).join("\n")) +
+      "</description><styleUrl>#" + c.classe.chiave + "</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>" +
+      [[o, s], [e, s], [e, no], [o, no], [o, s]].map(p => p.join(",")).join(" ") +
+      "</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>";
+  }).join("\n");
+  const titolo = "Copertura Meshtastic, " + (sceltaCopertura.ponte ? "ponte " + sceltaCopertura.ponte : "tutti i ponti");
+  const kml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document><name>" +
+    esc(titolo) + "</name>\n" + stili + "\n" + posti + "\n</Document></kml>\n";
+  const url = URL.createObjectURL(new Blob([kml], {type: "application/vnd.google-earth.kml+xml"}));
+  const a = el("a");
+  a.href = url;
+  a.download = "copertura-" + (sceltaCopertura.ponte || "tutti") + "-" + giornoNumero(new Date()) + ".kml";
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  statoCopertura.textContent = "Scaricato " + a.download + ": in ATAK si apre con Importa (anche in Google Earth).";
+}
+
+async function azzeraCopertura() {
+  const nome = sceltaCopertura.ponte;
+  if (!nome || !window.confirm("Cancello la copertura raccolta dal ponte " + nome + "? Serve dopo aver spostato " +
+                               "l'antenna o il ponte: la mappa di quel ponte ricomincia da zero.")) return;
+  try {
+    const r = await fetch("copertura/" + encodeURIComponent(nome) + ".json",
+                          {method: "POST", cache: "no-store", redirect: "manual", credentials: "same-origin",
+                           headers: {"Content-Type": "application/json", "X-Mesh2tak": "1"},
+                           body: JSON.stringify({azzera: true})});
+    if (r.type === "opaqueredirect") {
+      document.getElementById("sessione").hidden = false;
+      throw new Error("sessione scaduta: ricarica la pagina");
+    }
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok) throw new Error(d.errore || ("il ponte risponde " + r.status));
+    copertura.set(nome, {dati: d, errore: "", quando: Date.now()});
+    statoCopertura.textContent = "Copertura del ponte " + nome + " azzerata: ricomincia da adesso.";
+  } catch (e) {
+    statoCopertura.textContent = "Non azzerata: " + frase(e.message);
+  }
+  disegnaCopertura();
+}
+
 async function giro() {
   const g = aggiornaGestione();
   const ic = caricaIconeMappa();
@@ -2698,6 +3407,10 @@ async function giro() {
   disegna();
   if (iconaAperta) disegnaIconePonti();
   if (raspberryAperto) disegnaComandi();
+  if (mappaCopertura && !vistaCopertura.hidden) {
+    await caricaCopertura(false);
+    disegnaCopertura();
+  }
 }
 
 giro();
