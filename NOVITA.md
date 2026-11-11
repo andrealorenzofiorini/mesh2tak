@@ -3,6 +3,23 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.13.0
+
+- Gli aggiornamenti non cambiano più le impostazioni della radio del ponte: resta quello che si è scelto dall'app
+  Meshtastic o dalla pagina, compreso un canale secondario acceso. Il ponte non spegne più i canali secondari da
+  solo. Per rimettere la radio come la prepara l'installatore (regione, nome, ruolo, solo il canale della squadra,
+  posizione fissa) c'è "Reimposta la radio", oppure la casella "Rimetti anche la radio" quando si aggiorna.
+- "Gestisci il Raspberry" nella scheda di ogni ponte: riavvia il programma, la radio o tutto il Raspberry; legge il
+  registro (senza chiavi né password) e lo scarica; cambia le impostazioni del ponte (colore della squadra, minuti
+  sulla mappa, invio alle radio, tempo radio, pausa massima); sostituisce il certificato del TAK Server caricando il
+  pacchetto della console infra-TAK; reimposta la radio. Sotto, com'è andato ogni comando.
+- I comandi li fa il Raspberry stesso, entro pochi secondi: il server li scrive nella registrazione del ponte e lo
+  avvisa dal tunnel. Il certificato nuovo il Raspberry lo scarica con la sua chiave; il server lo cancella appena
+  installato (al più tardi dopo un giorno). Un comando arrivato mentre il Raspberry era spento scade dopo mezz'ora.
+  Se con le impostazioni nuove il ponte non riparte, il Raspberry rimette quelle di prima.
+- Gli aggiornamenti dalla pagina partono subito, non entro 2 minuti (per i ponti già alla 1.13.0: il passaggio
+  dalla 1.12.0 parte ancora entro 2 minuti).
+
 ## 1.12.0
 
 - Il ponte si chiama "Gateway": il ponte di casa diventa "Gateway CNSAS Varese" (sigla GTSA), i ponti nuovi

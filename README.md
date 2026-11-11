@@ -7,8 +7,9 @@ arrivano in ATAK e in sala operativa, e la chat e gli oggetti della sala operati
 ## Come è fatto
 
 - **Raspberry Pi** con una radio Meshtastic (via USB o una scheda LoRa sui pin): `mesh2tak.py` porta i
-  pacchetti della radio al TAK Server e ritorno. L'installatore prepara il Raspberry da zero. Il nodo del ponte
-  ("Gateway CNSAS Nome") ha solo il canale della squadra: i canali secondari si spengono (dalla 1.12.0).
+  pacchetti della radio al TAK Server e ritorno. L'installatore prepara il Raspberry da zero e la radio del ponte
+  ("Gateway CNSAS Nome") con solo il canale della squadra; dalla 1.13.0 gli aggiornamenti non toccano più la radio
+  (resta quello che si sceglie dall'app), finché non si sceglie "Reimposta la radio".
 - **Server infra-TAK**: `rete-meshtastic.sh` aggiunge la pagina della rete (dietro Authentik, solo
   amministratori) con lo stato di tutti i ponti, le radio sentite, gli avvisi per email e gli aggiornamenti.
   I Raspberry arrivano con un tunnel SSH aperto da loro: a casa non si apre nessuna porta.
@@ -77,6 +78,15 @@ tunnel (`POST /mesh2tak/icone`, accettato solo da lì); il ponte le usa negli ev
 mostrate nella pagina vengono dal catalogo di icone di infra-TAK sul server (`nodered/icon-catalog.json`): il
 codice di mesh2tak non le contiene.
 
+## Gestire il Raspberry da lontano (dalla 1.13.0)
+
+"Gestisci il Raspberry", nella scheda di ogni ponte: riavvio del programma, della radio o del Raspberry, registro
+(senza chiavi né password), impostazioni del ponte, certificato nuovo del TAK Server, radio come all'installazione.
+Il servizio della pagina accoda il comando; il passo dei lavori (root) lo scrive nella registrazione del ponte e lo
+avvisa dal tunnel (`POST /mesh2tak/controlla`); sul Raspberry `aggiorna.py` (root, timer e unità `.path`) lo fa e
+scrive l'esito, che il ponte mostra nel suo stato. Il certificato nuovo resta sul server leggibile solo dall'utente
+SSH di quel ponte, che lo scarica con il comando forzato (`certificato`) e lo fa togliere (`certificato-fatto`).
+
 ## Aggiornare
 
 Dalla 1.8.0 non serve il terminale: quando esce una release nuova la pagina della rete lo dice, con le novità.
@@ -86,8 +96,8 @@ alla versione di prima. Le novità di ogni versione sono in [NOVITA.md](NOVITA.m
 
 ## Sviluppo
 
-- `mesh2tak.py`, `scorta.py` (`sudo mesh2tak-scorta`: microSD di scorta), `aggiorna.py` (aggiornamenti dalla
-  pagina) e `installa.sh.in`: il Raspberry.
+- `mesh2tak.py`, `scorta.py` (`sudo mesh2tak-scorta`: microSD di scorta), `aggiorna.py` (aggiornamenti e comandi
+  dalla pagina) e `installa.sh.in`: il Raspberry.
 - `primo_avvio.py` e `immagine/`: l'immagine per Raspberry Pi Imager e il programma che, al primo avvio, installa
   il ponte nuovo dalla pagina della rete.
 - `server/`: script e pagina della rete per il server infra-TAK.

@@ -783,6 +783,151 @@ def test_6f_icona_scelta_dal_browser(rete):
     rete.api("POST", "/api/icona", {"radio": "!7c3a91e2", "icona": ""})
 
 
+def prepara_comandi(rete):
+    """Il lato root del Raspberry per "Gestisci il Raspberry" (1.13.0): mesh2tak-aggiorna con le sue cartelle, un
+    installatore e programmi di sistema finti; il ponte di prova legge da li' esiti e registro. Lo stesso per tutte le
+    prove: i comandi gia' fatti restano fatti."""
+    pi = rete.c / "pi-root"
+    (pi / "opt").mkdir(parents=True, exist_ok=True)
+    (pi / "opt/mesh2tak.py").write_text(f'VERSIONE = "{m.VERSIONE}"\n')
+    (pi / "opt/installatore.sh").write_text(
+        '#!/bin/bash\necho "installatore $* password=$MESH2TAK_PASSWORD host=$MESH2TAK_HOST" >> "$PROVA_LANCI"\n'
+        'cp "$1" "$PROVA_LANCI.pacchetto"\necho "  ✔ certificato \'meshtastic-cnsas\' (scade: Dec 11 12:00:00 2026 GMT)"\n')
+    (pi / "mesh2tak.conf").write_text(f"[tak]\nhost = takserver\n\n[mappa]\nsquadra = Cyan\n\n[gestione]\nattiva = si\n"
+                                      f"porta_pagina = {rete.porta_pagina}\n\n[accesso_esterno]\nattivo = si\nnome = casa\n"
+                                      f"rete = {RETE}\nchiave = {rete.chiave}\n")
+    (pi / "stub").mkdir(exist_ok=True)
+    for nome, corpo in (("systemctl", 'echo "systemctl $*" >> "$PROVA_LANCI"\nexit 0\n'),
+                        ("journalctl", 'echo "INFO mesh2tak: canale con psk=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="\n')):
+        (pi / "stub" / nome).write_text("#!/bin/bash\n" + corpo)
+        (pi / "stub" / nome).chmod(0o755)
+    amb = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+    amb.update(PATH=f"{pi / 'stub'}:{amb['PATH']}", MESH2TAK_AGGIORNA_CONF=str(pi / "mesh2tak.conf"),
+               MESH2TAK_AGGIORNA_DIR=str(pi / "opt"), MESH2TAK_AGGIORNA_STATO=str(pi / "stato"),
+               MESH2TAK_AGGIORNA_LOG=str(pi / "aggiornamento.log"), MESH2TAK_PROVA_GITHUB=rete.github.url,
+               SSL_CERT_FILE=rete.ca_caddy()[0], MESH2TAK_AGGIORNA_ATTESA="10", PROVA_LANCI=str(pi / "lanci"),
+               MESH2TAK_AGGIORNA_LOG_INST=str(pi / "installazione.log"))
+    # il ponte di prova: comandi possibili (c'e' l'unita' .path), esiti e registro di questo Raspberry
+    rete.sistema.SVEGLIA_AGGIORNA = str(pi / "opt/mesh2tak.py")
+    rete.sistema.AZIONI = str(pi / "stato/azioni.json")
+    rete.sistema.REGISTRO = rete.g.file_registro = str(pi / "stato/registro.txt")
+    return pi, amb
+
+
+def lancia_aggiorna(amb):
+    return subprocess.run([sys.executable, "-I", os.path.join(RADICE, "aggiorna.py")], env=amb, capture_output=True,
+                          text=True, timeout=180)
+
+
+def lavoro_della_pagina(rete, lavoro):
+    return next((lv for lv in rete.stato_api()["lavori"] if lv["id"] == lavoro), {})
+
+
+def test_6g_gestisci_il_raspberry_dalla_pagina(rete, pki):
+    """1.13.0: il comando dalla pagina (Authentik) va nella registrazione del ponte, il server avvisa il ponte dal
+    tunnel, mesh2tak-aggiorna lo fa; il registro torna alla pagina dal tunnel; il certificato nuovo il Raspberry lo
+    scarica con ssh vero dal comando forzato del suo utente, e sul server non resta."""
+    pi, amb = prepara_comandi(rete)
+    if os.path.exists(rete.g.file_controlla):
+        os.unlink(rete.g.file_controlla)
+    codice, r = rete.api("POST", "/api/gestisci-ponte", {"nome": "casa", "azione": "registro"})
+    assert codice == 202, r
+    assert aspetta(lambda: lavoro_della_pagina(rete, r["lavoro"]).get("esito") == "ok", 60), rete.esiti_lavora[-2:]
+    assert lavoro_della_pagina(rete, r["lavoro"])["messaggio"] == "chiesto al ponte: lo fa subito"
+    assert os.path.exists(rete.g.file_controlla), "avvisato dal tunnel"
+    stato, corpo, _ = rete.chiedi(f"{RETE}/accesso/{rete.accesso.impronta}.json", cookie=None)
+    [a] = json.loads(corpo)["azioni"]
+    assert a["id"] == r["lavoro"] and a["azione"] == "registro" and "andrea" not in corpo.decode()
+    p = lancia_aggiorna(amb)
+    assert p.returncode == 0, p.stdout + p.stderr
+    stato, corpo, _ = rete.chiedi(f"{RETE}/stato/casa.json")
+    sis = json.loads(corpo)["sistema"]
+    assert sis["comandi"] is True and sis["registro"]["byte"] > 0, sis
+    assert [(x["id"], x["azione"], x["stato"]) for x in sis["azioni"]] == [(r["lavoro"], "registro", "fatto")]
+    stato, testo, intestazioni = rete.chiedi(f"{RETE}/registro/casa.txt")
+    assert stato == 200 and b"Registro del ponte" in testo and b"psk=[tolto]" in testo, testo[:300]
+    assert intestazioni.get("Content-Type", "").startswith("text/plain") and "Access-Control-Allow-Origin" not in intestazioni
+    assert rete.chiedi(f"{RETE}/registro/casa.txt", cookie=None)[0] == 302
+    assert rete.chiedi(f"{RETE}/registro/altro.txt")[0] == 404
+    # comandi solo dalla pagina e solo quelli previsti
+    assert rete.api("POST", "/api/gestisci-ponte", {"nome": "casa", "azione": "registro"}, cookie=None)[0] == 302
+    assert rete.api("POST", "/api/gestisci-ponte", {"nome": "casa", "azione": "registro"},
+                    intestazioni={"Origin": "https://cattivo.example"})[0] == 403
+    assert rete.api("POST", "/api/gestisci-ponte", {"nome": "casa", "azione": "shell"})[0] == 400
+    # certificato nuovo: password sbagliata, il server non lo passa al Raspberry
+    p12 = base64.b64encode((pki / "meshtastic-cnsas.p12").read_bytes()).decode()
+    codice, r = rete.api("POST", "/api/certificato-ponte", {"nome": "casa", "nome_pacchetto": "meshtastic-cnsas.p12",
+                                                            "pacchetto": p12, "password": "sbagliata"})
+    assert codice == 202, r
+    assert aspetta(lambda: lavoro_della_pagina(rete, r["lavoro"]).get("esito") == "errore", 60)
+    assert "password del certificato sbagliata" in lavoro_della_pagina(rete, r["lavoro"])["messaggio"]
+    f = rete.r / "etc/mesh2tak-rete/configurazioni/casa.certificato.json"
+    assert not f.exists()
+    codice, r = rete.api("POST", "/api/certificato-ponte", {"nome": "casa", "nome_pacchetto": "meshtastic-cnsas.p12",
+                                                            "pacchetto": p12, "password": "atakatak"})
+    assert codice == 202, r
+    assert aspetta(lambda: lavoro_della_pagina(rete, r["lavoro"]).get("esito") == "ok", 60), rete.esiti_lavora[-2:]
+    assert lavoro_della_pagina(rete, r["lavoro"])["messaggio"] == ("Certificato 'meshtastic-cnsas' pronto per il ponte "
+                                                                  "casa: lo fa subito.")
+    assert pwd.getpwuid(f.stat().st_uid).pw_name == "ponte-casa" and oct(f.stat().st_mode)[-3:] == "400"
+    assert "atakatak" not in json.dumps(rete.stato_api())
+    p = lancia_aggiorna(amb)                                 # ssh vero verso sshd vero, con la chiave del ponte
+    assert p.returncode == 0, p.stdout + p.stderr
+    esiti = {x["id"]: x for x in json.loads((pi / "stato/azioni.json").read_text())["azioni"]}
+    assert esiti[r["lavoro"]]["stato"] == "fatto", esiti
+    assert esiti[r["lavoro"]]["messaggio"] == "certificato sostituito: 'meshtastic-cnsas', scade Dec 11 12:00:00 2026 GMT"
+    assert "password=atakatak host=takserver" in (pi / "lanci").read_text()
+    assert (pi / "lanci.pacchetto").read_bytes() == (pki / "meshtastic-cnsas.p12").read_bytes()
+    assert not f.exists(), "consegnato: tolto dal server"
+    assert not (pi / "stato/certificato").exists(), "e dal Raspberry"
+    assert "atakatak" not in (pi / "aggiornamento.log").read_text()
+    assert rete.accesso.stato()["collegato"], "il tunnel intanto resta aperto"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
+def test_6h_gestisci_il_raspberry_dal_browser(rete):
+    """1.13.0 nel browser, con l'unita' .path del Raspberry simulata: quando il ponte segna il file, mesh2tak-aggiorna
+    parte e fa il comando."""
+    pi, amb = prepara_comandi(rete)
+    fermo = threading.Event()
+
+    def sveglia():
+        ultimo = None
+        while not fermo.wait(0.3):
+            try:
+                t = os.stat(rete.g.file_controlla).st_mtime_ns
+            except OSError:
+                continue
+            if t != ultimo:
+                ultimo = t
+                lancia_aggiorna(amb)
+    threading.Thread(target=sveglia, daemon=True).start()
+    try:
+        foto = os.environ.get("RETE_FOTO", "")
+        senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+        p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_raspberry.js"), f"{RETE}/",
+                            foto.replace(".png", "-raspberry.png") if foto else ""], capture_output=True, text=True,
+                           timeout=300, env=senza_proxy)
+    finally:
+        fermo.set()
+    r = json.loads(p.stdout.strip().splitlines()[-1])
+    assert "errore" not in r, (r, rete.esiti_lavora[-2:])
+    assert r["errori"] == [], r["errori"]
+    assert r["titolo"] == "Raspberry del ponte casa"
+    assert r["sezioni"] == ["Riavvia", "Registro", "Impostazioni del ponte", "Certificato del TAK Server",
+                            "Radio del ponte", "Ultimi comandi"]
+    assert (r["squadra"], r["validita"], r["invio"]) == ("Cyan", "90", True)
+    assert "valido fino al" in r["certificato"]
+    assert "Registro del ponte" in r["registro"] and r["scarica"].startswith("registro-casa-")
+    assert r["statoRegistro"].startswith("Registro pronto (")
+    assert r["esitoImpostazioni"] == "fatto", r["statoImpostazioni"]
+    assert r["statoImpostazioni"] == "Impostazioni salvate: squadra = Red.", r["statoImpostazioni"]
+    assert len(r["finestre"]) == 1 and "Se non riparte, il Raspberry rimette da solo quelle di prima" in r["finestre"][0]
+    assert r["comandi"][0].startswith("Impostazioni: fatto") and r["comandi"][1].startswith("Registro: fatto")
+    assert r["chiusa"] and "Ultimo comando" in r["ultimoComando"] and "Impostazioni: fatto" in r["ultimoComando"]
+    assert "squadra = Red" in (pi / "mesh2tak.conf").read_text()
+
+
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
 def test_7_un_altro_raspberry_approvato_dal_browser(rete, tmp_path):
     altra = nuova_chiave(tmp_path, "altra")

@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-VERSIONE = "1.12.0"
+VERSIONE = "1.13.0"
 CONFIG_PREDEFINITA = "/etc/mesh2tak/mesh2tak.conf"
 
 log = logging.getLogger("mesh2tak")
@@ -1387,7 +1387,6 @@ class Ponte:
     SPAZIO_TRA_INVII_S = 3.0          # tra due trasmissioni del ponte, per lasciar ripetere la rete
     RISERVA_RADIO_S = 600.0           # il credito di tempo radio si accumula al massimo per 10 minuti
     MAX_VISTE = 300                   # radio ricordate per l'elenco della pagina della rete
-    PAUSA_CANALI_S = 1.0              # tra due canali secondari spenti (coda di 4 messaggi del nodo)
 
     def __init__(self, cfg: Config, tak: ClienteTAK, sdk: Optional[LibreriaTak]):
         self.cfg = cfg
@@ -1458,7 +1457,8 @@ class Ponte:
     # ---- collegamento ----
 
     def collega(self, iface) -> None:
-        self._spegni_secondari(iface)
+        # dalla 1.13.0 il ponte non tocca le impostazioni del suo nodo: vale quello che si sceglie dall'app o dalla
+        # pagina (anche un canale secondario acceso). Le rimette come all'installazione solo "Reimposta la radio".
         canali, ok = leggi_canali(iface, self.cfg)
         preset, salti = "LONG_FAST", 3
         try:
@@ -1489,29 +1489,6 @@ class Ponte:
         with self._lock:
             self.iface = None
             self.nodo_collegato_dal = None
-
-    def _spegni_secondari(self, iface) -> None:
-        """Dalla 1.12.0 il nodo del ponte ha solo il canale della squadra: un canale secondario acceso (per esempio
-        il pubblico rimesso dall'app) si spegne ogni volta che il ponte si collega al nodo."""
-        try:
-            nodo = iface.localNode
-            da_spegnere = secondari_da_spegnere(nodo)
-        except Exception:  # noqa  (nodo di cui non si leggono i canali: niente da fare)
-            return
-        spenti = []
-        for i in da_spegnere:
-            nome = nome_canale(nodo.channels[i])
-            try:
-                with self._lock_invio:
-                    spegni_canale(nodo, i)
-            except Exception as e:  # noqa
-                log.warning("Non riesco a spegnere il canale secondario '%s' del nodo (%s)", nome, e)
-                break
-            spenti.append(nome)
-            time.sleep(self.PAUSA_CANALI_S)     # un messaggio alla volta (vedi PAUSA_ADMIN_S)
-        if spenti:
-            log.info("Canali secondari del nodo spenti: %s (dalla 1.12.0 il ponte usa solo il canale della "
-                     "squadra)", ", ".join(spenti))
 
     def _descrivi_nodo(self) -> None:
         info = self._info(self.mio_num) if self.mio_num else {}
@@ -2451,6 +2428,11 @@ class Gestione:
         self.fornisci_stato: Optional[Callable[[], dict]] = None   # /mesh2tak/stato.json
         self.radio: Optional["GestioneRadio"] = None                # /mesh2tak/radio/... (dalla 1.10.0)
         self.icone: Optional[Callable[[Optional[bytes]], Tuple[int, dict]]] = None   # /mesh2tak/icone (1.11.0)
+        # dalla 1.13.0: comandi dalla pagina della rete (li fa mesh2tak-aggiorna, da root) e registro per la pagina
+        self.file_controlla = os.path.join(cfg.accesso_cartella_stato, "controlla-adesso")
+        self.file_registro = Sistema.REGISTRO
+        self._ultimo_controllo = 0.0
+        self._controllo_rimandato = False   # un avviso arrivato entro 5 s dal precedente: si da' dopo, non si perde
         self.chi = ""                    # chi tiene il nodo nella pausa in corso
         self._ctx_nodo = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self._ctx_nodo.check_hostname = False
@@ -2569,6 +2551,12 @@ class Gestione:
         if percorso == "/mesh2tak/icone":   # icone sulla mappa scelte dalla pagina della rete (dalla 1.11.0)
             self._servi_icone(h)
             return
+        if percorso == "/mesh2tak/controlla":   # dalla 1.13.0: c'e' un comando dalla pagina della rete
+            self._servi_controlla(h)
+            return
+        if percorso == "/mesh2tak/registro":    # dalla 1.13.0: il registro per la pagina della rete
+            self._servi_registro(h)
+            return
         if percorso.startswith("/mesh2tak/radio/"):   # radio della squadra gestite dalla pagina della rete
             try:
                 troppo = int(h.headers.get("Content-Length") or 0) > 16384
@@ -2643,6 +2631,102 @@ class Gestione:
                 stato, dati = self.icone(corpo)
         self._rispondi(h, stato, json.dumps(dati, ensure_ascii=False, separators=(",", ":")),
                        "application/json; charset=utf-8")
+
+    @staticmethod
+    def _corpo_al_massimo(h, massimo: int) -> Tuple[Optional[bytes], bool]:
+        """(corpo, troppo grande). Uno troppo grande si legge e si butta (fino a 1 MB): la risposta arriva intera."""
+        try:
+            lunghezza = int(h.headers.get("Content-Length") or 0)
+        except ValueError:
+            lunghezza = -1
+        if 0 <= lunghezza <= massimo:
+            return (h.rfile.read(lunghezza) if lunghezza else None), False
+        resta = lunghezza if 0 < lunghezza <= 1 << 20 else 0
+        while resta > 0:
+            pezzo = h.rfile.read(min(resta, 65536))
+            if not pezzo:
+                break
+            resta -= len(pezzo)
+        h.close_connection = True
+        return None, True
+
+    def _servi_controlla(self, h) -> None:
+        """Dalla 1.13.0 il server della rete, dal tunnel, avvisa che nella registrazione c'e' un comando per il
+        Raspberry: si tocca il file che sveglia mesh2tak-aggiorna (root), che lo legge e lo fa. Non porta comandi: al
+        massimo fa guardare la registrazione un po' prima dei soliti 2 minuti."""
+        _, troppo = self._corpo_al_massimo(h, 4096)
+        if troppo:
+            stato, dati = 413, {"errore": "richiesta troppo grande"}
+        elif h.command != "POST":
+            stato, dati = 405, {"errore": "solo POST"}
+        elif h.client_address[0] not in ("127.0.0.1", "::1") or h.headers.get("X-Mesh2tak") != "1":
+            stato, dati = 403, {"errore": "solo dalla pagina della rete"}
+        else:
+            # il file si tocca al massimo ogni 5 secondi (l'unita' .path di systemd non va tempestata); un avviso
+            # arrivato prima si da' allo scadere dei 5 secondi: il comando nuovo potrebbe non essere stato ancora letto
+            ora = time.time()
+            with self._lock:
+                attesa = self._ultimo_controllo + 5.0 - ora
+                if attesa <= 0:
+                    self._ultimo_controllo = ora
+                elif not self._controllo_rimandato:
+                    self._controllo_rimandato = True
+                    t = threading.Timer(attesa, self._controlla_rimandato)
+                    t.daemon = True
+                    t.start()
+            stato, dati = 200, {"esito": "chiesto"}
+            if attesa <= 0:
+                errore = self._tocca_controlla()
+                if errore:
+                    stato, dati = 500, {"errore": f"non riesco ad avvisare il Raspberry ({errore})"}
+        self._rispondi(h, stato, json.dumps(dati, ensure_ascii=False, separators=(",", ":")),
+                       "application/json; charset=utf-8")
+
+    def _tocca_controlla(self) -> Optional[str]:
+        """Sveglia mesh2tak-aggiorna (unita' .path). None se fatto, altrimenti il motivo."""
+        try:
+            with open(self.file_controlla, "w", encoding="ascii") as f:
+                f.write(f"{time.time():.0f}\n")
+            return None
+        except OSError as e:
+            return str(e.strerror or e)
+
+    def _controlla_rimandato(self) -> None:
+        with self._lock:
+            self._controllo_rimandato = False
+            self._ultimo_controllo = time.time()
+        errore = self._tocca_controlla()
+        if errore:
+            log.warning("avviso dei comandi della pagina non passato a mesh2tak-aggiorna: %s", errore)
+
+    def _servi_registro(self, h) -> None:
+        """Il registro raccolto da mesh2tak-aggiorna (senza chiavi ne' password), solo per gli amministratori della
+        pagina della rete: dal tunnel e con il nome che Authentik ha messo."""
+        _, troppo = self._corpo_al_massimo(h, 0)
+        chi = re.sub(r"[^\w.@+-]", "", pulisci(h.headers.get("X-Authentik-Username"), 40))
+        if troppo or h.command not in ("GET", "HEAD"):
+            self._rispondi(h, 405, "Solo lettura")
+            return
+        if h.client_address[0] not in ("127.0.0.1", "::1") or not chi:
+            self._rispondi(h, 403, "Il registro si legge solo dalla pagina della rete.")
+            return
+        try:
+            with open(self.file_registro, "rb") as f:
+                corpo = f.read(4 << 20)
+        except FileNotFoundError:
+            self._rispondi(h, 404, "Registro non ancora raccolto: chiedilo dalla pagina della rete.")
+            return
+        except OSError as e:
+            self._rispondi(h, 500, f"Registro non leggibile ({e.strerror or e}).")
+            return
+        h.send_response(200)
+        h.send_header("Content-Type", "text/plain; charset=utf-8")
+        h.send_header("Cache-Control", "no-store")
+        h.send_header("X-Content-Type-Options", "nosniff")
+        h.send_header("Content-Length", str(len(corpo)))
+        h.end_headers()
+        if h.command != "HEAD":
+            h.wfile.write(corpo)
 
     def _stato(self, h) -> None:
         try:
@@ -3796,9 +3880,10 @@ def nome_canale(c) -> str:
 
 
 def secondari_da_spegnere(nodo) -> List[int]:
-    """Canali secondari ancora accesi, da spegnere: dalla 1.12.0 il nodo del ponte ha solo il canale della squadra
-    (scelta di Andrea dell'11/11/2026). Tutti, se il primario e' un canale privato (la squadra); altrimenti (canale
-    della squadra messo come secondario a mano) solo quelli pubblici, per non perdere la squadra."""
+    """Canali secondari ancora accesi, da spegnere quando la radio si prepara come all'installazione (prima
+    installazione o "Reimposta la radio"; dalla 1.13.0 mai negli aggiornamenti). Tutti, se il primario e' un canale
+    privato (la squadra); altrimenti (canale della squadra messo come secondario a mano) solo quelli pubblici, per
+    non perdere la squadra."""
     canali = list(nodo.channels or [])
     if not canali:
         return []
@@ -3828,34 +3913,55 @@ def spegni_canale(nodo, indice: int) -> None:
 PAUSA_ADMIN_S = 1.0
 TENTATIVI_CONFIGURAZIONE = 3
 
+# Le parti della radio che l'installatore prepara. Dalla 1.13.0 (scelta dell'11/11/2026) le prepara tutte
+# solo la prima volta e con "Reimposta la radio": negli aggiornamenti resta quello che si e' scelto dall'app o dalla
+# pagina (l'installatore chiede solo le parti nuove, es. il canale della squadra dato con --canale-squadra).
+PARTI_NODO = ("regione", "ruolo", "nome", "canale", "secondari", "posizione")
+
+
+def leggi_parti(testo: str) -> Set[str]:
+    """--parti: "tutto", "nessuna" o un elenco separato da virgole (es. nome,secondari)."""
+    t = (testo or "").strip().lower()
+    if t in ("", "tutto", "tutte"):
+        return set(PARTI_NODO)
+    if t in ("nessuna", "niente"):
+        return set()
+    parti = {x.strip() for x in t.split(",") if x.strip()}
+    strane = parti - set(PARTI_NODO)
+    if strane:
+        raise ValueError(f"parti sconosciute: {', '.join(sorted(strane))} (si possono chiedere: {', '.join(PARTI_NODO)})")
+    return parti
+
 
 def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: str,
                        posizione: Optional[Tuple[float, float, int]], pausa: Callable[[], None],
-                       chiave: Optional[bytes] = None):
-    """(descrizione, azione) per cio' che sul nodo non e' ancora come deve essere.
+                       chiave: Optional[bytes] = None, parti: Optional[Set[str]] = None):
+    """(descrizione, azione) per cio' che sul nodo non e' ancora come deve essere, solo nelle 'parti' chieste
+    (None = tutte).
 
     Con 'chiave' il canale della squadra e' dato (es. quello di ICARO): il primario deve avere
     esattamente quel nome e quella chiave. Senza, si crea un canale con chiave nuova solo se non
-    ce n'e' gia' uno privato. Dalla 1.12.0 i canali secondari (es. il pubblico LongFast) si spengono.
+    ce n'e' gia' uno privato. Con la parte "secondari" i canali secondari (es. il pubblico LongFast) si spengono.
     """
     from meshtastic.protobuf import channel_pb2, config_pb2
     Ruolo = config_pb2.Config.DeviceConfig.Role
     Regione = config_pb2.Config.LoRaConfig.RegionCode
+    parti = set(PARTI_NODO) if parti is None else parti
     nodo = iface.localNode
     prima = _stato_nodo(iface)
     da_fare = []
-    if nodo.localConfig.lora.region != Regione.EU_868:
+    if "regione" in parti and nodo.localConfig.lora.region != Regione.EU_868:
         def _regione():
             nodo.localConfig.lora.region = Regione.EU_868
             nodo.localConfig.lora.use_preset = True
             nodo.writeConfig("lora")
         da_fare.append(("regione EU 868", _regione))
-    if ruolo and nodo.localConfig.device.role != Ruolo.Value(ruolo):
+    if "ruolo" in parti and ruolo and nodo.localConfig.device.role != Ruolo.Value(ruolo):
         def _ruolo():
             nodo.localConfig.device.role = Ruolo.Value(ruolo)
             nodo.writeConfig("device")
         da_fare.append((f"ruolo {ruolo}", _ruolo))
-    if nome and (prima["nome"] != nome or prima["nome_breve"] != nome_breve):
+    if "nome" in parti and nome and (prima["nome"] != nome or prima["nome_breve"] != nome_breve):
         da_fare.append((f"nome '{nome}' ({nome_breve})", lambda: nodo.setOwner(nome, nome_breve)))
     if chiave is not None:
         primo = nodo.channels[0]
@@ -3868,7 +3974,8 @@ def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: st
                 primo.settings.module_settings.position_precision = 32
                 nodo.writeChannel(0)
             da_fare.append((f"canale della squadra '{canale}' con la chiave data", _primario))
-    if chiave is None and not prima["privati"]:
+    crea_canale = "canale" in parti and chiave is None and not prima["privati"]
+    if crea_canale:
         def _canali():
             primo = nodo.channels[0]
             primo.role = channel_pb2.Channel.Role.PRIMARY
@@ -3877,15 +3984,16 @@ def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: st
             primo.settings.module_settings.position_precision = 32
             nodo.writeChannel(0)
         da_fare.append((f"canale privato '{canale}' con chiave nuova", _canali))
-    # solo il canale della squadra: i secondari si spengono. Se in questo giro il primario diventa la squadra
-    # (chiave data, o canale creato adesso) si spengono tutti; altrimenti vale la regola di secondari_da_spegnere
-    primo = nodo.channels[0]
-    squadra_primaria = chiave is not None or not prima["privati"] or (
-        int(primo.role) == 1 and len(bytes(primo.settings.psk)) >= 16)
-    for i, c in enumerate(nodo.channels):
-        if i > 0 and int(c.role) != 0 and (squadra_primaria or len(bytes(c.settings.psk)) < 16):
-            da_fare.append((f"canale secondario '{nome_canale(c)}' spento", lambda i=i: spegni_canale(nodo, i)))
-    if posizione:
+    if "secondari" in parti:
+        # solo il canale della squadra: i secondari si spengono. Se in questo giro il primario diventa la squadra
+        # (chiave data, o canale creato adesso) si spengono tutti; altrimenti vale la regola di secondari_da_spegnere
+        primo = nodo.channels[0]
+        squadra_primaria = chiave is not None or crea_canale or (
+            int(primo.role) == 1 and len(bytes(primo.settings.psk)) >= 16)
+        for i, c in enumerate(nodo.channels):
+            if i > 0 and int(c.role) != 0 and (squadra_primaria or len(bytes(c.settings.psk)) < 16):
+                da_fare.append((f"canale secondario '{nome_canale(c)}' spento", lambda i=i: spegni_canale(nodo, i)))
+    if posizione and "posizione" in parti:
         lat, lon, alt = posizione
         attuale = (iface.nodesByNum.get(prima["num"]) or {}).get("position") or {}
         uguale = (prima["posizione_fissa"]
@@ -3901,8 +4009,9 @@ def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: st
 def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, ruolo: str,
                    posizione: Optional[Tuple[float, float, int]] = None, file_link: Optional[str] = None,
                    attesa_riavvio_s: float = 15.0, pausa_s: float = PAUSA_ADMIN_S,
-                   chiave_canale: Optional[bytes] = None) -> int:
-    """Regione EU 868, nome, ruolo, canale privato della squadra e posizione fissa.
+                   chiave_canale: Optional[bytes] = None, parti: Optional[Set[str]] = None) -> int:
+    """Regione EU 868, nome, ruolo, canale privato della squadra, canali secondari spenti e posizione fissa: tutto
+    (parti None) o solo le parti chieste. Una radio nuova (regione non impostata) si prepara sempre tutta.
 
     Non cambia cio' che e' gia' a posto, quindi si puo' rilanciare senza danni: se un
     canale privato esiste gia', resta quello (e la sua chiave). Le modifiche partono una
@@ -3911,6 +4020,9 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
     def pausa():
         time.sleep(pausa_s)
 
+    parti = set(PARTI_NODO) if parti is None else set(parti)
+    if chiave_canale is not None:
+        parti.add("canale")                   # il canale della squadra dato si mette sempre
     print("Collegamento al nodo Meshtastic (" + descrivi_collegamento(collegamento) + ")...")
     dopo, link = None, ""
     for tentativo in range(1, TENTATIVI_CONFIGURAZIONE + 1):
@@ -3922,8 +4034,13 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
             return 1
         cambi = []
         try:
+            if tentativo == 1 and parti != set(PARTI_NODO) and _stato_nodo(iface)["regione"] == "UNSET":
+                parti = set(PARTI_NODO)
+                print("  radio nuova (regione non impostata): la preparo tutta, come alla prima installazione")
+            elif tentativo == 1 and not parti:
+                print("  impostazioni della radio lasciate come sono")
             da_fare = _modifiche_da_fare(iface, nome, nome_breve, canale, ruolo, posizione, pausa,
-                                         chiave_canale)
+                                         chiave_canale, parti)
             if not da_fare or tentativo == TENTATIVI_CONFIGURAZIONE:
                 dopo = _stato_nodo(iface)
                 link = iface.localNode.getURL(includeAll=True)
@@ -3949,7 +4066,7 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
             except Exception:  # noqa
                 pass
         if dopo is not None:
-            if tentativo == 1:
+            if tentativo == 1 and parti:
                 print("  era gia' tutto a posto")
             break
         print("  " + ("modifiche: " if tentativo == 1 else "di nuovo, perche' il nodo non le aveva prese: ")
@@ -3957,24 +4074,27 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
         time.sleep(attesa_riavvio_s)  # il nodo salva e riparte (meshtasticd: dopo 7 secondi)
 
     problemi = []
-    if dopo["regione"] != "EU_868":
+    if "regione" in parti and dopo["regione"] != "EU_868":
         problemi.append(f"regione {dopo['regione']}")
-    if ruolo and dopo["ruolo"] != ruolo:
+    if "ruolo" in parti and ruolo and dopo["ruolo"] != ruolo:
         problemi.append(f"ruolo {dopo['ruolo']}")
-    if not dopo["privati"]:
+    if "canale" in parti and not dopo["privati"]:
         problemi.append("nessun canale privato")
-    if nome and dopo["nome"] != nome:
+    if "nome" in parti and nome and dopo["nome"] != nome:
         problemi.append(f"nome '{dopo['nome']}'")
-    if posizione and not dopo["posizione_fissa"]:
+    if "posizione" in parti and posizione and not dopo["posizione_fissa"]:
         problemi.append("posizione fissa non impostata")
     canali = dopo.get("canali") or []
     if chiave_canale is not None and not (canali and canali[0][1] == canale and canali[0][2] == chiave_canale):
         problemi.append(f"canale della squadra '{canale}'")
-    if dopo["secondari"]:
+    if "secondari" in parti and dopo["secondari"]:
         problemi.append("canali secondari ancora accesi: " + ", ".join(dopo["secondari"]))
     print(f"  nodo !{dopo['num']:08x} '{dopo['nome']}' - regione {dopo['regione']}, ruolo {dopo['ruolo']}, "
           f"canale privato: {', '.join(dopo['privati']) or 'nessuno'}, "
           + (f"canali secondari: {', '.join(dopo['accesi'])}" if dopo["accesi"] else "nessun canale secondario"))
+    if not dopo["privati"] and "canale" not in parti:
+        print("  ATTENZIONE: il nodo non ha piu' il canale privato della squadra: il ponte non porta le radio al TAK "
+              "Server. Per rimetterlo: 'Reimposta la radio' sulla pagina della rete (o --reimposta-radio)")
     if file_link and dopo["privati"]:
         try:
             with open(os.open(file_link, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
@@ -3987,6 +4107,34 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
         print("ESITO configurazione=errore")
         return 1
     print("ESITO configurazione=ok")
+    return 0
+
+
+def riavvia_nodo(collegamento: str, attesa_s: float = 60.0) -> int:
+    """Riavvia la radio del ponte (dalla 1.13.0, "Riavvia la radio" della pagina della rete). Serve per la radio USB:
+    meshtasticd si riavvia con systemctl. La lancia mesh2tak-aggiorna, da root, con il ponte fermo: il nodo accetta un
+    solo collegamento alla volta."""
+    print("Collegamento al nodo Meshtastic (" + descrivi_collegamento(collegamento) + ")...")
+    try:
+        iface = _apri_con_attesa(collegamento, attesa_s)
+    except Exception as e:  # noqa
+        print("  ERRORE: " + spiega_errore_nodo(e, collegamento))
+        print("ESITO riavvio=errore")
+        return 1
+    try:
+        iface.localNode.reboot(3)
+        time.sleep(1.0)                       # il messaggio parte prima di chiudere
+    except Exception as e:  # noqa
+        print(f"  ERRORE: {type(e).__name__}: {e}")
+        print("ESITO riavvio=errore")
+        return 1
+    finally:
+        try:
+            iface.close()
+        except Exception:  # noqa
+            pass
+    print("  la radio si riavvia tra 3 secondi")
+    print("ESITO riavvio=ok")
     return 0
 
 
@@ -4033,6 +4181,14 @@ class Sistema:
     SCORTA = "/etc/mesh2tak/scorta.json"
     AGGIORNAMENTO = "/var/lib/mesh2tak-aggiorna/stato.json"           # lo scrive mesh2tak-aggiorna (root)
     TIMER_AGGIORNA = "/etc/systemd/system/mesh2tak-aggiorna.timer"
+    # dalla 1.13.0: esiti dei comandi della pagina della rete e registro per la pagina (li scrive mesh2tak-aggiorna);
+    # l'unita' .path dice che il Raspberry li fa (installatore 1.13.0 o successivo)
+    AZIONI = "/var/lib/mesh2tak-aggiorna/azioni.json"
+    REGISTRO = "/var/lib/mesh2tak-aggiorna/registro.txt"
+    SVEGLIA_AGGIORNA = "/etc/systemd/system/mesh2tak-aggiorna.path"
+    NOMI_AZIONI = ("riavvia-programma", "riavvia-radio", "riavvia-raspberry", "registro", "impostazioni", "certificato",
+                   "reimposta-radio")
+    STATI_AZIONI = ("in_corso", "fatto", "errore", "scaduto")
     AVVISO_LOG_S = 600.0               # nel registro al massimo una riga ogni 10 minuti sulla corrente
 
     def __init__(self, radice: str = ""):
@@ -4141,9 +4297,34 @@ class Sistema:
             alimentazione = None if not self.allarme else {
                 "bassa_ora": self.bassa_ora, "ultima": round(self.bassa_ultima) if self.bassa_ultima else None,
                 "volte": self.bassa_volte, "dal": round(self.inizio)}
+        registro = None
+        try:
+            st = os.stat(self._p(self.REGISTRO))
+            registro = {"quando": round(st.st_mtime), "byte": st.st_size}
+        except OSError:
+            pass
         return {"avvio": avvio, "acceso_dal": acceso_dal, "alimentazione": alimentazione, "disco": disco,
                 "protezioni": protezioni, "scorta": scorta, "aggiornabile": os.path.exists(self._p(self.TIMER_AGGIORNA)),
-                "aggiornamento": aggiornamento}
+                "aggiornamento": aggiornamento, "comandi": os.path.exists(self._p(self.SVEGLIA_AGGIORNA)),
+                "azioni": self._azioni(), "registro": registro}
+
+    def _azioni(self) -> List[dict]:
+        """Gli ultimi comandi della pagina della rete e com'e' andata (dalla 1.13.0)."""
+        try:
+            d = json.loads(self._leggi(self.AZIONI, 1 << 20) or "null")
+        except ValueError:
+            d = None
+        elenco = d.get("azioni") if isinstance(d, dict) else None
+        risultato = []
+        for a in (elenco if isinstance(elenco, list) else [])[-12:]:
+            if (not isinstance(a, dict) or not re.match(r"^[0-9a-f]{16}$", str(a.get("id", "")))
+                    or a.get("azione") not in self.NOMI_AZIONI or a.get("stato") not in self.STATI_AZIONI):
+                continue
+            numero = (lambda x: round(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None)
+            risultato.append({"id": a["id"], "azione": a["azione"], "stato": a["stato"],
+                              "messaggio": pulisci(a.get("messaggio"), 400), "chiesto": numero(a.get("chiesto")),
+                              "quando": numero(a.get("quando"))})
+        return risultato
 
 
 _CERTIFICATI: Dict[str, Tuple[float, Optional[dict]]] = {}
@@ -4203,6 +4384,12 @@ def stato_per_la_rete(cfg: Config, ponte: Ponte, tak: ClienteTAK, gestione: Gest
         "sistema": sistema.stato() if sistema is not None else None,
         "certificato": certificato_tak(cfg.certificato),
         "icone": ponte.icone.stato(),
+        # dalla 1.13.0: quelle che si cambiano dalla pagina della rete ("Gestisci il Raspberry")
+        "impostazioni": {"squadra": cfg.squadra, "validita_min": cfg.validita_min,
+                         "aggiornamento_min": cfg.aggiornamento_min, "errore_massimo_m": cfg.errore_massimo_m,
+                         "includi_ponte": cfg.includi_ponte, "invio": cfg.invio_radio,
+                         "tempo_radio_percento": cfg.tempo_radio_percento,
+                         "pausa_massima_min": cfg.gestione_pausa_massima_min},
     })
     return s
 
@@ -4290,6 +4477,11 @@ def main(argv=None) -> int:
     nodo.add_argument("--file-link", default="", help="dove salvare il link del canale")
     nodo.add_argument("--chiave-canale-file", default="",
                       help="file con la chiave (base64) del canale della squadra: il primario prende --canale e questa chiave")
+    nodo.add_argument("--parti", default="tutto",
+                      help="cosa sistemare sulla radio: tutto, nessuna o un elenco tra " + ", ".join(PARTI_NODO)
+                           + " (dalla 1.13.0 gli aggiornamenti non cambiano la radio)")
+    nodo.add_argument("--riavvia-nodo", metavar="COLLEGAMENTO",
+                      help="riavvia la radio (quella USB: meshtasticd si riavvia con systemctl), poi esce")
     args = ap.parse_args(argv)
 
     if args.codice_controllo:
@@ -4310,9 +4502,18 @@ def main(argv=None) -> int:
     if args.verifica_librerie:
         return 0 if verifica_librerie() else 1
 
+    if args.riavvia_nodo:
+        return riavvia_nodo(args.riavvia_nodo)
+
     if args.configura_nodo:
         if len(args.canale.encode("utf-8")) > 11:
             print("ERRORE: il nome del canale puo' avere al massimo 11 caratteri")
+            return 2
+        try:
+            parti = leggi_parti(args.parti)
+        except ValueError as e:
+            print(f"ERRORE: {e}")
+            print("ESITO configurazione=errore")
             return 2
         posizione = None
         if args.posizione.strip():
@@ -4331,7 +4532,7 @@ def main(argv=None) -> int:
                 return 2
         return configura_nodo(args.configura_nodo, args.nome.strip(), args.nome_breve.strip()[:4],
                               args.canale.strip(), args.ruolo.strip().upper(), posizione,
-                              args.file_link or None, chiave_canale=chiave)
+                              args.file_link or None, chiave_canale=chiave, parti=parti)
 
     try:
         cfg = carica_config(args.config)

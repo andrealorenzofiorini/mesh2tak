@@ -25,6 +25,7 @@ pkill -f 'http.server 18099'
 rm -rf /opt/mesh2tak /etc/mesh2tak /usr/local/bin/mesh2tak-* /var/log/mesh2tak-installazione.log \
   /root/canale-meshtastic.txt "$STUB" "$FINTO" /tmp/pi-eventi.jsonl /var/lib/mesh2tak-aggiorna \
   /etc/systemd/system/mesh2tak-aggiorna.service /etc/systemd/system/mesh2tak-aggiorna.timer \
+  /etc/systemd/system/mesh2tak-aggiorna.path /var/lib/mesh2tak \
   /var/log/mesh2tak-aggiornamento.log /tmp/pi-github /tmp/pi-registrazione.json \
   /etc/systemd/system/mesh2tak-installazione.service
 id mesh2tak >/dev/null 2>&1 && userdel mesh2tak
@@ -83,6 +84,7 @@ case "$cmd" in
       ferma
       exe=$(sed -n 's/^ExecStart=//p' /etc/systemd/system/mesh2tak.service)
       u=$(sed -n 's/^User=//p' /etc/systemd/system/mesh2tak.service)
+      install -d -o "$u" -g "$u" -m 755 /var/lib/mesh2tak        # come StateDirectory=mesh2tak
       nohup runuser -u "$u" -- $exe >> /tmp/stubs-pi/servizio.log 2>&1 &
       echo $! > $pidf
     fi; exit 0 ;;
@@ -273,6 +275,8 @@ controlla "apt legge solo le origini Debian-Security (le altre di serie tolte)" 
 controlla "mai meshtasticd, mai riavvii, controllo ogni notte" 'grep -q "^Unattended-Upgrade::Package-Blacklist:: \"meshtasticd\"" <<<"$APT_FINTO" && grep -q "^Unattended-Upgrade::Automatic-Reboot \"false\"" <<<"$APT_FINTO" && grep -q "^APT::Periodic::Unattended-Upgrade \"1\"" <<<"$APT_FINTO"'
 controlla "meshtasticd bloccato alla versione installata" 'grep -q "apt-mark hold meshtasticd" "$STUB/chiamate.log" && grep -q "meshtasticd fermo alla versione 2.7.26.54e0d8d" /tmp/pi-run2.log'
 controlla "aggiornamenti dalla pagina: programma e timer ogni 2 minuti, da root" '[ -x /opt/mesh2tak/aggiorna.py ] && grep -q "^VERSIONE = \"$ORA\"" /opt/mesh2tak/aggiorna.py && grep -qx "ExecStart=/usr/bin/python3 -I /opt/mesh2tak/aggiorna.py" /etc/systemd/system/mesh2tak-aggiorna.service && grep -qx "Type=oneshot" /etc/systemd/system/mesh2tak-aggiorna.service && ! grep -q "^User=" /etc/systemd/system/mesh2tak-aggiorna.service && grep -qx "OnUnitInactiveSec=2min" /etc/systemd/system/mesh2tak-aggiorna.timer && grep -qx "WantedBy=timers.target" /etc/systemd/system/mesh2tak-aggiorna.timer && grep -q "systemctl enable --now mesh2tak-aggiorna.timer" "$STUB/chiamate.log"'
+controlla "comandi dalla pagina subito: unita' .path su /var/lib/mesh2tak/controlla-adesso (1.13.0)" 'grep -qx "PathChanged=/var/lib/mesh2tak/controlla-adesso" /etc/systemd/system/mesh2tak-aggiorna.path && grep -qx "Unit=mesh2tak-aggiorna.service" /etc/systemd/system/mesh2tak-aggiorna.path && grep -q "systemctl enable --now mesh2tak-aggiorna.timer mesh2tak-aggiorna.path" "$STUB/chiamate.log"'
+controlla "radio preparata tutta, ricordato per gli aggiornamenti (1.13.0)" '[ "$(. /etc/mesh2tak/installazione.conf; echo "$RADIO_PREPARATA:$RADIO_DA_FARE")" = "1:" ]'
 controlla "installatore tenuto da parte, solo root (serve per tornare indietro)" 'cmp -s "$INST" /opt/mesh2tak/installatore.sh && [ "$(stat -c %a:%U /opt/mesh2tak/installatore.sh)" = 700:root ] && [ "$(stat -c %a /var/lib/mesh2tak-aggiorna)" = 755 ]'
 controlla "senza accesso da internet il controllo non fa niente" '(cd /tmp && python3 -I /opt/mesh2tak/aggiorna.py) && [ ! -e /var/lib/mesh2tak-aggiorna/stato.json ]'
 controlla "comando mesh2tak-scorta" '[ -x /usr/local/bin/mesh2tak-scorta ] && /usr/local/bin/mesh2tak-scorta --help | grep -q -- "--disco" && grep -q "^VERSIONE = \"$ORA\"" /opt/mesh2tak/scorta.py && grep -q "sudo mesh2tak-scorta" /tmp/pi-run2.log'
@@ -293,7 +297,7 @@ controlla "pausa massima cambiata a mano conservata" 'grep -qx "pausa_massima_mi
 controlla "certificato della pagina non rifatto" '[ "$(sha256sum < /etc/mesh2tak/pagina.pem)" = "$CERT_PAGINA" ]'
 controlla "uscita 0" '[ $U3 = 0 ]'
 controlla "nessun riavvio" '! grep -q RIAVVIO "$STUB/chiamate.log"'
-controlla "nodo lasciato com'era" 'grep -q "era gia. tutto a posto" /tmp/pi-run3.log'
+controlla "radio lasciata com'era (1.13.0: niente messaggi al nodo)" 'grep -q "7/9  Nodo Meshtastic: impostazioni della radio lasciate come sono" /tmp/pi-run3.log && grep -q "radio com.era: quello che si e. cambiato dall.app o dalla pagina resta" /tmp/pi-run3.log && grep -q "reimposta-radio" /tmp/pi-run3.log && ! grep -q "era gia. tutto a posto" /tmp/pi-run3.log'
 controlla "stessa chiave del canale" '[ "$(cat /root/canale-meshtastic.txt)" = "$LINK1" ]'
 controlla "config.txt non toccato di nuovo" '[ "$(grep -c "dtoverlay=spi0-0cs" "$FINTO/config.txt")" = 1 ]'
 controlla "protezioni gia' a posto: systemd e registri non toccati" '! grep -q "daemon-reexec" "$STUB/chiamate.log" && ! grep -q "restart systemd-journald" "$STUB/chiamate.log" && grep -q "riavvio automatico se il Raspberry si blocca" /tmp/pi-run3.log'
@@ -317,17 +321,18 @@ canali_nodo() {  # primario CNSAS-VA con la chiave di prova; dalla 1.12.0 nessun
   python3 -c "import json,sys; c=json.load(open(sys.argv[1]))[\"canali\"]; sys.exit(0 if (c[0][\"ruolo\"], c[0][\"nome\"], c[0][\"psk\"], c[0][\"precisione\"]) == (\"PRIMARY\", \"CNSAS-VA\", sys.argv[2], 32) and all(x[\"ruolo\"] == \"DISABLED\" for x in c[1:]) else 1)" "$FINTO/nodo.json" "$CHIAVE_PROVA"
 }
 controlla "primario CNSAS-VA con la chiave data, nessun canale secondario" 'canali_nodo'
-controlla "passo 7 con il canale CNSAS-VA" 'grep -q "canale privato .CNSAS-VA." /tmp/pi-run3b.log && grep -q "canale della squadra .CNSAS-VA. con la chiave data" /tmp/pi-run3b.log && grep -q "nessun canale secondario" /tmp/pi-run3b.log'
+controlla "passo 7 con il canale CNSAS-VA, solo quello" 'grep -q "7/9  Nodo Meshtastic: solo canale della squadra; il resto della radio resta com.e." /tmp/pi-run3b.log && grep -q "canale privato: CNSAS-VA" /tmp/pi-run3b.log && grep -q "canale della squadra .CNSAS-VA. con la chiave data" /tmp/pi-run3b.log && grep -q "nessun canale secondario" /tmp/pi-run3b.log'
 controlla "chiave non lasciata in giro" '[ ! -e /etc/mesh2tak/.chiave-canale ] && ! grep -rqs "$CHIAVE_PROVA" /tmp/pi-run3b.log /etc/mesh2tak /var/log/mesh2tak-installazione.log'
-controlla "nome del canale ricordato, niente piu' secondario" 'grep -qx "CANALE_SQUADRA=CNSAS-VA" /etc/mesh2tak/installazione.conf && ! grep -q "^SECONDARIO" /etc/mesh2tak/installazione.conf && grep -q "lo imposto al passo 7, l.unico del nodo" /tmp/pi-run3b.log'
+controlla "nome del canale ricordato, niente piu' secondario" 'grep -qx "CANALE_SQUADRA=CNSAS-VA" /etc/mesh2tak/installazione.conf && ! grep -q "^SECONDARIO" /etc/mesh2tak/installazione.conf && grep -q "lo imposto al passo 7 come canale principale del nodo; gli altri canali restano come sono" /tmp/pi-run3b.log'
 controlla "QR del canale nuovo" '[ -s /root/canale-meshtastic.txt ] && [ "$(cat /root/canale-meshtastic.txt)" != "$LINK1" ] && grep -q "Canale .CNSAS-VA. per le radio della squadra" /tmp/pi-run3b.log'
 LINK2=$(cat /root/canale-meshtastic.txt)
 esegui boot2 /tmp/pi-run3c.log; U3C=$?
-controlla "rilancio senza opzione: canale della squadra lasciato com'era" '[ $U3C = 0 ] && grep -q "era gia. tutto a posto" /tmp/pi-run3c.log && [ "$(cat /root/canale-meshtastic.txt)" = "$LINK2" ]'
+controlla "rilancio senza opzione: canale della squadra lasciato com'era" '[ $U3C = 0 ] && grep -q "impostazioni della radio lasciate come sono" /tmp/pi-run3c.log && [ "$(cat /root/canale-meshtastic.txt)" = "$LINK2" ]'
 
-echo "== 3c2 ponte configurato fino alla 1.11.0 (LongFast pubblico secondario): l'aggiornamento lo spegne"
-PATH="$STUB:$PATH" systemctl stop mesh2tak
-PYTHONPATH="$MT:$SRC/pypubsub/src:$SRC/pyserial" python3 - <<'PY'
+echo "== 3c2 canale secondario acceso dall'app: vale l'interfaccia (1.13.0); spento solo reimpostando la radio"
+accendi_longfast() {  # come dall'app Meshtastic: LongFast pubblico come secondario
+  PATH="$STUB:$PATH" systemctl stop mesh2tak
+  PYTHONPATH="$MT:$SRC/pypubsub/src:$SRC/pyserial" python3 - <<'PY'
 import time
 import meshtastic.tcp_interface as t
 from meshtastic.protobuf import channel_pb2
@@ -338,12 +343,27 @@ i.localNode.writeChannel(1)
 time.sleep(1.5)
 i.close()
 PY
-controlla "nodo come dalla 1.11.0: LongFast secondario acceso" '[ "$(nodo "d[\"canali\"][1][\"ruolo\"], d[\"canali\"][1][\"psk\"]")" = "('"'"'SECONDARY'"'"', '"'"'AQ=='"'"')" ]'
+}
+longfast_acceso() { [ "$(nodo "d[\"canali\"][1][\"ruolo\"], d[\"canali\"][1][\"psk\"]")" = "('SECONDARY', 'AQ==')" ]; }
+ruolo_e_nome() { [ "$(nodo "d[\"ruolo\"], d[\"nome\"]")" = "('CLIENT_MUTE', 'Gateway CNSAS Varese')" ]; }
+accendi_longfast
+controlla "LongFast secondario acceso dall'app" 'longfast_acceso'
 esegui boot2 /tmp/pi-run3p.log --canale-pubblico=Public; U3P=$?
-controlla "--canale-pubblico ignorato, LongFast spento, squadra e chiave come prima" '[ $U3P = 0 ] && canali_nodo && grep -q "canale-pubblico ignorato" /tmp/pi-run3p.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3p.log'
+controlla "aggiornamento: LongFast lasciato acceso, --canale-pubblico ignorato" '[ $U3P = 0 ] && longfast_acceso && grep -q "canale-pubblico ignorato" /tmp/pi-run3p.log && grep -q "impostazioni della radio lasciate come sono" /tmp/pi-run3p.log && grep -q "canali secondari: LongFast" /tmp/pi-run3p.log && ! grep -q "spento" /tmp/pi-run3p.log'
+sed -i '/^RADIO_PREPARATA=/d; /^RADIO_DA_FARE=/d' /etc/mesh2tak/installazione.conf          # come la 1.12.0 e prima
+esegui boot2 /tmp/pi-run3s.log; U3S=$?
+controlla "ponte di prima della 1.13.0: i secondari si spengono una volta sola" '[ $U3S = 0 ] && canali_nodo && grep -q "7/9  Nodo Meshtastic: solo canali secondari spenti" /tmp/pi-run3s.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3s.log && grep -qx "RADIO_PREPARATA=1" /etc/mesh2tak/installazione.conf'
 controlla "QR del canale come prima (solo la squadra)" '[ "$(cat /root/canale-meshtastic.txt)" = "$LINK2" ]'
-controlla "rilancio dopo: niente da fare" 'esegui boot2 /tmp/pi-run3s.log && grep -q "era gia. tutto a posto" /tmp/pi-run3s.log && canali_nodo'
-controlla "chiave della squadra mai nei registri" '! grep -rqs "$CHIAVE_PROVA" /tmp/pi-run3p.log /tmp/pi-run3s.log /etc/mesh2tak /var/log/mesh2tak-installazione.log'
+accendi_longfast; esegui boot2 /tmp/pi-run3t.log; U3T=$?
+controlla "dopo: l'interfaccia vale di nuovo" '[ $U3T = 0 ] && longfast_acceso && grep -q "impostazioni della radio lasciate come sono" /tmp/pi-run3t.log'
+: > "$STUB/chiamate.log"
+esegui boot2 /tmp/pi-run3r.log --reimposta-radio; U3R=$?
+controlla "--reimposta-radio: solo la radio, come all'installazione" '[ $U3R = 0 ] && canali_nodo && grep -q "Radio del ponte come all.installazione" /tmp/pi-run3r.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3r.log && ! grep -q -e "1/9" -e "6/9" -e "8/9" /tmp/pi-run3r.log && ruolo_e_nome'
+controlla "--reimposta-radio: il ponte si ferma e riparte" 'grep -q "systemctl stop mesh2tak" "$STUB/chiamate.log" && grep -q "systemctl start mesh2tak" "$STUB/chiamate.log" && grep -qx "ok [0-9.]*" /etc/mesh2tak/esito-installazione'
+accendi_longfast
+(export MESH2TAK_REIMPOSTA_RADIO=1; esegui boot2 /tmp/pi-run3u.log); U3U=$?
+controlla "aggiornamento con MESH2TAK_REIMPOSTA_RADIO=1: radio come all'installazione" '[ $U3U = 0 ] && canali_nodo && grep -q "7/9  Nodo Meshtastic: regione EU 868, nome, ruolo CLIENT_MUTE, solo il canale privato" /tmp/pi-run3u.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3u.log'
+controlla "chiave della squadra mai nei registri" '! grep -rqs "$CHIAVE_PROVA" /tmp/pi-run3p.log /tmp/pi-run3s.log /tmp/pi-run3t.log /tmp/pi-run3r.log /tmp/pi-run3u.log /etc/mesh2tak /var/log/mesh2tak-installazione.log'
 
 echo "== 3d accesso da internet (pagina della rete Meshtastic sul server)"
 : > "$STUB/chiamate.log"
@@ -442,12 +462,55 @@ aggiorna_dalla_pagina /tmp/pi-agg4.log; UA4=$?
 controlla "versione che non riparte: rimessa quella di prima, da sola" '[ $UA4 = 1 ] && [ "$(stato_aggiornamento "d[\"stato\"], d[\"messaggio\"]")" = "('"'ripristinato', 'con la $ROTTA il ponte non riparte; rimessa la $NUOVA'"')" ] && grep -q "^VERSIONE = \"$NUOVA\"" /opt/mesh2tak/mesh2tak.py'
 controlla "dopo il ritorno il ponte risponde di nuovo" '[ "$(pagina_del_ponte "d[\"versione\"], d[\"sistema\"][\"aggiornamento\"][\"stato\"]")" = "('"'$NUOVA', 'ripristinato'"')" ]'
 controlla "nessun errore o traceback nei controlli" '! grep -q -e Traceback /tmp/pi-agg0.log /tmp/pi-agg1.log /tmp/pi-agg2.log /tmp/pi-agg3.log /tmp/pi-agg4.log /var/log/mesh2tak-aggiornamento.log'
+
+echo "== 3d4 comandi dalla pagina della rete (Gestisci il Raspberry, 1.13.0): li fa mesh2tak-aggiorna, da root"
+ADESSO=$(date +%s)
+cat > /tmp/pi-registrazione.json <<FINE_REGISTRAZIONE
+{"formato": 1, "nome": "casa", "azioni": [
+ {"id": "00000000000000a1", "azione": "impostazioni", "chiesto": $ADESSO, "valori": {"squadra": "Red", "validita_min": 120, "invio": false}},
+ {"id": "00000000000000a2", "azione": "registro", "chiesto": $ADESSO},
+ {"id": "00000000000000a3", "azione": "reimposta-radio", "chiesto": $ADESSO},
+ {"id": "00000000000000a4", "azione": "riavvia-programma", "chiesto": $ADESSO},
+ {"id": "00000000000000a5", "azione": "riavvia-programma", "chiesto": $((ADESSO - 7200))}]}
+FINE_REGISTRAZIONE
+accendi_longfast                     # dall'app; ferma anche il ponte, che i comandi rimettono in moto
+: > "$STUB/chiamate.log"
+aggiorna_dalla_pagina /tmp/pi-agg5.log; UA5=$?
+esito_comando() { python3 -c "import json,sys; d={a['id']: a for a in json.load(open('/var/lib/mesh2tak-aggiorna/azioni.json'))['azioni']}; print(d[sys.argv[1]]['stato'])" "$1"; }
+controlla "impostazioni dalla pagina: salvate, commenti tenuti, ponte ripartito" '[ $UA5 = 0 ] && [ "$(esito_comando 00000000000000a1)" = fatto ] && grep -qx "squadra = Red" /etc/mesh2tak/mesh2tak.conf && grep -qx "validita_min = 120" /etc/mesh2tak/mesh2tak.conf && grep -qx "invio = no" /etc/mesh2tak/mesh2tak.conf && grep -q "^# colore squadra TAK" /etc/mesh2tak/mesh2tak.conf && [ -s /etc/mesh2tak/mesh2tak.conf.prima-della-pagina ]'
+controlla "registro per la pagina: lo leggono solo root e il ponte, senza la chiave del canale" '[ "$(esito_comando 00000000000000a2)" = fatto ] && [ "$(stat -c %a:%U:%G /var/lib/mesh2tak-aggiorna/registro.txt)" = 640:root:mesh2tak ] && grep -q "===== Programma del ponte (mesh2tak)" /var/lib/mesh2tak-aggiorna/registro.txt && grep -q "sx1262 init success" /var/lib/mesh2tak-aggiorna/registro.txt && ! grep -q "$CHIAVE_PROVA" /var/lib/mesh2tak-aggiorna/registro.txt'
+controlla "radio reimpostata dalla pagina: LongFast spento" '[ "$(esito_comando 00000000000000a3)" = fatto ] && canali_nodo && grep -q "lancio /opt/mesh2tak/installatore.sh --reimposta-radio" /var/log/mesh2tak-aggiornamento.log'
+controlla "programma riavviato dalla pagina; il comando vecchio scade" '[ "$(esito_comando 00000000000000a4)" = fatto ] && [ "$(esito_comando 00000000000000a5)" = scaduto ]'
+controlla "la pagina del ponte mostra comandi, impostazioni e registro" '[ "$(pagina_del_ponte "d[\"sistema\"][\"comandi\"] and sorted(a[\"stato\"] for a in d[\"sistema\"][\"azioni\"]) == [\"fatto\"] * 4 + [\"scaduto\"] and d[\"impostazioni\"][\"squadra\"] == \"Red\" and d[\"impostazioni\"][\"invio\"] is False and d[\"sistema\"][\"registro\"][\"byte\"] > 0")" = True ]'
+controlla "dal tunnel: avviso dei comandi e registro solo per gli amministratori" 'python3 -c "
+import os, ssl, urllib.error, urllib.request
+c = ssl._create_unverified_context()
+def chiedi(percorso, dati=None, **testate):
+    r = urllib.request.Request(\"https://127.0.0.1:9443\" + percorso, data=dati, headers=testate,
+                               method=\"POST\" if dati is not None else \"GET\")
+    try:
+        with urllib.request.urlopen(r, context=c, timeout=10) as x:
+            return x.status, x.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+assert chiedi(\"/mesh2tak/controlla\", b\"{}\")[0] == 403
+assert chiedi(\"/mesh2tak/controlla\", b\"{}\", **{\"X-Mesh2tak\": \"1\"})[0] == 200
+assert os.path.exists(\"/var/lib/mesh2tak/controlla-adesso\")
+assert chiedi(\"/mesh2tak/registro\")[0] == 403
+s, t = chiedi(\"/mesh2tak/registro\", **{\"X-Authentik-Username\": \"andrea\"})
+assert s == 200 and b\"Registro del ponte\" in t
+"'
+: > "$STUB/chiamate.log"
+aggiorna_dalla_pagina /tmp/pi-agg6.log
+controlla "comandi gia' fatti: non si rifanno" '! grep -q "systemctl restart mesh2tak" "$STUB/chiamate.log" && [ "$(grep -c "=== comando dalla pagina" /var/log/mesh2tak-aggiornamento.log)" = 4 ]'
+controlla "nessun errore o traceback nei comandi" '! grep -q -e Traceback /tmp/pi-agg5.log /tmp/pi-agg6.log /var/log/mesh2tak-aggiornamento.log'
 pkill -f 'http.server 18099'; rm -f /tmp/pi-registrazione.json
 
 (cd /tmp && PATH="$STUB:$PATH" MESH2TAK_SALTA_SISTEMA=1 MESH2TAK_SALTA_PIP=1 MESH2TAK_BOOT_ID=boot2 \
   MESH2TAK_CONFIG_TXT="$FINTO/config.txt" MESH2TAK_MESHTASTICD_DIR="$FINTO/meshtasticd" \
   bash "$INST" --accesso-esterno=no </dev/null > /tmp/pi-run3f.log 2>&1); U3F=$?
 controlla "--accesso-esterno=no lo spegne e toglie la chiave" '[ $U3F = 0 ] && [ ! -e /etc/mesh2tak/accesso ] && [ ! -e /usr/local/bin/mesh2tak-accesso ] && ! grep -q "accesso_esterno" /etc/mesh2tak/mesh2tak.conf && grep -q "Togli dalla rete. sotto casa" /tmp/pi-run3f.log'
+controlla "le impostazioni cambiate dalla pagina restano dopo un'installazione" 'grep -qx "squadra = Red" /etc/mesh2tak/mesh2tak.conf && grep -qx "validita_min = 120" /etc/mesh2tak/mesh2tak.conf'
 pkill -f 'hub_finto[.]py'
 controlla "nessun errore o traceback" '! grep -q -e "✘" -e Traceback /tmp/pi-run3d.log /tmp/pi-run3e.log /tmp/pi-run3f.log'
 
@@ -471,7 +534,7 @@ echo "== rimozione"
 controlla "protezioni tolte, meshtasticd sbloccato, mesh2tak-scorta tolto" '[ ! -e "$FINTO/systemd/system.conf.d/mesh2tak-watchdog.conf" ] && [ ! -e "$FINTO/systemd/journald.conf.d/mesh2tak.conf" ] && [ ! -e "$FINTO/apt.conf.d/52mesh2tak-aggiornamenti" ] && [ -e "$FINTO/apt.conf.d/50unattended-upgrades" ] && grep -q "apt-mark unhold meshtasticd" "$STUB/chiamate.log" && grep -q "systemctl daemon-reexec" "$STUB/chiamate.log" && [ ! -e /usr/local/bin/mesh2tak-scorta ] && grep -q "tolte anche le protezioni del Raspberry" /tmp/pi-rim.log'
 controlla "meshtasticd come prima: porte normali, niente filtro, niente annuncio" '[ ! -e /etc/systemd/system/meshtasticd.service.d/mesh2tak-solo-locale.conf ] && [ ! -e "$FINTO/meshtasticd/config.d/mesh2tak.yaml" ] && grep -qx "  Port: 9443" "$FINTO/meshtasticd/config.d/cnsas-web.yaml" && [ ! -e /etc/avahi/services/mesh2tak-meshtastic.service ]'
 controlla "file del ponte rimossi" '[ ! -e /opt/mesh2tak ] && [ ! -e /etc/mesh2tak ] && [ ! -e /usr/local/bin/mesh2tak-canale ] && [ ! -e /etc/systemd/system/mesh2tak-installazione.service ] && grep -q "systemctl disable --now mesh2tak-installazione.service" "$STUB/chiamate.log"'
-controlla "aggiornamenti dalla pagina tolti" '[ ! -e /etc/systemd/system/mesh2tak-aggiorna.timer ] && [ ! -e /etc/systemd/system/mesh2tak-aggiorna.service ] && [ ! -e /var/lib/mesh2tak-aggiorna ] && grep -q "systemctl disable --now mesh2tak-aggiorna.timer" "$STUB/chiamate.log"'
+controlla "aggiornamenti e comandi dalla pagina tolti" '[ ! -e /etc/systemd/system/mesh2tak-aggiorna.timer ] && [ ! -e /etc/systemd/system/mesh2tak-aggiorna.service ] && [ ! -e /etc/systemd/system/mesh2tak-aggiorna.path ] && [ ! -e /var/lib/mesh2tak-aggiorna ] && grep -q "systemctl disable --now mesh2tak-aggiorna.timer mesh2tak-aggiorna.path" "$STUB/chiamate.log"'
 controlla "configurazione meshtasticd lasciata" '[ -f "$FINTO/meshtasticd/config.d/lora-waveshare-sxxx.yaml" ]'
 
 echo "== radio Meshtastic via USB (Raspberry appena scritto, nessuna scheda innestata)"

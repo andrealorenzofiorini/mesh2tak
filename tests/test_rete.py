@@ -468,18 +468,24 @@ def test_caddy_richieste_pubbliche_e_azioni_dietro_authentik(server):
     i_richiesta, i_auth, i_api = (pagina.index("handle /accesso/richiesta {"), pagina.index("forward_auth"),
                                   pagina.index("handle /api/* {"))
     assert i_richiesta < i_auth < i_api        # la richiesta dei Raspberry e' pubblica, le azioni no
-    # dalla 1.10.0: certificato dei ponti nuovi (piu' grande) e radio gestite attraverso i ponti, solo dopo Authentik
-    i_impostazioni, i_radio = pagina.index("handle /api/impostazioni-nuovi {"), pagina.index("handle_path /radio/casa/* {")
+    # dalla 1.10.0: certificato dei ponti nuovi (piu' grande) e radio gestite attraverso i ponti, solo dopo Authentik;
+    # dalla 1.13.0 anche il certificato nuovo di un ponte e il registro raccolto dal Raspberry
+    i_impostazioni, i_radio = pagina.index("handle @certificati {"), pagina.index("handle_path /radio/casa/* {")
+    assert "@certificati path /api/impostazioni-nuovi /api/certificato-ponte" in pagina
     assert i_auth < i_impostazioni < i_api and i_auth < i_radio
     assert pagina.index("handle /radio/* {") > i_radio            # le radio di un ponte che non c'e': 404
     assert pagina.count("reverse_proxy 127.0.0.1:19400 {") == 3 and pagina.count("max_size 16KB") == 3
     assert pagina.count("max_size 400KB") == 1
     radio = pagina[i_radio:].split("\n\t\t}\n", 1)[0]
     assert "rewrite * /mesh2tak/radio{uri}" in radio and "reverse_proxy https://127.0.0.1:19443 {" in radio
+    i_registro = pagina.index("handle /registro/casa.txt {")
+    registro = pagina[i_registro:].split("\n\t\t}\n", 1)[0]
+    assert i_auth < i_registro < pagina.index("handle /registro/* {")
+    assert "rewrite * /mesh2tak/registro" in registro and "reverse_proxy https://127.0.0.1:19443 {" in registro
     # nessun cookie del browser (sessione di Authentik) arriva al servizio o ai Raspberry
     for blocco in re.findall(r"reverse_proxy (?:https://)?127\.0\.0\.1:\d+ \{(.*?)\n\t\t\t?\}", rete, re.S):
         assert "header_up -Cookie" in blocco and "header_up -Authorization" in blocco, blocco
-    assert rete.count("header_up -Cookie") == 6
+    assert rete.count("header_up -Cookie") == 7
 
 
 def lavoro_in_coda(s, **dati):

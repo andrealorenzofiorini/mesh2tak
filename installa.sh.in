@@ -17,8 +17,11 @@
 #            rak = scheda RAK6421 sui pin con la radio RAK13300 nello slot 1)
 #  Opzione: --canale-squadra  chiede nome e chiave del canale della squadra gia' esistente (es. quello
 #           di ICARO) e lo mette sul nodo al posto di quello creato dall'installatore
-#  Dalla 1.12.0 il nodo del ponte ha solo il canale della squadra: i canali secondari (es. il pubblico
-#           LongFast) si spengono; --canale-pubblico non serve piu' e si ignora
+#  La prima volta la radio si prepara tutta: regione EU 868, nome, ruolo, solo il canale della squadra (i canali
+#           secondari, es. il pubblico LongFast, si spengono) e posizione fissa. Dalla 1.13.0 gli aggiornamenti
+#           non cambiano le impostazioni della radio: resta quello che si e' scelto dall'app o dalla pagina.
+#  Opzione: --reimposta-radio  rimette solo la radio come la prepara l'installatore (lo fa anche "Reimposta la
+#           radio" sulla pagina della rete); MESH2TAK_REIMPOSTA_RADIO=1 la rimette durante un aggiornamento
 #  Opzione: --accesso-esterno  gestione del nodo e stato del ponte anche da internet, dalla pagina della
 #           rete Meshtastic sul server: il ponte chiede da solo di entrare, alla fine l'installatore mostra
 #           il codice da confermare su quella pagina; --accesso-esterno=no lo spegne
@@ -71,6 +74,7 @@ AIUTO_ACCESSO=/usr/local/bin/mesh2tak-accesso
 AIUTO_SCORTA=/usr/local/bin/mesh2tak-scorta
 UNITA_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.service
 TIMER_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.timer
+SVEGLIA_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.path   # dalla 1.13.0: comandi dalla pagina subito, non dopo 2 minuti
 STATO_AGGIORNA=/var/lib/mesh2tak-aggiorna
 SYSTEMD_DIR="${MESH2TAK_SYSTEMD_DIR:-/etc/systemd}"
 APT_CONF_DIR="${MESH2TAK_APT_CONF_DIR:-/etc/apt/apt.conf.d}"
@@ -131,11 +135,12 @@ scrivi_se_cambia() {  # $1 = file, contenuto da stdin; esito 0 se il file e' cam
 
 # ---------------------------------------------------------------- argomenti
 PACCHETTO=""; SCHEDA="${MESH2TAK_SCHEDA:-}"; RIMUOVI=0; AGGIORNA_MESHTASTICD=0; CHIEDI_CANALE=0; CHIEDI_ACCESSO=0; NOME_ACCESSO_DATO=""
-CANALE_PUBBLICO_DATO=""
+CANALE_PUBBLICO_DATO=""; SOLO_RADIO=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --rimuovi) RIMUOVI=1 ;;
     --aggiorna-meshtasticd) AGGIORNA_MESHTASTICD=1 ;;
+    --reimposta-radio) SOLO_RADIO=1 ;;
     --canale-squadra) CHIEDI_CANALE=1 ;;
     --canale-pubblico) CANALE_PUBBLICO_DATO=longfast ;;
     --canale-pubblico=*) CANALE_PUBBLICO_DATO="${1#--canale-pubblico=}"; CANALE_PUBBLICO_DATO="${CANALE_PUBBLICO_DATO:-longfast}" ;;
@@ -179,8 +184,8 @@ if [ "$RIMUOVI" = 1 ]; then
   if [ -f "$WATCHDOG_CONF" ]; then rm -f "$WATCHDOG_CONF"; systemctl daemon-reexec >/dev/null 2>&1 || true; fi
   if [ -f "$REGISTRI_CONF" ]; then rm -f "$REGISTRI_CONF"; systemctl restart systemd-journald >/dev/null 2>&1 || true; fi
   rm -f "$AGGIORNAMENTI_CONF"
-  systemctl disable --now mesh2tak-aggiorna.timer >/dev/null 2>&1 || true
-  rm -f "$UNITA_AGGIORNA" "$TIMER_AGGIORNA"; rm -rf "$STATO_AGGIORNA"
+  systemctl disable --now mesh2tak-aggiorna.timer mesh2tak-aggiorna.path >/dev/null 2>&1 || true
+  rm -f "$UNITA_AGGIORNA" "$TIMER_AGGIORNA" "$SVEGLIA_AGGIORNA"; rm -rf "$STATO_AGGIORNA"
   systemctl daemon-reload >/dev/null 2>&1 || true
   if installato meshtasticd; then apt-mark unhold meshtasticd >/dev/null 2>&1 || true; fi
   ok "tolte anche le protezioni del Raspberry (riavvio automatico, registri, aggiornamenti automatici)"
@@ -234,15 +239,22 @@ if [ -n "${MESH2TAK_DOPO_RIAVVIO:-}" ]; then
   printf '\n=== %s dopo il riavvio l'"'"'installazione riprende da sola\n' "$(date '+%F %T')"
 fi
 if [ -z "${MESH2TAK_STACCATO:-}" ] && [ -f "$IN_CORSO" ] && kill -0 "$(cat "$IN_CORSO" 2>/dev/null)" 2>/dev/null; then
+  [ "$SOLO_RADIO" = 0 ] || fallisci "C'e' un'installazione in corso: la radio si reimposta dopo, quando e' finita."
   printf "%sL'installazione sta gia' lavorando%s (era partita prima che la connessione cadesse). Ecco a che punto e':\n" "$B" "$N"
   tail -n 40 --pid="$(cat "$IN_CORSO")" -f "$SCHERMO" 2>/dev/null || true
   exit 0
 fi
 [ -n "${MESH2TAK_STACCATO:-}" ] || printf '%sPonte Meshtastic <-> TAK Server%s (versione %s)\n' "$B" "$N" "$VERSIONE"
 touch "$LOG"; chmod 600 "$LOG"
-echo "=== $(date '+%F %T') installazione mesh2tak $VERSIONE" >>"$LOG"
+if [ "$SOLO_RADIO" = 1 ]; then
+  # solo la radio: l'esito dell'installazione (per il primo avvio dei ponti nuovi) resta quello di prima
+  echo "=== $(date '+%F %T') radio reimpostata (mesh2tak $VERSIONE)" >>"$LOG"
+  segna_esito() { :; }
+else
+  echo "=== $(date '+%F %T') installazione mesh2tak $VERSIONE" >>"$LOG"
+fi
 segna_esito in_corso
-if [ -z "${MESH2TAK_STACCATO:-}" ] && [ -f "$UNITA_RIPRESA" ]; then
+if [ "$SOLO_RADIO" = 0 ] && [ -z "${MESH2TAK_STACCATO:-}" ] && [ -f "$UNITA_RIPRESA" ]; then
   # la ripresa automatica dopo il riavvio non e' partita (o non ancora): la fa questa esecuzione
   systemctl disable --now mesh2tak-installazione.service >/dev/null 2>&1 || true
   info "(dopo il riavvio l'installazione non era ancora ripartita da sola: continuo io)"
@@ -271,6 +283,9 @@ trap alla_fine EXIT
 HOST=""; PORTA=8089; CA_RIGA=""; POSIZIONE=""; SCHEDA_SALVATA=""; CERTIFICATO_OK=0; CANALE_SQUADRA=""
 SECONDARIO=""; SECONDARIO_DATO=0; NOMI_NUOVI=0       # SECONDARIO*: fino alla 1.11.0, letti e non piu' usati
 ACCESSO_NOME=""; ACCESSO_RETE=""
+# dalla 1.13.0: RADIO_PREPARATA=1 dopo che la radio e' stata preparata tutta una volta; RADIO_DA_FARE = parti da
+# sistemare una volta sola al prossimo passo 7 (es. il nome nuovo della 1.12.0), anche se l'installazione si interrompe
+RADIO_PREPARATA=""; RADIO_DA_FARE=""
 [ -f "$STATO" ] || NOME_NODO_AUTOMATICO=1           # Raspberry nuovo: il nodo prendera' il nome del ponte
 # shellcheck disable=SC1090
 [ -f "$STATO" ] && . "$STATO"
@@ -307,17 +322,78 @@ salva_stato() {
       "$HOST" "$PORTA" "$CA_RIGA" "$POSIZIONE" "$SCHEDA" "$CERTIFICATO_OK" "$CANALE_SQUADRA"
     printf 'ACCESSO_NOME=%q\nACCESSO_RETE=%q\n' "$ACCESSO_NOME" "$ACCESSO_RETE"
     printf 'NOME_NODO=%q\nNOME_BREVE=%q\nNOME_NODO_AUTOMATICO=%q\n' "$NOME_NODO" "$NOME_BREVE" "$NOME_NODO_AUTOMATICO"
+    printf 'RADIO_PREPARATA=%q\nRADIO_DA_FARE=%q\n' "$RADIO_PREPARATA" "$RADIO_DA_FARE"
   } > "$STATO"
   chmod 600 "$STATO"
 }
-# dalla 1.12.0 (scelta di Andrea dell'11/11/2026) i ponti si chiamano "Gateway": il ponte di casa "Gateway CNSAS
+aggiungi_parte() {  # $1 = elenco di parti della radio separate da virgole, $2 = parte da aggiungere
+  case ",$1," in *",$2,"*) printf '%s' "$1" ;; *) printf '%s' "${1:+$1,}$2" ;; esac
+}
+CAMBIO_STATO=0
+# dalla 1.12.0 (scelta dell'11/11/2026) i ponti si chiamano "Gateway": il ponte di casa "Gateway CNSAS
 # Varese" (GTSA), i ponti nuovi "Gateway CNSAS Nome" (G e tre lettere). Si cambiano solo i nomi messi dall'installatore.
 if [ "$NOME_NODO" = "Ponte CNSAS Varese" ] && [ "$NOME_BREVE" = PONT ]; then
   NOME_NODO="Gateway CNSAS Varese"; NOME_BREVE="GTSA"; NOMI_NUOVI=1
 elif [ "$NOME_NODO_AUTOMATICO" = 1 ] && [ -n "$ACCESSO_NOME" ] && [ "${NOME_NODO#Ponte CNSAS }" != "$NOME_NODO" ]; then
   nomi_del_nodo "$ACCESSO_NOME"; NOMI_NUOVI=1
 fi
-[ "$NOMI_NUOVI" = 1 ] && [ -f "$STATO" ] && salva_stato
+# dalla 1.13.0 (scelta dell'11/11/2026) gli aggiornamenti non cambiano le impostazioni della radio: vale
+# quello che si e' scelto dall'app o dalla pagina. La radio si prepara tutta la prima volta, con una scheda diversa,
+# con "Reimposta la radio" (--reimposta-radio, MESH2TAK_REIMPOSTA_RADIO=1) o se la radio e' nuova (regione da impostare).
+if [ -z "$RADIO_PREPARATA" ]; then
+  if [ -f "$CONF" ]; then
+    # installato prima della 1.13.0: la radio era gia' pronta. Una volta sola si finisce il passaggio alla 1.12.0
+    # (niente canali secondari: chi arriva dalla 1.12.0 li ha gia' spenti); poi vale quello che si sceglie dall'app
+    RADIO_PREPARATA=1; RADIO_DA_FARE=$(aggiungi_parte "$RADIO_DA_FARE" secondari)
+  else
+    RADIO_PREPARATA=0
+  fi
+  CAMBIO_STATO=1
+fi
+if [ "$NOMI_NUOVI" = 1 ]; then RADIO_DA_FARE=$(aggiungi_parte "$RADIO_DA_FARE" nome); CAMBIO_STATO=1; fi
+if [ -n "$SCHEDA_SALVATA" ] && [ "$SCHEDA" != "$SCHEDA_SALVATA" ] && [ "$RADIO_PREPARATA" = 1 ]; then
+  RADIO_PREPARATA=0; CAMBIO_STATO=1          # radio diversa: si prepara tutta
+fi
+if [ -n "${MESH2TAK_REIMPOSTA_RADIO:-}" ] && [ "$RADIO_PREPARATA" = 1 ]; then
+  RADIO_PREPARATA=0; CAMBIO_STATO=1          # chiesto con l'aggiornamento dalla pagina della rete
+fi
+[ "$CAMBIO_STATO" = 1 ] && [ -f "$STATO" ] && salva_stato
+
+COLLEGAMENTO=""
+configura_radio() {  # $1 = parti della radio da sistemare: tutto, nessuna o un elenco (vedi mesh2tak.py --parti)
+  local opz=()
+  [ -s "$CHIAVE_CANALE" ] && opz+=(--chiave-canale-file "$CHIAVE_CANALE")
+  NODO=$("$VENV/bin/python" "$DIR/mesh2tak.py" --configura-nodo "$COLLEGAMENTO" --parti "$1" --nome "$NOME_NODO" \
+    --nome-breve "$NOME_BREVE" --canale "$CANALE" --ruolo "$RUOLO" --posizione "$POSIZIONE" \
+    --file-link "$FILE_LINK" "${opz[@]}" 2>&1 || true)
+  printf '%s\n' "$NODO" | grep -v -e '^ESITO' -e '^LINK ' | sed 's/^/    /'
+  printf '%s\n' "$NODO" | grep -q '^ESITO configurazione=ok' || fallisci "Configurazione del nodo non riuscita (vedi sopra)."
+  rm -f "$CHIAVE_CANALE"   # la chiave ora e' sul nodo (e nel link del canale, solo root)
+  RADIO_PREPARATA=1; RADIO_DA_FARE=""
+  salva_stato
+}
+
+# ---------------------------------------------------------------- solo la radio (dalla 1.13.0)
+if [ "$SOLO_RADIO" = 1 ]; then
+  passo "Radio del ponte come all'installazione"
+  [ -f "$STATO" ] && [ -f "$CONF" ] && [ -x "$VENV/bin/python" ] && [ -f "$DIR/mesh2tak.py" ] \
+    || fallisci "Il ponte non e' ancora installato: lancia l'installatore senza --reimposta-radio."
+  grep -q "^VERSIONE = \"$VERSIONE\"" "$DIR/mesh2tak.py" \
+    || fallisci "Il ponte ha un'altra versione di mesh2tak: prima aggiornalo con questo installatore (senza --reimposta-radio)."
+  COLLEGAMENTO=$(sed -n 's/^[[:space:]]*collegamento[[:space:]]*=[[:space:]]*\([^#;]*\).*/\1/p' "$CONF" | head -n1 | sed 's/[[:space:]]*$//')
+  [ -n "$COLLEGAMENTO" ] || fallisci "Nella configurazione del ponte manca il collegamento alla radio: rilancia l'installatore."
+  info "regione EU 868, nome '$NOME_NODO' ($NOME_BREVE), ruolo $RUOLO, solo il canale privato '$CANALE'" \
+       "(la sua chiave resta)${POSIZIONE:+, posizione fissa $POSIZIONE}"
+  info "il ponte si ferma per un minuto e riparte da solo"
+  systemctl stop mesh2tak >/dev/null 2>&1 || true
+  RIPARTI_PONTE=1
+  trap 'alla_fine; [ "${RIPARTI_PONTE:-0}" = 1 ] && systemctl start mesh2tak >/dev/null 2>&1' EXIT
+  configura_radio tutto
+  systemctl start mesh2tak >/dev/null 2>&1 || true
+  RIPARTI_PONTE=0
+  ok "radio del ponte come all'installazione; le altre impostazioni scelte dall'app restano"
+  exit 0
+fi
 
 # ---------------------------------------------------------------- 1. certificato e domande
 if [ -z "${MESH2TAK_STACCATO:-}" ]; then
@@ -449,7 +525,12 @@ PYZIP
         avviso "non le capisco: latitudine e longitudine separate da una virgola, es. 45.8205, 8.8257"
       done
     fi
-    if [ -n "$POSIZIONE" ]; then ok "posizione del Raspberry: $POSIZIONE"; else info "posizione del Raspberry: saltata"; fi
+    if [ -n "$POSIZIONE" ]; then
+      ok "posizione del Raspberry: $POSIZIONE"
+      RADIO_DA_FARE=$(aggiungi_parte "$RADIO_DA_FARE" posizione)  # data adesso: va sulla radio anche in un rilancio
+    else
+      info "posizione del Raspberry: saltata"
+    fi
   fi
   salva_stato
   case "$PACCHETTO_DATO" in
@@ -482,7 +563,12 @@ if [ "$CHIEDI_CANALE" = 1 ]; then
   ( umask 077; printf '%s\n' "$CHIAVE" > "$CHIAVE_CANALE" ); unset CHIAVE
   CANALE_SQUADRA="$NOME_CANALE"; CANALE="$NOME_CANALE"
   salva_stato
-  ok "canale '$CANALE' con la chiave data: lo imposto al passo 7, l'unico del nodo"
+  if [ "$RADIO_PREPARATA" = 1 ]; then
+    # dalla 1.13.0 gli altri canali scelti dall'app restano: si spengono solo con "Reimposta la radio"
+    ok "canale '$CANALE' con la chiave data: lo imposto al passo 7 come canale principale del nodo; gli altri canali restano come sono"
+  else
+    ok "canale '$CANALE' con la chiave data: lo imposto al passo 7, l'unico del nodo"
+  fi
 fi
 if [ -n "$CANALE_PUBBLICO_DATO" ]; then
   info "--canale-pubblico ignorato: dalla 1.12.0 il nodo del ponte ha solo il canale della squadra"
@@ -525,6 +611,7 @@ if [ "$CHIEDI_ACCESSO" = 1 ]; then
     ACCESSO_NOME="$NOME_A"; ACCESSO_RETE="${RETE_DEF%/}"
     if [ "$NOME_NODO_AUTOMATICO" = 1 ]; then
       nomi_del_nodo "$ACCESSO_NOME"
+      RADIO_DA_FARE=$(aggiungi_parte "$RADIO_DA_FARE" nome)     # il nome nuovo va sulla radio anche in un rilancio
       ok "nome del nodo e del ponte sulla mappa: '$NOME_NODO' (sigla $NOME_BREVE)"
     fi
     salva_stato
@@ -851,12 +938,25 @@ mkdir -p "$STATO_AGGIORNA"; chmod 755 "$STATO_AGGIORNA"
   echo "[Install]"
   echo "WantedBy=timers.target"
 } > "$TIMER_AGGIORNA.nuovo"
+{
+  # dalla 1.13.0: quando la pagina della rete manda un comando (riavvio, registro, impostazioni...) il server lo dice
+  # al ponte dal tunnel e il ponte tocca questo file: il Raspberry guarda subito, non dopo 2 minuti
+  echo "[Unit]"
+  echo "Description=Ponte Meshtastic: comandi della pagina della rete appena arrivano"
+  echo
+  echo "[Path]"
+  echo "PathChanged=/var/lib/mesh2tak/controlla-adesso"
+  echo "Unit=mesh2tak-aggiorna.service"
+  echo
+  echo "[Install]"
+  echo "WantedBy=paths.target"
+} > "$SVEGLIA_AGGIORNA.nuovo"
 CAMBIO_UNITA=0
-for f in "$UNITA_AGGIORNA" "$TIMER_AGGIORNA"; do
+for f in "$UNITA_AGGIORNA" "$TIMER_AGGIORNA" "$SVEGLIA_AGGIORNA"; do
   if cmp -s "$f.nuovo" "$f"; then rm -f "$f.nuovo"; else mv -f "$f.nuovo" "$f"; CAMBIO_UNITA=1; fi
 done
 [ "$CAMBIO_UNITA" = 0 ] || systemctl daemon-reload >/dev/null 2>&1 || true
-systemctl enable --now mesh2tak-aggiorna.timer >/dev/null 2>&1 || true
+systemctl enable --now mesh2tak-aggiorna.timer mesh2tak-aggiorna.path >/dev/null 2>&1 || true
 { command -v rsync >/dev/null && command -v mkfs.vfat >/dev/null; } || installa_pacchetti rsync dosfstools
 
 LIB=$("$VENV/bin/python" "$DIR/mesh2tak.py" --verifica-librerie 2>&1 || true)
@@ -866,18 +966,31 @@ printf '%s\n' "$LIB" | grep -q '^ESITO librerie=ok' || {
 ok "librerie pronte ($(printf '%s\n' "$LIB" | sed -n 's/^ *\(meshtastic-tak [^:]*\):.*/\1/p'))"
 
 # ---------------------------------------------------------------- 7. nodo meshtastic
-passo "7/9  Nodo Meshtastic: regione EU 868, nome, ruolo $RUOLO, solo il canale privato '$CANALE'"
+if [ "$RADIO_PREPARATA" != 1 ]; then
+  PARTI_RADIO=tutto
+  passo "7/9  Nodo Meshtastic: regione EU 868, nome, ruolo $RUOLO, solo il canale privato '$CANALE'"
+else
+  # dalla 1.13.0 l'aggiornamento lascia la radio com'e': solo le parti chieste (canale dato, nome nuovo della 1.12.0)
+  PARTI_RADIO="$RADIO_DA_FARE"
+  [ -s "$CHIAVE_CANALE" ] && PARTI_RADIO=$(aggiungi_parte "$PARTI_RADIO" canale)
+  PARTI_RADIO="${PARTI_RADIO:-nessuna}"
+  if [ "$PARTI_RADIO" = nessuna ]; then
+    passo "7/9  Nodo Meshtastic: impostazioni della radio lasciate come sono"
+  else
+    passo "7/9  Nodo Meshtastic: solo $(printf '%s' "$PARTI_RADIO" | sed 's/,/, /g; s/canale/canale della squadra/;
+      s/secondari/canali secondari spenti/; s/posizione/posizione fissa/'); il resto della radio resta com'e'"
+  fi
+fi
 systemctl stop mesh2tak >/dev/null 2>&1 || true
-OPZ_CANALE=()
-[ -s "$CHIAVE_CANALE" ] && OPZ_CANALE+=(--chiave-canale-file "$CHIAVE_CANALE")
 [ "$NOMI_NUOVI" = 1 ] && info "nome nuovo del nodo: '$NOME_NODO' (sigla $NOME_BREVE)"
-NODO=$("$VENV/bin/python" "$DIR/mesh2tak.py" --configura-nodo "$COLLEGAMENTO" --nome "$NOME_NODO" \
-  --nome-breve "$NOME_BREVE" --canale "$CANALE" --ruolo "$RUOLO" --posizione "$POSIZIONE" \
-  --file-link "$FILE_LINK" "${OPZ_CANALE[@]}" 2>&1 || true)
-printf '%s\n' "$NODO" | grep -v -e '^ESITO' -e '^LINK ' | sed 's/^/    /'
-printf '%s\n' "$NODO" | grep -q '^ESITO configurazione=ok' || fallisci "Configurazione del nodo non riuscita (vedi sopra)."
-rm -f "$CHIAVE_CANALE"   # la chiave ora e' sul nodo (e nel link del canale, solo root)
-ok "nodo configurato"
+configura_radio "$PARTI_RADIO"
+if [ "$PARTI_RADIO" = nessuna ]; then
+  ok "radio com'era: quello che si e' cambiato dall'app o dalla pagina resta"
+  info "per rimetterla come all'installazione: \"Reimposta la radio\" sulla pagina della rete, oppure"
+  info "  sudo bash installa-ponte-meshtastic.sh --reimposta-radio"
+else
+  ok "nodo configurato"
+fi
 cat > /usr/local/bin/mesh2tak-canale <<EOF
 #!/bin/sh
 # QR e link del canale della squadra, per aggiungere una radio dall'app Meshtastic

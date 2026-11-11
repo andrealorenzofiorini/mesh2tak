@@ -122,6 +122,7 @@ class NodoFinto:
         self.file_stato = file_stato
         self.transazione = False
         self.riavvii = 0
+        self.riavvii_chiesti = 0
         self.in_riavvio_fino = 0.0
         self.lora = config_pb2.Config.LoRaConfig(
             use_preset=True, modem_preset=config_pb2.Config.LoRaConfig.ModemPreset.LONG_FAST,
@@ -299,6 +300,7 @@ class NodoFinto:
                         "psk": base64.b64encode(bytes(c.settings.psk)).decode()}
                        for c in self.canali],
             "riavvii": self.riavvii,
+            "riavvii_chiesti": self.riavvii_chiesti,
             "scartati_admin": self.scartati_admin,
         }
         with open(self.file_stato, "w") as f:
@@ -333,6 +335,9 @@ class NodoFinto:
         elif quale == "set_fixed_position":
             self.db[MIO].position.CopyFrom(a.set_fixed_position)
             self.posizione_cfg.fixed_position = True
+        elif quale == "reboot_seconds":           # "Riavvia la radio" (dalla 1.13.0)
+            self.riavvii_chiesti += 1
+            riavvio = True
         self.salva_stato()
         if riavvio:
             # come meshtasticd: dopo il salvataggio si riavvia e per qualche secondo non risponde

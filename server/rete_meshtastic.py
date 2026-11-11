@@ -143,6 +143,26 @@ ICONE_MAPPA = (
 ICONE_PER_CHIAVE = {c: {"chiave": c, "nome": n, "gruppo": g, "percorso": f"{ICONSET_OSM}/{f}", "tipo": t}
                     for c, n, g, f, t in ICONE_MAPPA}
 RE_ID_RADIO = re.compile(r"^![0-9a-f]{8}$")
+# Dalla 1.13.0, "Gestisci il Raspberry": comandi che il Raspberry fa da se' (mesh2tak-aggiorna, root). Il server li
+# scrive nella registrazione del ponte e lo avvisa dal tunnel; il certificato nuovo il Raspberry lo scarica via SSH.
+AZIONI_PONTE = ("riavvia-programma", "riavvia-radio", "riavvia-raspberry", "registro", "impostazioni",
+                "reimposta-radio")
+AZIONI_DURATA_S = 3600                  # nella registrazione per un'ora (il Raspberry ne fa solo di mezz'ora)
+AZIONI_MAX = 10
+CERTIFICATO_PONTE_SCADE_S = 24 * 3600   # certificato consegnato o no: dopo un giorno via dal server
+SQUADRE_TAK = ("White", "Yellow", "Orange", "Magenta", "Red", "Maroon", "Purple", "Dark Blue", "Blue", "Cyan", "Teal",
+               "Green", "Dark Green", "Brown")
+# impostazioni del ponte che si cambiano dalla pagina: tipo, minimo, massimo (il Raspberry le ricontrolla)
+IMPOSTAZIONI_PONTE = {
+    "squadra": ("squadra", None, None),
+    "validita_min": ("numero", 5, 1440),
+    "aggiornamento_min": ("numero", 0.5, 60),
+    "errore_massimo_m": ("numero", 10, 100000),
+    "includi_ponte": ("si_no", None, None),
+    "invio": ("si_no", None, None),
+    "tempo_radio_percento": ("numero", 0.5, 10),
+    "pausa_massima_min": ("numero", 1, 240),
+}
 SSHD_DROPIN = "/etc/ssh/sshd_config.d/mesh2tak-ponti.conf"
 OPT_DIR = "/opt/mesh2tak-rete"
 OPT_SCRIPT = OPT_DIR + "/rete_meshtastic.py"
@@ -704,11 +724,104 @@ def scrivi_registrazione(imp: Impostazioni, nome: str, p: dict, porta_sshd: int,
     if isinstance(agg, dict) and RE_VERSIONE_RILASCIO.match(str(agg.get("versione", ""))):
         # dalla 1.8.0: il Raspberry vede la richiesta e scarica quella versione da GitHub (mai da qui)
         dati["aggiorna"] = {"versione": agg["versione"], "chiesto": int(agg.get("chiesto") or 0)}
+        if agg.get("reimposta") is True:
+            dati["aggiorna"]["reimposta"] = True      # dalla 1.13.0: anche la radio come all'installazione
+    azioni = azioni_da_pubblicare(p)
+    if azioni:
+        # dalla 1.13.0: comandi per il Raspberry (senza chi li ha chiesti: la registrazione e' pubblica)
+        dati["azioni"] = azioni
     ins = p.get("installa")
     if isinstance(ins, dict) and os.path.exists(file_configurazione(nome)):
         # dalla 1.10.0: c'e' una configurazione da installare; il Raspberry la scarica via SSH, con la sua chiave
         dati["installa"] = {"tentativo": int(ins.get("tentativo") or 1)}
     scrivi(P(f"{ACCESSO_DIR}/{p['impronta']}.json"), json.dumps(dati, indent=1) + "\n")
+
+
+def azioni_da_pubblicare(p: dict) -> List[dict]:
+    ora = time.time()
+    risultato = []
+    for a in p.get("azioni") or []:
+        if (isinstance(a, dict) and RE_ID.match(str(a.get("id", ""))) and a.get("azione") in AZIONI_PONTE + ("certificato",)
+                and isinstance(a.get("chiesto"), int) and ora - a["chiesto"] < AZIONI_DURATA_S):
+            v = {"id": a["id"], "azione": a["azione"], "chiesto": a["chiesto"]}
+            if isinstance(a.get("valori"), dict) and a["valori"]:
+                v["valori"] = a["valori"]
+            risultato.append(v)
+    return risultato[-AZIONI_MAX:]
+
+
+def sveglia_ponte(porta: int) -> bool:
+    """Dal tunnel: il Raspberry legge subito la sua registrazione, invece che entro 2 minuti (dalla 1.13.0). Non porta
+    comandi: quelli sono nella registrazione."""
+    apri = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                                       urllib.request.HTTPSHandler(context=ssl._create_unverified_context()))
+    richiesta = urllib.request.Request(f"https://127.0.0.1:{porta}/mesh2tak/controlla", data=b"{}", method="POST",
+                                       headers={"Content-Type": "application/json", "X-Mesh2tak": "1",
+                                                "User-Agent": f"mesh2tak-rete/{VERSIONE}"})
+    try:
+        with apri.open(richiesta, timeout=8) as r:
+            return r.status == 200
+    except Exception:  # noqa: ponte spento o di prima della 1.13.0
+        return False
+
+
+def chiedi_al_ponte(imp: Impostazioni, reg: dict, lavoro: dict) -> str:
+    """Lavori "azione-ponte" e (dopo il certificato) "certificato-ponte": il comando nella registrazione del ponte,
+    con lo stesso numero del lavoro (la pagina segue com'e' andata nello stato del ponte)."""
+    nome = lavoro["nome"]
+    if nome not in reg["ponti"]:
+        raise Errore("ponte non trovato: ricarica la pagina")
+    p = reg["ponti"][nome]
+    ora = int(time.time())
+    azione = {"id": lavoro["id"], "azione": lavoro["cosa"], "chiesto": ora, "da": lavoro["da"]}
+    if lavoro.get("valori"):
+        azione["valori"] = lavoro["valori"]
+    tenute = [a for a in p.get("azioni") or [] if isinstance(a, dict) and isinstance(a.get("chiesto"), int)
+              and ora - a["chiesto"] < AZIONI_DURATA_S]
+    p["azioni"] = (tenute + [azione])[-AZIONI_MAX:]
+    salva_registro(reg)
+    pubblica_registrazioni(imp, reg, [nome])
+    if sveglia_ponte(p["porta"]):
+        ok(f"il ponte {nome} lo fa subito")
+        return "chiesto al ponte: lo fa subito"
+    info(f"il ponte {nome} non risponde adesso: lo fa appena torna raggiungibile (entro mezz'ora, poi scade)")
+    return "chiesto al ponte: non risponde adesso, lo fa appena torna raggiungibile (entro mezz'ora)"
+
+
+def file_certificato_ponte(nome: str) -> str:
+    return P(f"{CONFIGURAZIONI_DIR}/{nome}.certificato.json")
+
+
+def prepara_certificato_ponte(imp: Impostazioni, reg: dict, lavoro: dict) -> str:
+    """Lavoro "certificato-ponte" (da root): controlla il pacchetto e lo lascia da scaricare al solo utente SSH di quel
+    ponte, poi chiede al Raspberry di installarlo (comando "certificato")."""
+    nome, d = lavoro["nome"], lavoro["impostazioni"]
+    if nome not in reg["ponti"]:
+        raise Errore("ponte non trovato: ricarica la pagina")
+    dati = base64.b64decode(d["pacchetto"])
+    password = d["password"] or "atakatak"
+    info(f"pacchetto {d['nome_pacchetto']} ({len(dati) // 1024 + 1} kB) per il ponte {nome}")
+    c = controlla_pacchetto(dati, d["nome_pacchetto"], password)
+    if c["certificato"]:
+        ok(f"certificato '{c['certificato']}'" + (f", scade il {giorno_it(c['scade'])}" if c["scade"] else ""))
+    prepara_cartelle_ponti()
+    f = file_certificato_ponte(nome)
+    togli(f)
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
+    try:
+        os.write(fd, (json.dumps({"formato": 1, "pacchetto": d["pacchetto"], "nome_pacchetto": d["nome_pacchetto"],
+                                  "password": password, "host": c["host"] or d["host"]}) + "\n").encode("utf-8"))
+        try:
+            os.fchown(fd, pwd.getpwnam(utente_ponte(nome)).pw_uid, 0)
+        except KeyError:
+            if not RADICE:
+                raise Errore(f"manca l'utente {utente_ponte(nome)}")
+        os.fchmod(fd, 0o400)
+    finally:
+        os.close(fd)
+    esito = chiedi_al_ponte(imp, reg, dict(lavoro, cosa="certificato", valori=None))
+    return (f"Certificato '{c['certificato'] or '?'}' pronto per il ponte {nome}: " + esito.replace("chiesto al ponte: ", "")
+            + ".")
 
 
 # --------------------------------------------------------------------------
@@ -771,8 +884,10 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
           "\t\t\tfile_server",
           "\t\t}"]
     r += auth
-    r += ["\t\t# certificato e canale per i ponti nuovi (dalla 1.10.0): il pacchetto della console e' piu' grande",
-          "\t\thandle /api/impostazioni-nuovi {",
+    r += ["\t\t# certificato e canale per i ponti nuovi (dalla 1.10.0) e certificato nuovo di un ponte (1.13.0): il",
+          "\t\t# pacchetto della console e' piu' grande",
+          "\t\t@certificati path /api/impostazioni-nuovi /api/certificato-ponte",
+          "\t\thandle @certificati {",
           "\t\t\trequest_body {",
           "\t\t\t\tmax_size 400KB",
           "\t\t\t}",
@@ -812,11 +927,28 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
               "\t\t\t\t\tresponse_header_timeout 15s",
               "\t\t\t\t}",
               "\t\t\t}",
+              "\t\t}",
+              # dalla 1.13.0: il registro raccolto dal Raspberry (solo amministratori, come sopra)
+              f"\t\thandle /registro/{n}.txt {{",
+              "\t\t\trequest_body {",
+              "\t\t\t\tmax_size 1KB",
+              "\t\t\t}",
+              "\t\t\trewrite * /mesh2tak/registro",
+              f"\t\t\treverse_proxy https://127.0.0.1:{p['porta']} {{"] + senza_cookie + [
+              "\t\t\t\ttransport http {",
+              "\t\t\t\t\ttls_insecure_skip_verify",
+              "\t\t\t\t\tdial_timeout 5s",
+              "\t\t\t\t\tresponse_header_timeout 30s",
+              "\t\t\t\t}",
+              "\t\t\t}",
               "\t\t}"]
     r += ["\t\thandle /stato/* {",
           "\t\t\trespond 404",
           "\t\t}",
           "\t\thandle /radio/* {",
+          "\t\t\trespond 404",
+          "\t\t}",
+          "\t\thandle /registro/* {",
           "\t\t\trespond 404",
           "\t\t}",
           "\t\theader Cache-Control no-store",
@@ -1519,6 +1651,7 @@ def rimuovi_ponte(imp: Impostazioni, reg: dict, nome: str) -> None:
     togli(P(f"{ACCESSO_DIR}/{p['impronta']}.json"))
     togli(P(f"{CHIAVI_DIR}/{utente}"))
     togli(file_configurazione(nome))                     # certificato e canale non piu' consegnabili
+    togli(file_certificato_ponte(nome))
     togli(P(f"{AVANZAMENTO_DIR}/{nome}.json"))
     chiudi_sessioni(utente)
     try:
@@ -1864,6 +1997,55 @@ def leggi_impostazioni_lavoro(d) -> Optional[dict]:
         return None
 
 
+def controlla_certificato_ponte(d) -> dict:
+    """Il certificato nuovo di un ponte (dalla 1.13.0), come lo manda la pagina: pacchetto, password e, se il
+    pacchetto non lo dice, l'indirizzo del TAK Server."""
+    if not isinstance(d, dict):
+        raise Errore("richiesta non valida")
+    nome_pacchetto = os.path.basename(str(d.get("nome_pacchetto") or "").replace("\\", "/")).strip()
+    pacchetto, password, host = str(d.get("pacchetto") or ""), str(d.get("password") or ""), str(d.get("host") or "").strip()
+    if not RE_NOME_PACCHETTO.match(nome_pacchetto):
+        raise Errore("serve il pacchetto .zip scaricato dalla console infra-TAK (o un .p12)")
+    try:
+        grezzo = base64.b64decode(pacchetto, validate=True)
+    except (binascii.Error, ValueError):
+        raise Errore("file del certificato non valido: riprova a sceglierlo")
+    if not 0 < len(grezzo) <= PACCHETTO_MAX:
+        raise Errore("il file del certificato e' troppo grande: serve il pacchetto della console infra-TAK")
+    if len(password) > 128 or not password.isprintable():
+        raise Errore("password del certificato non valida")
+    if host and not RE_HOST_TAK.match(host):
+        raise Errore("indirizzo del TAK Server non valido (es. takserver.tuodominio.it)")
+    return {"nome_pacchetto": nome_pacchetto, "pacchetto": pacchetto, "password": password, "host": host}
+
+
+def valida_impostazioni_ponte(d) -> dict:
+    """Le impostazioni del ponte da cambiare (dalla 1.13.0): solo quelle previste, nei loro limiti."""
+    if not isinstance(d, dict) or not d:
+        raise Errore("nessuna impostazione da cambiare")
+    for k, v in d.items():
+        if k not in IMPOSTAZIONI_PONTE:
+            raise Errore("impostazione sconosciuta: ricarica la pagina")
+        tipo, minimo, massimo = IMPOSTAZIONI_PONTE[k]
+        if tipo == "squadra":
+            buono = v in SQUADRE_TAK
+        elif tipo == "si_no":
+            buono = isinstance(v, bool)
+        else:
+            buono = (isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and minimo <= v <= massimo)
+        if not buono:
+            limiti = f" (da {minimo:g} a {massimo:g})" if tipo == "numero" else ""
+            raise Errore(f"valore non valido per {NOMI_IMPOSTAZIONI.get(k, k)}{limiti}")
+    return dict(d)
+
+
+NOMI_IMPOSTAZIONI = {"squadra": "il colore della squadra", "validita_min": "i minuti sulla mappa",
+                     "aggiornamento_min": "ogni quanti minuti ripetere le posizioni",
+                     "errore_massimo_m": "l'errore massimo delle posizioni", "includi_ponte": "il Raspberry sulla mappa",
+                     "invio": "l'invio alle radio", "tempo_radio_percento": "il tempo radio",
+                     "pausa_massima_min": "la pausa massima"}
+
+
 def leggi_lavoro(percorso: str) -> Optional[dict]:
     """Un lavoro scritto dal servizio della pagina: non ci si fida di nulla (niente collegamenti simbolici,
     file piccolo, solo i campi previsti)."""
@@ -1890,10 +2072,11 @@ def leggi_lavoro(percorso: str) -> Optional[dict]:
         return None
     azione = dati.get("azione")
     da = str(dati.get("da") or "")
-    if (azione not in ("aggiungi", "rimuovi", "aggiorna-server", "aggiorna-ponti", "impostazioni-nuovi", "installa")
+    if (azione not in ("aggiungi", "rimuovi", "aggiorna-server", "aggiorna-ponti", "impostazioni-nuovi", "installa",
+                       "azione-ponte", "certificato-ponte")
             or not RE_UTENTE_AK.match(da)):
         return None
-    if azione != "impostazioni-nuovi" and len(grezzo) > LAVORO_MAX:
+    if azione not in ("impostazioni-nuovi", "certificato-ponte") and len(grezzo) > LAVORO_MAX:
         return None
     if azione == "impostazioni-nuovi":
         impostazioni = leggi_impostazioni_lavoro(dati.get("impostazioni"))
@@ -1901,6 +2084,24 @@ def leggi_lavoro(percorso: str) -> Optional[dict]:
             return None
         return {"id": dati["id"], "azione": azione, "nome": "ponti-nuovi", "da": da, "impostazioni": impostazioni,
                 "richiesta": None, "sostituisci": False}
+    if azione in ("azione-ponte", "certificato-ponte"):
+        # dalla 1.13.0: un comando per un ponte, o il suo certificato nuovo (controllato da capo)
+        nome = str(dati.get("nome") or "")
+        if not RE_NOME.match(nome):
+            return None
+        lavoro = {"id": dati["id"], "azione": azione, "nome": nome, "da": da, "richiesta": None, "sostituisci": False}
+        try:
+            if azione == "azione-ponte":
+                lavoro["cosa"] = str(dati.get("cosa") or "")
+                if lavoro["cosa"] not in AZIONI_PONTE:
+                    return None
+                lavoro["valori"] = (valida_impostazioni_ponte(dati.get("valori")) if lavoro["cosa"] == "impostazioni"
+                                    else None)
+            else:
+                lavoro["impostazioni"] = controlla_certificato_ponte(dati.get("impostazioni"))
+        except Errore:
+            return None
+        return lavoro
     if azione == "installa":
         d = dati.get("installa") if isinstance(dati.get("installa"), dict) else {}
         installa: dict = {}
@@ -1927,7 +2128,7 @@ def leggi_lavoro(percorso: str) -> Optional[dict]:
                                                                    and not RE_NOME.match(nome)):
             return None
         return {"id": dati["id"], "azione": azione, "nome": nome, "da": da, "versione": versione, "richiesta": None,
-                "sostituisci": False}
+                "sostituisci": False, "reimposta": azione == "aggiorna-ponti" and dati.get("reimposta") is True}
     try:
         lavoro = {"id": dati["id"], "azione": azione, "nome": valida_nome(str(dati.get("nome", ""))), "da": da,
                   "sostituisci": dati.get("sostituisci") is True}
@@ -1949,7 +2150,8 @@ def scrivi_esito(lavoro: dict, esito: str, messaggio: str, testo: str = "") -> N
     pulito = re.sub(r"\x1b\[[0-9;]*m", "", testo)
     dati = {"id": lavoro["id"], "azione": lavoro["azione"], "nome": lavoro["nome"], "da": lavoro["da"],
             "richiesta": lavoro.get("richiesta"), "versione": lavoro.get("versione"), "esito": esito,
-            "messaggio": messaggio[:600], "testo": pulito[-4000:], "quando": int(time.time())}
+            "messaggio": messaggio[:600], "testo": pulito[-4000:], "quando": int(time.time()),
+            "cosa": lavoro.get("cosa"), "reimposta": lavoro.get("reimposta") is True}
     scrivi(P(f"{ESITI_DIR}/{lavoro['id']}.json"), json.dumps(dati, ensure_ascii=False) + "\n", 0o644)
 
 
@@ -1961,7 +2163,9 @@ def pulisci_configurazioni() -> None:
     via. Quelle dei ponti tolti le toglie gia' "togli dalla rete"."""
     for f in glob.glob(P(CONFIGURAZIONI_DIR) + "/*.json"):
         try:
-            if time.time() - os.lstat(f).st_mtime > CONFIGURAZIONE_SCADE_S:
+            # il certificato nuovo di un ponte (1.13.0) resta al massimo un giorno: il Raspberry lo prende subito
+            scade = CERTIFICATO_PONTE_SCADE_S if f.endswith(".certificato.json") else CONFIGURAZIONE_SCADE_S
+            if time.time() - os.lstat(f).st_mtime > scade:
                 togli(f)
                 registra(f"configurazione scaduta tolta: {os.path.basename(f)}")
         except OSError:
@@ -2087,9 +2291,15 @@ def chiedi_aggiornamento_ponti(imp: Impostazioni, reg: dict, lavoro: dict) -> No
     ora = int(time.time())
     for n in nomi:
         reg["ponti"][n]["aggiorna"] = {"versione": lavoro["versione"], "chiesto": ora}
+        if lavoro.get("reimposta"):
+            reg["ponti"][n]["aggiorna"]["reimposta"] = True
     salva_registro(reg)
     pubblica_registrazioni(imp, reg, nomi)
-    ok(f"chiesto l'aggiornamento alla {lavoro['versione']} a: {', '.join(nomi)}")
+    ok(f"chiesto l'aggiornamento alla {lavoro['versione']} a: {', '.join(nomi)}"
+       + (" (anche la radio come all'installazione)" if lavoro.get("reimposta") else ""))
+    svegli = [n for n in nomi if sveglia_ponte(reg["ponti"][n]["porta"])]   # dalla 1.13.0: subito, non entro 2 minuti
+    if svegli:
+        info(f"cominciano subito: {', '.join(svegli)}")
 
 
 def cmd_lavora(a) -> int:
@@ -2128,6 +2338,10 @@ def cmd_lavora(a) -> int:
                         messaggio = salva_impostazioni_nuovi(lavoro)
                     elif lavoro["azione"] == "installa":
                         riprova_installazione(imp, reg, lavoro)
+                    elif lavoro["azione"] == "azione-ponte":
+                        messaggio = chiedi_al_ponte(imp, reg, lavoro)
+                    elif lavoro["azione"] == "certificato-ponte":
+                        messaggio = prepara_certificato_ponte(imp, reg, lavoro)
                     else:
                         rimuovi_ponte(imp, reg, lavoro["nome"])
                 scrivi_esito(lavoro, "ok", messaggio, uscita.getvalue())
@@ -2190,6 +2404,8 @@ def cmd_ponte(a) -> int:
     """Il comando forzato degli utenti dei ponti. Il Raspberry chiede:
          configurazione               la configurazione da installare (certificato, canale, scheda), se c'e'
          avanzamento FASE TESTO       a che punto e' l'installazione; con FASE "fatto" la configurazione si toglie
+         certificato                  (1.13.0) il certificato nuovo caricato sulla pagina, se c'e'
+         certificato-fatto            (1.13.0) installato: il certificato si toglie dal server
     Qualunque altra cosa: rifiutata. Il ponte e' quello dell'utente SSH, non quello che dice il Raspberry."""
     utente = os.environ.get("RETE_PROVA_UTENTE", "") if RADICE else ""
     if not utente:
@@ -2225,6 +2441,23 @@ def cmd_ponte(a) -> int:
                     os.unlink(file_configurazione(nome))   # installato: certificato e canale non servono piu' qui
                 except FileNotFoundError:
                     pass
+            return 0
+        if parti[0] == "certificato" and len(parti) == 1:
+            try:
+                fd = os.open(file_certificato_ponte(nome), os.O_RDONLY | os.O_NOFOLLOW)
+            except FileNotFoundError:
+                print("nessun certificato da installare per questo ponte", file=sys.stderr)
+                return 3
+            with os.fdopen(fd, "rb") as h:
+                dati = h.read(1 << 20)
+            sys.stdout.buffer.write(dati)
+            sys.stdout.flush()
+            return 0
+        if parti[0] == "certificato-fatto" and len(parti) == 1:
+            try:
+                os.unlink(file_certificato_ponte(nome))      # installato: non serve piu' qui
+            except FileNotFoundError:
+                pass
             return 0
     except OSError as e:
         print(f"non riesco ({e.strerror or e})", file=sys.stderr)
@@ -2881,7 +3114,8 @@ class Servizio:
 
     def accoda(self, azione: str, nome: str, da: str, chiave: str = "", richiesta: Optional[str] = None,
                sostituisci: bool = False, versione: Optional[str] = None, installa: Optional[dict] = None,
-               impostazioni: Optional[dict] = None) -> str:
+               impostazioni: Optional[dict] = None, cosa: Optional[str] = None, valori: Optional[dict] = None,
+               reimposta: bool = False) -> str:
         """Scrive il lavoro in tmp e lo sposta in coda gia' completo: il passo dei lavori parte appena la
         cartella non e' vuota e non deve mai trovare un file a meta'."""
         lavoro = secrets.token_hex(8)
@@ -2893,6 +3127,12 @@ class Servizio:
             dati["installa"] = installa
         if impostazioni is not None:
             dati["impostazioni"] = impostazioni      # certificato e canale: solo per root, che lo toglie subito
+        if cosa:
+            dati["cosa"] = cosa                      # dalla 1.13.0: comando per un ponte
+        if valori:
+            dati["valori"] = valori
+        if reimposta:
+            dati["reimposta"] = True                 # aggiornamento con la radio come all'installazione
         provvisorio = P(f"{TMP_DIR}/{lavoro}.json")
         with open(os.open(provvisorio, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
             json.dump(dati, f, ensure_ascii=False)
@@ -2911,12 +3151,13 @@ class Servizio:
                 continue
             risultato.append({"id": d.get("id"), "azione": d.get("azione"), "nome": d.get("nome"), "da": d.get("da"),
                               "richiesta": d.get("richiesta"), "versione": d.get("versione"), "esito": "in_coda",
-                              "quando": d.get("quando"), "fermo": eta > self.LAVORO_FERMO_S})
+                              "quando": d.get("quando"), "fermo": eta > self.LAVORO_FERMO_S, "cosa": d.get("cosa"),
+                              "reimposta": d.get("reimposta") is True})
         esiti = [(self._eta(f), f) for f in glob.glob(P(ESITI_DIR) + "/*.json")]
         for _, f in sorted((x for x in esiti if x[0] is not None), key=lambda x: x[0])[:8]:
             d = self._leggi_json(f) or {}
             v = {k: d.get(k) for k in ("id", "azione", "nome", "da", "richiesta", "versione", "esito", "messaggio",
-                                       "testo", "quando")}
+                                       "testo", "quando", "cosa", "reimposta")}
             if v["esito"] == "in_corso" and time.time() - (v["quando"] or 0) > self.LAVORO_INTERROTTO_S:
                 v.update(esito="errore", messaggio="lavoro interrotto a meta' (il server si e' riavviato?)")
             risultato.append(v)
@@ -3033,6 +3274,54 @@ class Servizio:
             v = self.icone_ponti.get(n)
             stato_ponti[n] = "aggiornato" if v == versione else ("vecchio" if v == "vecchio" else "attesa")
         return {"versione": versione, "scelte": scelte, "ponti": stato_ponti}
+
+    # ---- Gestisci il Raspberry (dalla 1.13.0): il comando va nella registrazione del ponte, lo fa il Raspberry ----
+
+    MESSAGGI_PONTE = {
+        "riavvia-programma": "Chiedo al ponte di riavviare il programma.",
+        "riavvia-radio": "Chiedo al ponte di riavviare la radio.",
+        "riavvia-raspberry": "Chiedo al ponte di riavviare il Raspberry: torna in linea in 2-3 minuti.",
+        "registro": "Chiedo al ponte il registro.",
+        "impostazioni": "Mando al ponte le impostazioni nuove.",
+        "reimposta-radio": "Chiedo al ponte di rimettere la radio come all'installazione.",
+    }
+
+    def _ponte_occupato(self, nome: str) -> bool:
+        return any(lv.get("nome") == nome and lv.get("azione") in ("azione-ponte", "certificato-ponte")
+                   and lv.get("esito") in ("in_coda", "in_corso") for lv in self.lavori())
+
+    def gestisci_ponte(self, dati: dict, utente: str) -> Tuple[int, dict]:
+        nome, cosa = str(dati.get("nome") or ""), str(dati.get("azione") or "")
+        if not RE_NOME.match(nome) or nome not in self.ponti():
+            return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+        if cosa not in AZIONI_PONTE:
+            return 400, {"errore": "comando sconosciuto: ricarica la pagina"}
+        valori = None
+        if cosa == "impostazioni":
+            try:
+                valori = valida_impostazioni_ponte(dati.get("valori"))
+            except Errore as e:
+                return 400, {"errore": str(e)}
+        with self.lock:
+            if self._ponte_occupato(nome):
+                return 409, {"errore": "sto gia' passando un comando a questo ponte: aspetta qualche secondo"}
+            lavoro = self.accoda("azione-ponte", nome, utente, cosa=cosa, valori=valori)
+        return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": self.MESSAGGI_PONTE[cosa]}
+
+    def certificato_ponte(self, dati: dict, utente: str) -> Tuple[int, dict]:
+        nome = str(dati.get("nome") or "")
+        if not RE_NOME.match(nome) or nome not in self.ponti():
+            return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+        try:
+            impostazioni = controlla_certificato_ponte(dati)
+        except Errore as e:
+            return 400, {"errore": str(e)}
+        with self.lock:
+            if self._ponte_occupato(nome):
+                return 409, {"errore": "sto gia' passando un comando a questo ponte: aspetta qualche secondo"}
+            lavoro = self.accoda("certificato-ponte", nome, utente, impostazioni=impostazioni)
+        return 202, {"esito": "in_corso", "lavoro": lavoro,
+                     "messaggio": "Controllo il certificato e lo passo al ponte, che lo installa da solo."}
 
     def _salva_installazione(self, nome: str, installa: dict, utente: str) -> None:
         self._scrivi_json(P(f"{INSTALLAZIONI_DIR}/{nome}.json"), dict(installa, da=utente, quando=int(time.time())))
@@ -3282,10 +3571,16 @@ class Servizio:
                 nome = str(dati.get("nome") or "tutti")
                 if nome != "tutti" and nome not in self.ponti():
                     return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+                reimposta = dati.get("reimposta") is True     # dalla 1.13.0: anche la radio come all'installazione
                 return 202, {"esito": "in_corso", "lavoro": self.accoda("aggiorna-ponti", nome, utente,
-                                                                        versione=versione),
-                             "messaggio": f"Chiedo ai ponti di aggiornarsi alla {versione}: lo fanno da soli entro "
-                                          "qualche minuto."}
+                                                                        versione=versione, reimposta=reimposta),
+                             "messaggio": f"Chiedo ai ponti di aggiornarsi alla {versione}"
+                                          + (" e di rimettere la radio come all'installazione" if reimposta else "")
+                                          + ": lo fanno da soli entro qualche minuto."}
+        if percorso == "/api/gestisci-ponte":
+            return self.gestisci_ponte(dati, utente)
+        if percorso == "/api/certificato-ponte":
+            return self.certificato_ponte(dati, utente)
         if percorso == "/api/invita":
             return self.nuovo_invito(dati, utente)
         if percorso == "/api/icona":
@@ -3455,8 +3750,9 @@ def gestore_per(servizio: Servizio):
 
         def do_POST(self):  # noqa: N802
             percorso = urllib.parse.urlsplit(self.path).path
-            # il certificato dei ponti nuovi (dalla 1.10.0) e' piu' grande delle altre richieste
-            dati, errore = self._corpo(CORPO_IMPOSTAZIONI_MAX if percorso == "/api/impostazioni-nuovi" else 16384)
+            # il certificato dei ponti nuovi (dalla 1.10.0) e di un ponte (1.13.0) e' piu' grande delle altre richieste
+            dati, errore = self._corpo(CORPO_IMPOSTAZIONI_MAX if percorso in ("/api/impostazioni-nuovi",
+                                                                               "/api/certificato-ponte") else 16384)
             if errore:
                 return self._manda(errore, {"errore": "richiesta non valida"})
             if percorso == "/accesso/richiesta":

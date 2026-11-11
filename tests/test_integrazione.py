@@ -25,6 +25,17 @@ def nodo_finto():
     proc.wait(5)
 
 
+@pytest.fixture
+def nodo_finto_senza_privato():
+    porta = porta_libera()
+    proc = subprocess.Popen([sys.executable, os.path.join(QUI, "fake_node.py"), "--porta", str(porta), "--senza-privato",
+                             "--primo-scenario", "99"], env=AMBIENTE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    aspetta_porta(porta)
+    yield porta
+    proc.terminate()
+    proc.wait(5)
+
+
 def avvia_ponte(conf):
     return subprocess.Popen([sys.executable, PONTE, "-c", str(conf)], env=AMBIENTE,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -311,7 +322,8 @@ def nodo_1_11(tmp_path):
 
 
 def test_configura_nodo_spegne_il_canale_pubblico(nodo_1_11, tmp_path):
-    """Aggiornamento alla 1.12.0 di un ponte configurato prima: il LongFast secondario si spegne, la squadra resta."""
+    """Radio preparata come all'installazione (Reimposta la radio, o un ponte della 1.11.0 che si aggiorna): il LongFast
+    secondario si spegne, la squadra resta."""
     import base64
     import json
     from meshtastic.protobuf import apponly_pb2
@@ -330,24 +342,71 @@ def test_configura_nodo_spegne_il_canale_pubblico(nodo_1_11, tmp_path):
     assert r.returncode == 0 and "era gia' tutto a posto" in r.stdout, r.stdout
 
 
-def test_il_ponte_spegne_il_canale_pubblico_rimesso(pki, tmp_path, tak_finto, nodo_1_11):
-    """1.12.0: un canale secondario acceso sul nodo (es. rimesso dall'app) lo spegne il ponte quando si collega."""
+def test_configura_nodo_solo_le_parti_chieste(nodo_1_11, tmp_path):
+    """1.13.0: un aggiornamento non cambia la radio (--parti nessuna); una parte alla volta solo se chiesta."""
     import json
+    porta, stato = nodo_1_11
+    r, link = _configura(porta, tmp_path, "--canale", "CNSAS-VA", "--parti", "nessuna", "--posizione", "45.9,8.9")
+    assert r.returncode == 0 and "ESITO configurazione=ok" in r.stdout, r.stdout
+    assert "impostazioni della radio lasciate come sono" in r.stdout and "era gia'" not in r.stdout
+    assert "canali secondari: LongFast" in r.stdout
+    assert not stato.exists(), "nessun messaggio di configurazione al nodo (il nodo finto scrive lo stato a ognuno)"
+    assert link.read_text().startswith("https://meshtastic.org/e/#"), "il link del canale si aggiorna sempre"
+    r, _ = _configura(porta, tmp_path, "--canale", "CNSAS-VA", "--parti", "nome,secondari", "--nome", "Gateway CNSAS Prova",
+                      "--ruolo", "ROUTER")
+    assert r.returncode == 0 and "modifiche: nome 'Gateway CNSAS Prova' (GTSA), canale secondario 'LongFast' spento" in r.stdout, r.stdout
+    dopo = json.loads(stato.read_text())
+    assert (dopo["nome"], dopo["canali"][1]["ruolo"], dopo["ruolo"], dopo["posizione_fissa"]) == (
+        "Gateway CNSAS Prova", "DISABLED", "CLIENT_MUTE", False), "ruolo e posizione non chiesti: restano"
+    r, _ = _configura(porta, tmp_path, "--parti", "wifi")
+    assert r.returncode == 2 and "parti sconosciute: wifi" in r.stdout
+
+
+def test_configura_nodo_radio_nuova_sempre_tutta(nodo_nuovo, tmp_path):
+    """Radio nuova (regione non impostata, es. cambiata la radio USB): si prepara tutta anche in un aggiornamento."""
+    import json
+    porta, stato = nodo_nuovo
+    r, _ = _configura(porta, tmp_path, "--parti", "nessuna")
+    assert r.returncode == 0 and "radio nuova (regione non impostata): la preparo tutta" in r.stdout, r.stdout
+    s = json.loads(stato.read_text())
+    assert (s["regione"], s["ruolo"], s["nome"], s["canali"][0]["psk_len"]) == ("EU_868", "CLIENT_MUTE",
+                                                                              "Gateway CNSAS Varese", 32)
+
+
+def test_configura_nodo_senza_canale_privato_lo_dice(nodo_finto_senza_privato, tmp_path):
+    r, _ = _configura(nodo_finto_senza_privato, tmp_path, "--parti", "nessuna")
+    assert r.returncode == 0 and "ATTENZIONE: il nodo non ha piu' il canale privato della squadra" in r.stdout, r.stdout
+
+
+def test_riavvia_nodo(nodo_1_11):
+    import json
+    porta, stato = nodo_1_11
+    r = subprocess.run([sys.executable, PONTE, "--riavvia-nodo", f"tcp:127.0.0.1:{porta}"], env=AMBIENTE,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and "ESITO riavvio=ok" in r.stdout, r.stdout + r.stderr
+    fine = time.time() + 10
+    while time.time() < fine and json.loads(stato.read_text()).get("riavvii", 0) < 1:
+        time.sleep(0.2)
+    s = json.loads(stato.read_text())
+    assert s["riavvii_chiesti"] == 1 and s["riavvii"] == 1
+    r = subprocess.run([sys.executable, PONTE, "--riavvia-nodo", f"tcp:127.0.0.1:{porta_libera()}"], env=AMBIENTE,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 1 and "ESITO riavvio=errore" in r.stdout
+
+
+def test_il_ponte_lascia_i_canali_scelti_dall_app(pki, tmp_path, tak_finto, nodo_1_11):
+    """1.13.0 (11/11/2026: vale l'interfaccia): il LongFast acceso dall'app resta acceso, il ponte inoltra
+    solo il canale della squadra."""
     porta, stato = nodo_1_11
     tak = tak_finto()
     ponte = avvia_ponte(scrivi_config(tmp_path / "m.conf", pki, tak.porta, porta, f"{SDK}/dictionaries"))
-    fine = time.time() + 40
-    while time.time() < fine and not (stato.exists() and json.loads(stato.read_text())["canali"][1]["ruolo"] == "DISABLED"):
-        time.sleep(0.5)
-    time.sleep(1)
+    time.sleep(6)
     ponte.send_signal(signal.SIGTERM)
     registro, _ = ponte.communicate(timeout=20)
-    assert "Canali secondari del nodo spenti: LongFast" in registro, registro
-    assert "canale 0 'CNSAS-VA' (privato): INOLTRATO" in registro and "canale 1 " not in registro
-    assert "Traceback" not in registro
-    s = json.loads(stato.read_text())
-    assert (s["canali"][0]["ruolo"], s["canali"][0]["nome"], s["canali"][0]["psk_len"]) == ("PRIMARY", "CNSAS-VA", 32)
-    assert [c["ruolo"] for c in s["canali"][1:]] == ["DISABLED"] * 7
+    assert "canale 0 'CNSAS-VA' (privato): INOLTRATO" in registro, registro
+    assert "canale 1 'LongFast' (pubblico, chiave nota a tutti): ignorato" in registro
+    assert "spent" not in registro and "Traceback" not in registro
+    assert not stato.exists(), "nessun messaggio di configurazione al nodo (il nodo finto scrive lo stato a ognuno)"
 
 
 def test_configura_nodo_squadra_secondaria_non_si_perde(nodo_finto, tmp_path):

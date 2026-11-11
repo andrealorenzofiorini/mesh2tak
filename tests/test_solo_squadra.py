@@ -1,8 +1,10 @@
-"""1.12.0: il nodo del ponte ha solo il canale della squadra (scelta di Andrea dell'11/11/2026). I canali secondari si
-spengono quando l'installatore configura il nodo e ogni volta che il ponte si collega al nodo."""
+"""Canali del nodo del ponte. 1.12.0: l'installatore lascia sul nodo solo il canale della squadra. 1.13.0 (scelta
+dell'11/11/2026): vale quello che si sceglie dall'app o dalla pagina; il ponte non tocca piu' il suo nodo e gli
+aggiornamenti cambiano solo le parti chieste. Tutto come all'installazione solo con "Reimposta la radio"."""
 from types import SimpleNamespace
 
-from meshtastic.protobuf import channel_pb2
+import pytest
+from meshtastic.protobuf import channel_pb2, config_pb2, localonly_pb2
 
 import mesh2tak as m
 from test_ponte_logica import MIO, TakFinto
@@ -21,14 +23,20 @@ def squadra():
 
 
 class NodoLocale:
-    def __init__(self, canali, guasto=False):
+    def __init__(self, canali, regione="EU_868", ruolo="CLIENT_MUTE"):
         self.channels = canali + [canale(i, D) for i in range(len(canali), 8)]
-        self.scritti, self.guasto = [], guasto
+        self.scritti = []
+        self.localConfig = localonly_pb2.LocalConfig()
+        self.localConfig.lora.region = config_pb2.Config.LoRaConfig.RegionCode.Value(regione)
+        self.localConfig.device.role = config_pb2.Config.DeviceConfig.Role.Value(ruolo)
 
     def writeChannel(self, i):  # noqa: N802  (come la libreria meshtastic)
-        if self.guasto:
-            raise RuntimeError("il nodo non risponde")
         self.scritti.append((i, channel_pb2.Channel.Role.Name(self.channels[i].role)))
+
+
+def iface(nodo, nome="Gateway CNSAS Varese", breve="GTSA"):
+    return SimpleNamespace(localNode=nodo, myInfo=SimpleNamespace(my_node_num=MIO),
+                           nodesByNum={MIO: {"user": {"longName": nome, "shortName": breve}}})
 
 
 def test_quali_secondari_si_spengono():
@@ -45,37 +53,46 @@ def test_quali_secondari_si_spengono():
     assert m.nome_canale(canale(1, S, b"\x01")) == "LongFast" and m.nome_canale(canale(3, S)) == "n. 3"
 
 
-def ponte():
+def test_il_ponte_non_tocca_i_canali_del_suo_nodo():
+    """1.13.0: un canale secondario acceso dall'app resta acceso; il ponte inoltra solo la squadra (canali = privati)."""
     p = m.Ponte(m.Config(tak_host="takserver.prova"), TakFinto(), None)
-    p.PAUSA_CANALI_S = 0.0
-    return p
-
-
-def iface(nodo):
-    return SimpleNamespace(localNode=nodo, myInfo=SimpleNamespace(my_node_num=MIO), nodesByNum={})
-
-
-def test_il_ponte_spegne_i_secondari_quando_si_collega(caplog):
-    caplog.set_level("INFO", logger="mesh2tak")
-    p = ponte()
     nodo = NodoLocale([squadra(), canale(1, S, b"\x01"), canale(2, S, b"\x01", "Public")])
     p.collega(iface(nodo))
-    assert nodo.scritti == [(1, "DISABLED"), (2, "DISABLED")]
-    assert nodo.channels[1].settings.name == "" and bytes(nodo.channels[1].settings.psk) == b""
-    assert list(p.canali) == [0] and p.canali_ok == {0}, "il ponte vede solo la squadra"
-    assert "Canali secondari del nodo spenti: LongFast, Public" in caplog.text
-    nodo.scritti.clear()
-    p.collega(iface(nodo))                    # ricollegato (es. dopo una pausa): niente da fare
-    assert nodo.scritti == []
+    assert nodo.scritti == [] and nodo.channels[1].role == S and nodo.channels[2].role == S
+    assert sorted(p.canali) == [0, 1, 2] and p.canali_ok == {0}, "pubblici visti ma non inoltrati"
 
 
-def test_squadra_secondaria_e_nodo_che_non_risponde(caplog):
-    p = ponte()
-    nodo = NodoLocale([canale(0, P, b"\x01"), canale(1, S, bytes(32), "CNSAS")])
-    p.collega(iface(nodo))
-    assert nodo.scritti == [] and p.canali_ok == {1}, "la squadra messa come secondario non si tocca"
-    nodo = NodoLocale([squadra(), canale(1, S, b"\x01")], guasto=True)
-    p.collega(iface(nodo))
-    assert "Non riesco a spegnere il canale secondario 'LongFast'" in caplog.text
-    assert nodo.channels[1].role == S and bytes(nodo.channels[1].settings.psk) == b"\x01", "come e' sul nodo"
-    assert p.canali_ok == {0}, "il ponte lavora lo stesso"
+def test_leggi_parti():
+    assert m.leggi_parti("tutto") == set(m.PARTI_NODO) == m.leggi_parti("")
+    assert m.leggi_parti("nessuna") == set()
+    assert m.leggi_parti(" Nome, secondari ") == {"nome", "secondari"}
+    with pytest.raises(ValueError, match="parti sconosciute: wifi"):
+        m.leggi_parti("nome,wifi")
+
+
+def cosa_cambia(nodo, parti, chiave=None, sul_nodo=("Gateway CNSAS Varese", "GTSA")):
+    i = iface(nodo, *sul_nodo)
+    return [d for d, _ in m._modifiche_da_fare(i, "Gateway CNSAS Varese", "GTSA", "CNSAS", "CLIENT_MUTE",
+                                                (45.8205, 8.8257, 400), lambda: None, chiave, parti)]
+
+
+def test_solo_le_parti_chieste():
+    nodo = NodoLocale([squadra(), canale(1, S, b"\x01")], ruolo="ROUTER")
+    dall_app = ("Scelto dall'app", "APP")
+    assert cosa_cambia(nodo, set(), sul_nodo=dall_app) == [], "aggiornamento: la radio resta com'e'"
+    assert cosa_cambia(nodo, {"secondari"}, sul_nodo=dall_app) == ["canale secondario 'LongFast' spento"]
+    assert cosa_cambia(nodo, {"nome"}, sul_nodo=dall_app) == ["nome 'Gateway CNSAS Varese' (GTSA)"]
+    tutto = cosa_cambia(nodo, None, sul_nodo=dall_app)
+    assert tutto[:3] == ["ruolo CLIENT_MUTE", "nome 'Gateway CNSAS Varese' (GTSA)", "canale secondario 'LongFast' spento"]
+    assert tutto[3].startswith("posizione fissa 45.82050, 8.82570") and len(tutto) == 4
+    assert nodo.scritti == [], "solo decise, non ancora fatte"
+
+
+def test_canale_della_squadra_dato_e_nodo_senza_canale_privato():
+    nodo = NodoLocale([canale(0, P, b"\x01"), canale(1, S, b"\x01", "Altro")])
+    # --canale-squadra in un aggiornamento: solo il primario, i secondari restano
+    assert cosa_cambia(nodo, {"canale"}, chiave=bytes(32)) == ["canale della squadra 'CNSAS' con la chiave data"]
+    # nessun canale privato e parte "canale": se ne crea uno, e con "secondari" la squadra diventa l'unica
+    assert cosa_cambia(nodo, {"canale", "secondari"}) == ["canale privato 'CNSAS' con chiave nuova",
+                                                          "canale secondario 'Altro' spento"]
+    assert cosa_cambia(nodo, {"secondari"}) == ["canale secondario 'Altro' spento"], "pubblici: si spengono comunque"
