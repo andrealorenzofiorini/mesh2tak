@@ -21,8 +21,66 @@ class Rilasci:
         rq = urllib.request.Request(f"{GITHUB_API}/repos/{REPO}/releases/latest",
                                     headers={"Accept": "application/vnd.github+json",
                                              "User-Agent": f"mesh2tak-rete/{VERSIONE}"})
-        with apri.open(rq, timeout=30) as r:
-            return json.loads(r.read(1 << 20))
+        try:
+            with apri.open(rq, timeout=30) as r:
+                return json.loads(r.read(1 << 20))
+        except urllib.error.HTTPError as e:
+            if e.code not in (403, 429):
+                raise
+        # GitHub da' a chi non si identifica 60 richieste l'ora per indirizzo, contando tutti i programmi del server:
+        # se sono finite (403 o 429) si legge la stessa cosa dal sito, che quel limite non ce l'ha
+        return Rilasci.ultima_release_dal_sito()
+
+    @staticmethod
+    def ultima_release_dal_sito() -> dict:
+        """L'ultima release letta da github.com invece che dalle API: la versione dall'indirizzo a cui rimanda
+        releases/latest, i file dallo SHA256SUMS della release, le novita' da NOVITA.md di quella versione."""
+        class NonSeguire(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        intestazioni = {"User-Agent": f"mesh2tak-rete/{VERSIONE}"}
+        fermo = urllib.request.build_opener(urllib.request.ProxyHandler({}), NonSeguire())
+        try:
+            with fermo.open(urllib.request.Request(f"{GITHUB}/{REPO}/releases/latest", headers=intestazioni),
+                            timeout=30) as r:
+                dove = r.geturl()
+        except urllib.error.HTTPError as e:
+            if e.code not in (301, 302, 303, 307, 308):
+                raise
+            dove = e.headers.get("Location") or ""
+        m = re.search(r"/releases/tag/v(\d{1,3}\.\d{1,3}\.\d{1,3})$", dove.split("?")[0])
+        if not m:
+            raise urllib.error.HTTPError(f"{GITHUB}/{REPO}/releases/latest", 404, "nessuna release", None, None)
+        versione = m.group(1)
+        apri = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+        def testo(url: str, limite: int) -> str:
+            with apri.open(urllib.request.Request(url, headers=intestazioni), timeout=30) as r:
+                return r.read(limite).decode("utf-8", "replace")
+        nomi = []
+        try:
+            for riga in testo(f"{GITHUB}/{REPO}/releases/download/v{versione}/SHA256SUMS", 65536).splitlines():
+                parti = riga.split()
+                if len(parti) == 2:
+                    nomi.append(parti[1].lstrip("*"))
+            nomi.append("SHA256SUMS")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:               # 404: la release e' ancora in preparazione
+                raise
+        note = ""
+        try:
+            dentro = False
+            for riga in testo(f"{GITHUB}/{REPO}/raw/v{versione}/NOVITA.md", 1 << 20).splitlines():
+                if riga.startswith("## "):
+                    if dentro:
+                        break
+                    dentro = riga[3:].strip() == versione
+                elif dentro:
+                    note += riga + "\n"
+        except (urllib.error.URLError, OSError):
+            note = ""                       # senza novita' si aggiorna lo stesso
+        return {"tag_name": f"v{versione}", "body": note.strip(), "published_at": "",
+                "assets": [{"name": n} for n in nomi]}
 
     def controlla(self, forza: bool = False) -> Tuple[bool, str]:
         ora = self.ora()

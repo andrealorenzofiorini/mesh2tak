@@ -1,5 +1,5 @@
 """Server HTTP(S) di prova per GitHub finto, pagina della rete finta e simili: risposte per percorso (bytes, un
-oggetto da mandare in JSON, None = 404, oppure una funzione che restituisce una di queste)."""
+oggetto da mandare in JSON, None = 404, una coppia (codice, intestazioni) senza corpo, oppure una funzione che restituisce una di queste)."""
 import http.server
 import json
 import ssl
@@ -26,6 +26,13 @@ class ServerFinto:
                     r = r()
                 if r is None:
                     self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                if isinstance(r, tuple):            # (codice, intestazioni): un rimando o un rifiuto, senza corpo
+                    self.send_response(r[0])
+                    for k, v in r[1].items():
+                        self.send_header(k, v)
                     self.send_header("Content-Length", "0")
                     self.end_headers()
                     return

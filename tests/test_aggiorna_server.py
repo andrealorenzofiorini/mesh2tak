@@ -116,6 +116,76 @@ def test_limiti_dei_controlli(ril):
     assert ril.controlla()[0] is True
 
 
+@pytest.fixture
+def github(monkeypatch):
+    g = ServerFinto()
+    monkeypatch.setattr(rete, "GITHUB", g.url)
+    monkeypatch.setattr(rete, "GITHUB_API", g.url)
+    monkeypatch.setattr(rete, "VERSIONE", ORA)
+    yield g
+    g.ferma()
+
+
+NOVITA_DI_PROVA = (f"# Novita'\n\n## {NUOVA}\n\n- una cosa nuova\n- un'altra\n\n## {ORA}\n\n- vecchia\n").encode()
+
+
+def sito_con_release(g, versione=NUOVA, file=FILE_RELEASE[:2]):
+    g.risposte[f"/{REPO}/releases/latest"] = (302, {"Location": f"{g.url}/{REPO}/releases/tag/v{versione}"})
+    if file:
+        g.risposte[f"/{REPO}/releases/download/v{versione}/SHA256SUMS"] = somme({n: b"x" for n in file})
+    g.risposte[f"/{REPO}/raw/v{versione}/NOVITA.md"] = NOVITA_DI_PROVA
+
+
+def test_senza_api_quando_github_le_rifiuta(github, tmp_path):
+    """1.16.2: le API di GitHub danno 60 richieste l'ora per indirizzo a chi non si identifica, contando tutti i
+    programmi del server (visto sul server vero: 403 a ogni controllo). La stessa cosa si legge dal sito."""
+    github.risposte[f"/repos/{REPO}/releases/latest"] = (403, {})
+    sito_con_release(github)
+    r = rete.Rilasci(ora=Orologio(), percorso=str(tmp_path / "rilasci.json"))
+    assert r.controlla() == (True, "")
+    v = r.vista()
+    assert v["nuova"] is True and v["errore"] is None
+    assert v["ultima"] == {"versione": NUOVA, "note": "- una cosa nuova\n- un'altra", "pubblicata": "", "completa": True}
+    assert r.pronta(NUOVA)
+
+
+def test_con_le_api_il_sito_non_si_tocca(github, tmp_path):
+    github.risposte[f"/repos/{REPO}/releases/latest"] = release()
+    r = rete.Rilasci(ora=Orologio(), percorso=str(tmp_path / "rilasci.json"))
+    assert r.controlla() == (True, "") and r.vista()["ultima"]["pubblicata"] == "2026-11-06T10:00:00Z"
+    assert github.richieste == [f"/repos/{REPO}/releases/latest"]
+
+
+def test_senza_api_release_in_preparazione_o_assente(github, tmp_path):
+    github.risposte[f"/repos/{REPO}/releases/latest"] = (429, {})
+    sito_con_release(github, file=())                         # la release c'e' ma i file non ancora
+    o = Orologio()
+    r = rete.Rilasci(ora=o, percorso=str(tmp_path / "rilasci.json"))
+    r.controlla()
+    assert r.vista()["ultima"]["completa"] is False and r.vista()["nuova"] is False
+    sito_con_release(github, file=("rete-meshtastic.sh",))    # manca l'installatore
+    o.t += 7 * 3600
+    r.controlla()
+    assert r.vista()["ultima"]["completa"] is False
+    github.risposte[f"/{REPO}/releases/latest"] = (302, {"Location": f"{github.url}/{REPO}/releases"})   # nessuna release
+    o.t += 7 * 3600
+    r.controlla()
+    assert r.vista()["errore"] == "nessuna versione pubblicata"
+    del github.risposte[f"/{REPO}/releases/latest"]           # anche il sito non risponde come deve
+    o.t += 7 * 3600
+    r.controlla()
+    assert r.vista()["errore"] == "nessuna versione pubblicata"
+
+
+def test_senza_api_e_senza_novita_si_aggiorna_lo_stesso(github, tmp_path):
+    github.risposte[f"/repos/{REPO}/releases/latest"] = (403, {})
+    sito_con_release(github)
+    del github.risposte[f"/{REPO}/raw/v{NUOVA}/NOVITA.md"]
+    r = rete.Rilasci(ora=Orologio(), percorso=str(tmp_path / "rilasci.json"))
+    r.controlla()
+    assert r.vista()["nuova"] is True and r.vista()["ultima"]["note"] == ""
+
+
 def test_quello_che_ha_visto_resta_dopo_un_riavvio(ril, tmp_path):
     ril.risposte.append(release())
     ril.controlla()

@@ -3,6 +3,11 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.16.2
+
+- Controllo degli aggiornamenti: se GitHub rifiuta le richieste del server (succede quando altri programmi dello stesso server ne fanno troppe in un'ora), la versione nuova si legge lo stesso da un altro indirizzo di GitHub che non ha quel limite.
+- Se il controllo non riesce, ora c'è scritto accanto a "Controlla adesso" (prima la pagina continuava a dire "Tutto aggiornato").
+
 ## 1.16.1
 
 - Schede ridotte a quattro: Rete, Radio, Storico, Gestione. Mappa, gateway e ripetitori stanno insieme nella scheda Rete, una sotto l'altra; i vecchi indirizzi (#mappa, #gateway, #ripetitori) portano al punto giusto.

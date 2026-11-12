@@ -1,6 +1,7 @@
 // ---- aggiornamenti di server e ponti (dalla 1.8.0): le versioni pubblicate su GitHub
 let sezAggiornamenti = null, zonaAggiornamenti = null, versionePagina = "";
 let daAggiornare = null;
+let esitoControllo = "";           // esito dell'ultimo "Controlla adesso", scritto accanto al pulsante
 
 function confronta(a, b) {
   const x = String(a || "0").split(".").map(Number), y = String(b || "0").split(".").map(Number);
@@ -126,6 +127,11 @@ function aggiornaAggiornamenti() {
     z.append(el("p", null, r.errore ? "Non riesco a leggere le versioni pubblicate su GitHub: " + r.errore + "." :
                                       "Non ho ancora controllato le versioni pubblicate su GitHub."));
   }
+  // l'ultimo controllo non riuscito si dice sempre, anche quando si conosce gia' una versione (fino alla 1.16.1 no:
+  // la pagina diceva "tutto aggiornato" mentre GitHub rifiutava le richieste)
+  if (r.errore && u) z.append(el("p", "evidenza", "L'ultimo controllo su GitHub non è riuscito: " + r.errore +
+                                                  ". Potrebbe esserci una versione più nuova di quella scritta qui."));
+  if (esitoControllo) z.append(el("p", "evidenza", esitoControllo));
   const riga = el("p", "nota", r.controllato ? "Ultimo controllo su GitHub " + giornoOra(r.controllato) + ". " : "");
   const c = el("button", "bottone secondario piccolo", "Controlla adesso");
   c.type = "button";
@@ -135,8 +141,9 @@ function aggiornaAggiornamenti() {
     try {
       const d = await manda("controlla-aggiornamenti", {});
       gestione.rilasci = d.rilasci;
+      esitoControllo = "";
     } catch (e) {
-      avviso = "Controllo non riuscito: " + e.message;
+      esitoControllo = "Controllo non riuscito: " + frase(e.message);    // accanto al pulsante, non in cima
     }
     disegna();
   });
