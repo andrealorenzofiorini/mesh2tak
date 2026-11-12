@@ -22,14 +22,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
-      TAKSDK: ${{ runner.temp }}/takpacket-sdk
       PROVA_SSHD: /usr/sbin/sshd
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/browser
     steps:
       - uses: actions/checkout@v4
 
       - name: Cosa serve alle prove
         run: |
+          export TAKSDK="$RUNNER_TEMP/takpacket-sdk" PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/browser"
+          { echo "TAKSDK=$TAKSDK"; echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH"; } >> "$GITHUB_ENV"
           sudo apt-get update -q
           sudo apt-get install -y -q openssh-server dosfstools mtools xz-utils e2fsprogs fdisk
           sudo python3 -m pip install -q --break-system-packages pytest cryptography zstandard pypubsub \
