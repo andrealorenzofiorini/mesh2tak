@@ -22,9 +22,9 @@ VERSIONE="1.10.0"
 R="$MESH2TAK_PROVA_RADICE"
 mkdir -p "$R/etc/mesh2tak"
 { echo "ARGOMENTI $*"; env | grep '^MESH2TAK_' | sort; echo "PACCHETTO $(cat "${@: -1}")"; echo ---; } >> "$R/lanci"
-echo "Ponte Meshtastic <-> TAK Server (versione 1.10.0)"
+echo "Gateway Meshtastic <-> TAK Server (versione 1.10.0)"
 echo
-echo "1/9  Certificato del ponte"
+echo "1/9  Certificato del gateway"
 echo "  ✔ certificato valido"
 case "$(cat "$R/comportamento" 2>/dev/null)" in
   errore) echo; echo "✘ Password del certificato sbagliata." >&2
@@ -35,7 +35,7 @@ case "$(cat "$R/comportamento" 2>/dev/null)" in
           echo "Il Raspberry ora si riavvia."; exit 0 ;;
   muore) exit 137 ;;
 esac
-echo; echo "9/9  Avvio del ponte"
+echo; echo "9/9  Avvio del gateway"
 echo "ok 1.10.0" > "$R/etc/mesh2tak/esito-installazione"
 echo "Fatto."
 '''.encode()
@@ -192,7 +192,7 @@ def test_dall_invito_al_ponte_installato(rasp):
     assert "MESH2TAK_HOST" not in lancio
     fasi = rasp.avanzamento()
     assert [f[0] for f in fasi] == ["scarico", "installo", "installo", "installo", "fatto"]
-    assert fasi[2][1] == "1/9 Certificato del ponte" and fasi[3][1] == "9/9 Avvio del ponte"
+    assert fasi[2][1] == "1/9 Certificato del gateway" and fasi[3][1] == "9/9 Avvio del gateway"
     assert "installato: mesh2tak 1.10.0" in fasi[-1][1]
     assert not any(PSK in riga or "atakatak" in riga for riga in (rasp.t / "ssh-comandi").read_text().splitlines())
     # finito: niente certificato ne' chiavi in giro, invito tolto, il programma si toglie da solo
@@ -223,10 +223,10 @@ def test_riavvio_a_meta_poi_riprende_e_riferisce(rasp):
     (rasp.t / "etc/mesh2tak/esito-installazione").write_text("in_corso\n")
     (rasp.t / "etc/mesh2tak/installazione-schermo.log").write_text(
         "2/9  Aggiornamento del Raspberry\n\n=== 2026-11-10 dopo il riavvio l'installazione riprende da sola\n"
-        "\x1b[1m3/9  Meshtastic per la scheda LoRa (waveshare)\x1b[0m\n  ok\n\n5/9  Programma del ponte\n")
+        "\x1b[1m3/9  Meshtastic per la scheda LoRa (waveshare)\x1b[0m\n  ok\n\n5/9  Programma del gateway\n")
     assert rasp.giro() == 20
-    assert rasp.avanzamento()[-1] == ["installo", "5/9 Programma del ponte"]
-    assert rasp.giro() == 20 and rasp.avanzamento()[-1] == ["installo", "5/9 Programma del ponte"]   # una volta sola
+    assert rasp.avanzamento()[-1] == ["installo", "5/9 Programma del gateway"]
+    assert rasp.giro() == 20 and rasp.avanzamento()[-1] == ["installo", "5/9 Programma del gateway"]   # una volta sola
     (rasp.t / "etc/mesh2tak/esito-installazione").write_text("ok 1.10.0\n")
     os.unlink(rasp.t / "etc/systemd/system/mesh2tak-installazione.service")
     assert rasp.giro() is None and rasp.avanzamento()[-1][0] == "fatto"
@@ -383,6 +383,6 @@ def test_dopo_il_riavvio_senza_rete_segue_lo_schermo(rasp):
     rasp.hub.risposte.clear()                                         # la pagina della rete non risponde
     rasp.hub.ferma() if hasattr(rasp.hub, "ferma") else None
     (rasp.t / "unita-attiva").write_text("activating\n")
-    (rasp.t / "etc/mesh2tak/installazione-schermo.log").write_text("\n=== dopo il riavvio\n6/9  Programmi del ponte\n")
+    (rasp.t / "etc/mesh2tak/installazione-schermo.log").write_text("\n=== dopo il riavvio\n6/9  Programmi del gateway\n")
     assert rasp.giro() == 20
-    assert rasp.avanzamento()[-1] == ["installo", "6/9 Programmi del ponte"]   # via SSH, con la registrazione ricordata
+    assert rasp.avanzamento()[-1] == ["installo", "6/9 Programmi del gateway"]   # via SSH, con la registrazione ricordata

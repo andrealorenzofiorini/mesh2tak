@@ -179,7 +179,7 @@ def test_se_non_riparte_torna_alla_versione_di_prima(pi):
     r = pi.lancia()
     assert r.returncode == 1, r.stdout + r.stderr
     e = pi.esito()
-    assert e["stato"] == "ripristinato" and e["messaggio"] == "con la 1.9.0 il ponte non riparte; rimessa la 1.8.0"
+    assert e["stato"] == "ripristinato" and e["messaggio"] == "con la 1.9.0 il gateway non riparte; rimessa la 1.8.0"
     assert pi.segni() == ["installo 1.9.0", "installo 1.8.0"] and pi.installata() == "1.8.0"
     assert time.time() - t0 < 60
     assert not (pi.stato / "installatore-1.9.0.sh").exists()        # niente file lasciati in giro
@@ -191,7 +191,7 @@ def test_se_non_riparte_neanche_la_vecchia_lo_dice(pi):
     pi.rotte = {"1.9.0", "1.8.0"}
     assert pi.lancia().returncode == 1
     e = pi.esito()
-    assert e["stato"] == "errore" and "anche il ritorno alla 1.8.0 non e' riuscito: il ponte non riparte" in e["messaggio"]
+    assert e["stato"] == "errore" and "anche il ritorno alla 1.8.0 non e' riuscito: il gateway non riparte" in e["messaggio"]
 
 
 def test_senza_pagina_del_ponte_controlla_la_versione_installata(pi):

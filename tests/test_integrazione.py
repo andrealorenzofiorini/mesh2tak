@@ -75,7 +75,7 @@ def test_scenario_completo(pki, tmp_path, tak_finto, nodo_finto):
     # Inoltrati
     ponte_ev = ev["!abcd0001"][0]
     assert ponte_ev["type"] == "a-f-G-I" and ponte_ev["callsign"] == "Ponte-CNSAS" and "squadra" not in ponte_ev
-    assert ponte_ev["mesh2tak"] == {"radio": "!abcd0001", "ponte": "!abcd0001"}, "segno per gli altri ponti"
+    assert ponte_ev["mesh2tak"] == {"radio": "!abcd0001", "ponte": "!abcd0001"}, "segno per gli altri gateway"
     assert ponte_ev["icona"] == "6d781afb-89a6-4c07-b2b9-a89748b6a38f/Landmarks/tower.png", "traliccio OSM"
     a = ev["!1111aaaa"]
     assert a[0]["type"] == "a-f-G-U-C" and a[0]["squadra"] == "Cyan" and a[0]["batteria"] == "87"

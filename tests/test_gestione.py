@@ -166,7 +166,7 @@ def test_pagine_passano_senza_pausa(gestione):
     g, pagina, _ = gestione()
     assert chiedi(g.cfg.gestione_porta_pagina, "/") == (200, b"<html>Meshtastic</html>")
     assert chiedi(g.cfg.gestione_porta_pagina, "/assets/app.js")[0] == 200
-    assert not g.pausa.attiva, "aprire la pagina non basta: il ponte si ferma solo quando la pagina usa il nodo"
+    assert not g.pausa.attiva, "aprire la pagina non basta: il gateway si ferma solo quando la pagina usa il nodo"
 
 
 def test_la_pagina_usa_il_nodo_solo_con_il_ponte_in_pausa(gestione):
@@ -175,7 +175,7 @@ def test_la_pagina_usa_il_nodo_solo_con_il_ponte_in_pausa(gestione):
     assert g.pausa.attiva and "dal browser" in g.pausa.nota
     assert chiedi(g.cfg.gestione_porta_pagina, "/api/v1/toradio", "PUT", b"\x18\x01")[0] == 200
     api = [c for c in pagina.chiamate if c[1].startswith("/api/")]
-    assert len(api) == 2 and all(c[3] for c in api), "mai una chiamata al nodo con il ponte ancora collegato"
+    assert len(api) == 2 and all(c[3] for c in api), "mai una chiamata al nodo con il gateway ancora collegato"
     assert api[1][2] == b"\x18\x01"
 
 
@@ -197,7 +197,7 @@ def test_pagina_pausa_massima_poi_serve_ricaricare(gestione):
     chiamate = len(pagina.chiamate)
     stato, testo = chiedi(g.cfg.gestione_porta_pagina, "/api/v1/fromradio")
     assert stato == 503 and "Ricarica la pagina" in testo.decode()
-    assert len(pagina.chiamate) == chiamate and not g.pausa.attiva, "una scheda dimenticata non ferma il ponte"
+    assert len(pagina.chiamate) == chiamate and not g.pausa.attiva, "una scheda dimenticata non ferma il gateway"
     chiedi(g.cfg.gestione_porta_pagina, "/")   # ricaricata
     assert chiedi(g.cfg.gestione_porta_pagina, "/api/v1/fromradio")[0] == 200 and g.pausa.attiva
 
@@ -216,7 +216,7 @@ def test_app_usa_il_nodo_solo_con_il_ponte_in_pausa(gestione):
     app.sendall(b"\x94\xc3\x00\x02ab")
     assert app.recv(10) == b"\x94\xc3\x00\x02ab", "i dati passano nei due sensi"
     assert g.pausa.attiva and "dall'app Meshtastic" in g.pausa.nota
-    assert api.collegamenti == [True], "il ponte aveva gia' lasciato il nodo"
+    assert api.collegamenti == [True], "il gateway aveva gia' lasciato il nodo"
     time.sleep(2.0)
     assert g.pausa.attiva, "app collegata: la pausa continua anche se l'app tace"
     app.close()
@@ -258,7 +258,7 @@ def test_app_pausa_massima_poi_deve_tacere(gestione):
         di_nuovo = socket.create_connection(("127.0.0.1", g.cfg.gestione_porta_app), timeout=10)
         di_nuovo.sendall(b"x")
         assert chiuso_dal_ponte(di_nuovo)
-        assert not g.pausa.attiva, "un'app dimenticata non ferma di nuovo il ponte"
+        assert not g.pausa.attiva, "un'app dimenticata non ferma di nuovo il gateway"
     time.sleep(1.3)      # zitta per silenzio_app_s: si puo' ricollegare
     di_nuovo = socket.create_connection(("127.0.0.1", g.cfg.gestione_porta_app), timeout=10)
     di_nuovo.sendall(b"z")
@@ -274,7 +274,7 @@ def test_config_gestione(pki, tmp_path):
     assert cfg.gestione_attiva and cfg.gestione_porta_pagina == 9443 and cfg.gestione_porta_app == 4403
     assert cfg.gestione_nodo_pagina == "https://127.0.0.1:9444"
     assert cfg.gestione_pausa_massima_min == 30 and cfg.gestione_chiusura_s == 120
-    assert m.Gestione(cfg, m.Pausa()).app_nodo == ("127.0.0.1", 4404), "l'app va al nodo come il ponte"
+    assert m.Gestione(cfg, m.Pausa()).app_nodo == ("127.0.0.1", 4404), "l'app va al nodo come il gateway"
     conf = scrivi_config(tmp_path / "d.conf", pki, 8089, 4404, tmp_path, gestione__attiva="si",
                          gestione__certificato=tmp_path / "manca.pem", gestione__chiave=pki / "meshtastic-cnsas-plain.key")
     with pytest.raises(m.ErroreConfig, match="certificato della pagina"):
@@ -323,7 +323,7 @@ def ponte_con_gestione(pki, tmp_path, tak_finto):
         stato["registro"], _ = ponte.communicate(timeout=20)
         return stato["registro"]
 
-    assert aspetta(lambda: bool(eventi_ponte()), 20), "ponte non partito"
+    assert aspetta(lambda: bool(eventi_ponte()), 20), "gateway non partito"
     yield porte, eventi_ponte, aspetta, ferma
     if "registro" not in stato:
         ferma()
@@ -346,7 +346,7 @@ def test_ponte_in_pausa_per_la_pagina_e_ripresa(ponte_con_gestione):
     registro = ferma()
     assert "Traceback" not in registro, registro
     assert "Gestione del nodo: pagina nel browser sulla porta" in registro
-    assert "Nodo gestito dal browser da 127.0.0.1: ponte in pausa" in registro
+    assert "Nodo gestito dal browser da 127.0.0.1: gateway in pausa" in registro
     assert "Gestione del nodo finita" in registro
     assert registro.count("Collegato al nodo Meshtastic") == 2, registro
     assert "riprovo tra" not in registro, "la pausa non e' un guasto del nodo"
@@ -359,7 +359,7 @@ def test_app_meshtastic_vera_attraverso_il_ponte(ponte_con_gestione):
     import meshtastic.tcp_interface
     app = meshtastic.tcp_interface.TCPInterface(hostname="127.0.0.1", portNumber=porte["app"], noNodes=False)
     try:
-        assert app.myInfo.my_node_num == 0xABCD0001, "configurazione completa del nodo attraverso il ponte"
+        assert app.myInfo.my_node_num == 0xABCD0001, "configurazione completa del nodo attraverso il gateway"
         assert app.localNode.localConfig.lora.region != 0 or app.nodesByNum
         assert aspetta(lambda: in_pausa(eventi_ponte), 10)
     finally:
@@ -367,6 +367,6 @@ def test_app_meshtastic_vera_attraverso_il_ponte(ponte_con_gestione):
     time.sleep(7)   # app chiusa: dopo 3 s il ponte si ricollega
     registro = ferma()
     assert "Traceback" not in registro, registro
-    assert "Nodo gestito dall'app Meshtastic da 127.0.0.1: ponte in pausa" in registro
+    assert "Nodo gestito dall'app Meshtastic da 127.0.0.1: gateway in pausa" in registro
     assert "App Meshtastic da 127.0.0.1 scollegata dal nodo" in registro
     assert registro.count("Collegato al nodo Meshtastic") == 2, registro

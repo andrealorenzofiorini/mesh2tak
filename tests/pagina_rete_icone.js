@@ -1,7 +1,7 @@
 // Icone sulla mappa (1.11.0) nel browser: dalla scheda "Radio" si sceglie l'icona di una radio, poi si apre la
 // scelta per il ponte dalla sua scheda. Stampa quello che vede, in JSON.
 const { chromium } = require('playwright');
-const { sfondoFinto } = require('./pagina_comune');
+const { sfondoFinto, scheda } = require('./pagina_comune');
 (async () => {
   const [url, foto] = process.argv.slice(2);
   const b = await chromium.launch({args: ['--host-resolver-rules=MAP *.prova.lan 127.0.0.1', '--no-proxy-server']});
@@ -32,7 +32,8 @@ const { sfondoFinto } = require('./pagina_comune');
   await p.click('#icone-chiudi');
   r.bottoneDopo = await p.innerText('li.voce:has-text("07-BIANCHI") button.icona-mappa');
   r.figuraNelBottone = await p.$eval('li.voce:has-text("07-BIANCHI") button.icona-mappa img', e => e.src);
-  // la scheda del gateway (nella stessa pagina dalla 1.15.0): la sua icona predefinita e' il traliccio
+  // la scheda del gateway: la sua icona predefinita e' il traliccio
+  await scheda(p, 'gateway');
   await p.click('section.ponte:has(h3:text-is("casa")) button.icona-mappa');
   await p.waitForSelector('#icone[open] .tessera-icona');
   r.titoloPonte = await p.innerText('#icone-titolo');

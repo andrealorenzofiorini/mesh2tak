@@ -169,11 +169,11 @@ def impronta_chiave(riga: str) -> str:
     """Come il ponte e il server: sha256 della chiave pubblica, nome del file della registrazione."""
     parti = riga.split()
     if len(parti) < 2:
-        raise Errore("chiave pubblica del ponte non valida")
+        raise Errore("chiave pubblica del gateway non valida")
     try:
         return hashlib.sha256(base64.b64decode(parti[1], validate=True)).hexdigest()
     except (binascii.Error, ValueError):
-        raise Errore("chiave pubblica del ponte non valida")
+        raise Errore("chiave pubblica del gateway non valida")
 
 
 def leggi_registrazione() -> Optional[dict]:
@@ -290,7 +290,7 @@ def aggiorna(versione: str, prima: Optional[str], reimposta: bool = False) -> Tu
     if esito == 0 and ponte_sano(versione):
         return "fatto", f"aggiornato dalla {prima or '?'} alla {versione}" + (" e radio reimpostata" if reimposta else "")
     motivo = (f"l'installazione della {versione} non e' riuscita: {ultima_riga(testo)}" if esito != 0
-              else f"con la {versione} il ponte non riparte")
+              else f"con la {versione} il gateway non riparte")
     if not prima:
         return "errore", motivo
     if versione_installata() == prima and ponte_sano(prima):
@@ -301,7 +301,7 @@ def aggiorna(versione: str, prima: Optional[str], reimposta: bool = False) -> Tu
     if e2 == 0 and ponte_sano(prima):
         return "ripristinato", f"{motivo}; rimessa la {prima}"
     return "errore", (f"{motivo}; anche il ritorno alla {prima} non e' riuscito: "
-                      + (ultima_riga(t2) if e2 else "il ponte non riparte"))
+                      + (ultima_riga(t2) if e2 else "il gateway non riparte"))
 
 
 # --------------------------------------------------------------------------
@@ -310,11 +310,11 @@ def aggiorna(versione: str, prima: Optional[str], reimposta: bool = False) -> Tu
 
 AZIONI = ("riavvia-programma", "riavvia-radio", "riavvia-raspberry", "registro", "impostazioni", "certificato",
           "reimposta-radio")
-IN_CORSO = {"riavvia-programma": "riavvio il programma del ponte", "riavvia-radio": "riavvio la radio",
+IN_CORSO = {"riavvia-programma": "riavvio il programma del gateway", "riavvia-radio": "riavvio la radio",
             "riavvia-raspberry": "il Raspberry si riavvia: torna in linea in 2-3 minuti",
             "registro": "raccolgo il registro", "impostazioni": "salvo le impostazioni e riavvio il programma",
-            "certificato": "installo il certificato nuovo: qualche minuto, intanto il ponte si ferma",
-            "reimposta-radio": "reimposto la radio: un paio di minuti, intanto il ponte si ferma"}
+            "certificato": "installo il certificato nuovo: qualche minuto, intanto il gateway si ferma",
+            "reimposta-radio": "reimposto la radio: un paio di minuti, intanto il gateway si ferma"}
 RE_ID_AZIONE = re.compile(r"^[0-9a-f]{16}$")
 AZIONE_SCADE_S = 30 * 60            # un comando arrivato a Raspberry spento: dopo mezz'ora non vale piu'
 ESITI = "azioni.json"               # gli ultimi esiti, per la pagina (li legge il ponte)
@@ -482,10 +482,10 @@ def esegui_azioni(reg: dict) -> bool:
 def azione_riavvia_programma(a: dict, reg: dict) -> Tuple[str, str]:
     r = esegui(["systemctl", "restart", "mesh2tak"], 180)
     if r.returncode != 0:
-        raise Errore("il programma del ponte non si riavvia: " + ultima_riga(r.stdout + r.stderr))
+        raise Errore("il programma del gateway non si riavvia: " + ultima_riga(r.stdout + r.stderr))
     if ponte_sano(versione_installata()):
-        return "fatto", "programma del ponte riavviato"
-    return "errore", "dopo il riavvio il programma del ponte non risponde: leggi il registro"
+        return "fatto", "programma del gateway riavviato"
+    return "errore", "dopo il riavvio il programma del gateway non risponde: leggi il registro"
 
 
 def azione_riavvia_radio(a: dict, reg: dict) -> Tuple[str, str]:
@@ -500,14 +500,14 @@ def azione_riavvia_radio(a: dict, reg: dict) -> Tuple[str, str]:
             esegui(["systemctl", "start", "mesh2tak"], 180)
         if "ESITO riavvio=ok" not in (r.stdout or ""):
             raise Errore("la radio USB non ha preso il comando: " + ultima_riga(r.stdout + r.stderr))
-        return "fatto", "radio USB riavviata: il ponte si ricollega da solo entro un minuto"
+        return "fatto", "radio USB riavviata: il gateway si ricollega da solo entro un minuto"
     r = esegui(["systemctl", "restart", "meshtasticd"], 180)
     if r.returncode != 0:
         raise Errore("meshtasticd non si riavvia: " + ultima_riga(r.stdout + r.stderr))
     time.sleep(ATTESA_RADIO_S)
     if esegui(["systemctl", "is-active", "--quiet", "meshtasticd"], 30).returncode != 0:
         return "errore", "dopo il riavvio meshtasticd non e' attivo: leggi il registro"
-    return "fatto", "radio riavviata (meshtasticd): il ponte si ricollega da solo entro un minuto"
+    return "fatto", "radio riavviata (meshtasticd): il gateway si ricollega da solo entro un minuto"
 
 
 def oscura(testo: str) -> str:
@@ -520,7 +520,7 @@ def oscura(testo: str) -> str:
 
 
 def raccogli_registro() -> str:
-    parti = [f"Registro del ponte (mesh2tak {versione_installata() or '?'}) del {time.strftime('%d/%m/%Y alle %H:%M')}",
+    parti = [f"Registro del gateway (mesh2tak {versione_installata() or '?'}) del {time.strftime('%d/%m/%Y alle %H:%M')}",
              "Chiavi, password e link del canale sono tolti.", ""]
 
     def aggiungi(titolo: str, testo: str) -> None:
@@ -546,7 +546,7 @@ def raccogli_registro() -> str:
                         "mesh2tak-aggiorna.timer", "mesh2tak-aggiorna.path"])
     comando("Raspberry: acceso da, spazio, memoria, corrente",
             ["sh", "-c", "uptime; echo; df -h /; echo; free -m; command -v vcgencmd >/dev/null && vcgencmd get_throttled"])
-    comando("Programma del ponte (mesh2tak), ultime 400 righe",
+    comando("Programma del gateway (mesh2tak), ultime 400 righe",
             ["journalctl", "-u", "mesh2tak", "-n", "400", "--no-pager", "-o", "short-iso"])
     comando("Radio (meshtasticd), ultime 200 righe",
             ["journalctl", "-u", "meshtasticd", "-n", "200", "--no-pager", "-o", "short-iso"])
@@ -658,7 +658,7 @@ def azione_impostazioni(a: dict, reg: dict) -> Tuple[str, str]:
         with open(CONF, encoding="utf-8") as f:
             prima = f.read()
     except OSError as e:
-        raise Errore(f"non leggo la configurazione del ponte ({e.strerror})")
+        raise Errore(f"non leggo la configurazione del gateway ({e.strerror})")
     nuovo, cambiate = cambia_impostazioni(prima, valori)
     if not cambiate:
         return "fatto", "niente da cambiare: le impostazioni erano gia' queste"
@@ -671,7 +671,7 @@ def azione_impostazioni(a: dict, reg: dict) -> Tuple[str, str]:
         return "fatto", "impostazioni salvate: " + ", ".join(cambiate)
     scrivi_conf(prima)
     esegui(["systemctl", "restart", "mesh2tak"], 180)
-    return "errore", "con le impostazioni nuove il ponte non ripartiva: rimesse quelle di prima"
+    return "errore", "con le impostazioni nuove il gateway non ripartiva: rimesse quelle di prima"
 
 
 def dati_ssh(reg: dict) -> dict:
@@ -703,10 +703,10 @@ def chiedi_al_server(reg: dict, comando: str, attesa: float = 90) -> subprocess.
 def azione_certificato(a: dict, reg: dict) -> Tuple[str, str]:
     script = os.path.join(DIR, "installatore.sh")
     if not os.path.isfile(script):
-        raise Errore("sul Raspberry manca l'installatore: aggiorna il ponte dalla pagina, poi riprova")
+        raise Errore("sul Raspberry manca l'installatore: aggiorna il gateway dalla pagina, poi riprova")
     r = chiedi_al_server(reg, "certificato")
     if r.returncode == 3:
-        raise Errore("sul server non c'e' un certificato da installare per questo ponte (gia' installato o scaduto): "
+        raise Errore("sul server non c'e' un certificato da installare per questo gateway (gia' installato o scaduto): "
                      "caricalo di nuovo")
     if r.returncode != 0:
         raise Errore("il server della rete non ha dato il certificato (" + ultima_riga(r.stderr or r.stdout) + ")")
@@ -739,10 +739,10 @@ def azione_certificato(a: dict, reg: dict) -> Tuple[str, str]:
     if fatto.returncode != 0:
         registra("il server non ha tolto il certificato consegnato (lo toglie da solo dopo un giorno)")
     if not ponte_sano(versione_installata()):
-        return "errore", "certificato installato, ma il ponte non riparte: leggi il registro"
+        return "errore", "certificato installato, ma il gateway non riparte: leggi il registro"
     if "Il TAK Server non ha accettato il collegamento" in testo:
         return "errore", ("certificato installato, ma il TAK Server non accetta il collegamento: controlla nella "
-                          "console infra-TAK che sia quello del ponte")
+                          "console infra-TAK che sia quello del gateway")
     m = re.search(r"certificato '([^'\n]*)' \(scade: ([^)\n]*)\)", testo)
     return "fatto", "certificato sostituito" + (f": '{m.group(1)}', scade {m.group(2)}" if m else "")
 
@@ -750,11 +750,11 @@ def azione_certificato(a: dict, reg: dict) -> Tuple[str, str]:
 def azione_reimposta_radio(a: dict, reg: dict) -> Tuple[str, str]:
     script = os.path.join(DIR, "installatore.sh")
     if not os.path.isfile(script):
-        raise Errore("sul Raspberry manca l'installatore: aggiorna il ponte dalla pagina, poi riprova")
+        raise Errore("sul Raspberry manca l'installatore: aggiorna il gateway dalla pagina, poi riprova")
     esito, testo = lancia(script, ("--reimposta-radio",), durata_s=20 * 60)
     if esito != 0:
         return "errore", "radio non reimpostata: " + ultima_riga(testo)
-    return "fatto", "radio del ponte come all'installazione; le altre impostazioni scelte dall'app restano"
+    return "fatto", "radio del gateway come all'installazione; le altre impostazioni scelte dall'app restano"
 
 
 FUNZIONI: Dict[str, Callable[[dict, dict], Tuple[str, str]]] = {

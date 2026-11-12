@@ -5,7 +5,7 @@ name: Rilascio
 
 on:
   push:
-    branches: [main]
+    branches: [main, "prove/**"]      # sui rami prove/... girano solo le prove, senza pubblicare
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Dalla 1.16.0 le prove automatiche girano qui prima di ogni rilascio: se una non passa non si pubblica niente.
+  # (I controlli sul Raspberry simulato, tests/prova_installatore.sh, restano da lanciare a mano.)
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      TAKSDK: ${{ runner.temp }}/takpacket-sdk
+      PROVA_SSHD: /usr/sbin/sshd
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/browser
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cosa serve alle prove
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q openssh-server dosfstools mtools xz-utils e2fsprogs fdisk
+          sudo python3 -m pip install -q --break-system-packages pytest cryptography zstandard pypubsub \
+            "pyserial>=3.5" "protobuf>=5.29,<8" "meshtastic==2.7.11"
+          git clone -q https://github.com/meshtastic/TAKPacket-SDK "$TAKSDK"
+          git -C "$TAKSDK" checkout -q c02c625f13226f39e30ff7ecdbfa8150783c1f70
+          sudo mkdir -p /opt/prova-caddy
+          for v in 2.10.2 2.6.4; do
+            curl -fsSL "https://github.com/caddyserver/caddy/releases/download/v$v/caddy_${v}_linux_amd64.tar.gz" \
+              | tar -xz -C "$RUNNER_TEMP" caddy
+            sudo install -m 755 "$RUNNER_TEMP/caddy" "/opt/prova-caddy/caddy-$v"
+          done
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
+
+      - name: Prove
+        run: |
+          python3 -m py_compile mesh2tak.py scorta.py aggiorna.py primo_avvio.py server/rete_meshtastic.py
+          python3 build.py
+          sudo -E env "PATH=$PATH" python3 -m pytest tests -q -p no:cacheprovider
+
   rilascio:
+    needs: prove
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

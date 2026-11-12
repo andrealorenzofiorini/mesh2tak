@@ -10,9 +10,16 @@ async function sfondoFinto(ctx, richieste) {
   });
 }
 
-// I gruppi della gestione (aggiungere un gateway, avvisi, aggiornamenti) restano chiusi finche' non servono
+// Dalla 1.16.0 la pagina e' a schede: mappa, gateway, ripetitori, squadra (radio), storico, gestione
+async function scheda(p, nome) {
+  await p.click('#scheda-' + nome);
+  await p.waitForSelector('#scheda-' + nome + '[aria-selected="true"]');
+}
+
+// Un gruppo della scheda Gestione: aggiungi (un gateway), avvisi, aggiornamenti
 async function apri(p, id) {
   await p.waitForSelector('#' + id, {state: 'attached', timeout: 15000});
+  await scheda(p, 'gestione');
   await p.evaluate(n => { document.getElementById(n).open = true; }, id);
 }
 
@@ -29,4 +36,4 @@ function inSospeso(p) {
   return () => [...aperte].map(([r, t]) => r.method() + ' ' + r.url() + ' da ' + Math.round((Date.now() - t) / 1000) + ' s');
 }
 
-module.exports = {SFONDO, sfondoFinto, apri, IMMAGINI, inSospeso};
+module.exports = {SFONDO, sfondoFinto, apri, scheda, IMMAGINI, inSospeso};

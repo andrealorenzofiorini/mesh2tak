@@ -147,7 +147,7 @@ def test_stesso_nome_due_richieste(sv):
 def test_approva_mette_in_coda_un_lavoro_completo(sv):
     sv.nuova_richiesta(domanda(1), "203.0.113.5")
     codice, r = sv.azione("/api/approva", {"id": impronta(1)}, "andrea")
-    assert codice == 202 and "Sto aggiungendo il ponte casa" in r["messaggio"]
+    assert codice == 202 and "Sto aggiungendo il gateway casa" in r["messaggio"]
     [l] = lavori()
     assert l["id"] == r["lavoro"] and l["azione"] == "aggiungi" and l["nome"] == "casa" and l["da"] == "andrea"
     assert l["chiave"] == rete.leggi_chiave(chiave(1))[0] and l["richiesta"] == impronta(1) and l["sostituisci"] is False
@@ -252,7 +252,7 @@ def test_ponte_tolto_non_rientra_da_solo(sv):
     sv.metti_ponti("casa", "sede")
     registra(1, "casa")
     codice, r = sv.azione("/api/rimuovi", {"nome": "casa"}, "andrea")
-    assert codice == 202 and "Sto togliendo il ponte casa" in r["messaggio"]
+    assert codice == 202 and "Sto togliendo il gateway casa" in r["messaggio"]
     [l] = lavori()
     assert (l["azione"], l["nome"], l["da"]) == ("rimuovi", "casa", "andrea")
     # finche' il lavoro non ha tolto la registrazione il ricordo resta

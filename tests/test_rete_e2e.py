@@ -30,8 +30,8 @@ from test_gestione import PaginaNodoFinta
 import mesh2tak as m
 
 SCRIPT = os.path.join(RADICE, "dist", "rete-meshtastic.sh")
-SSHD = "/opt/prova-openssh/sbin/sshd"
-CADDY = "/opt/prova-caddy/caddy-2.10.2"
+SSHD = os.environ.get("PROVA_SSHD", "/opt/prova-openssh/sbin/sshd")
+CADDY = os.environ.get("PROVA_CADDY", "/opt/prova-caddy") + "/caddy-2.10.2"
 DOMINIO = "prova.lan"
 RETE = f"https://meshtastic.{DOMINIO}:8443"
 PONTE = f"https://meshtastic-casa.{DOMINIO}:8443"
@@ -174,7 +174,9 @@ class Rete:
         # copertura (1.14.0), vuota: dalla 1.15.0 la pagina la legge appena si apre, come dal Raspberry vero
         self.ponte.copertura = m.Copertura(str(cartella / "pi" / "copertura-vuota.json"))
         self.g.copertura = self.ponte.copertura_per_la_pagina
-        self.ponte.mio_num, self.ponte.nodo_nome, self.ponte.nodo_nome_breve = 0x11111111, "Ponte di prova", "PROV"
+        self.ponte.storico = m.Storico(str(cartella / "pi" / "storico.json"))      # dalla 1.16.0
+        self.g.storico = self.ponte.storico.dati
+        self.ponte.mio_num, self.ponte.nodo_nome, self.ponte.nodo_nome_breve = 0x11111111, "Gateway di prova", "PROV"
         self.ponte.canali = {0: m.Canale(0, "CNSAS-VA", True), 1: m.Canale(1, "Public", False)}
         self.ponte.canali_ok = {0}
         ora = time.time()
@@ -414,7 +416,7 @@ def test_3_approvata_dalla_pagina_il_raspberry_apre_il_tunnel(rete):
 
 def test_4_pagina_della_rete_e_stato_del_ponte_dietro_authentik(rete):
     stato, corpo, _ = rete.chiedi(f"{RETE}/stato/casa.json")
-    assert stato == 200 and json.loads(corpo)["nome"] == "Ponte di prova"
+    assert stato == 200 and json.loads(corpo)["nome"] == "Gateway di prova"
     stato, corpo, _ = rete.chiedi(f"{RETE}/")
     assert stato == 200 and b"Rete Meshtastic" in corpo
     stato, corpo, h = rete.chiedi(f"{RETE}/ponti.json")
@@ -472,7 +474,8 @@ def test_5c_la_scheda_delle_radio_nel_browser(rete):
     r = json.loads(p.stdout.strip().splitlines()[-1])
     assert "errore" not in r, r
     assert r["errori"] == [] and r["finestre"] == [] and r["immagini"] == 0      # CSP rispettata, niente codice dai nomi
-    assert r["visibili"] == [True, True]            # il vecchio indirizzo #radio porta alle radio; la mappa resta
+    assert r["visibili"] == [True, False]           # il vecchio indirizzo #radio apre la scheda delle radio
+    assert r["mappa"] == [True, False, True] and r["schede"][:4] == ["Mappa", "Gateway1", "Ripetitori", "Radio2"], r
     assert r["ordine"] == ["<img src=x onerror=alert(1)>", "07-BIANCHI"]          # prima chi ha un problema
     assert "batteria quasi scarica" in r["voci"][0] and "casa: passando da 2 radio" in r["voci"][0]
     assert "SenseCAP T1000-E, con ATAK" in r["voci"][1] and "casa: diretta, segnale buono" in r["voci"][1]
@@ -496,13 +499,13 @@ def test_5d_avvisi_per_email(rete):
     assert d["sistema"]["avvio"] and d["sistema"]["acceso_dal"] and d["sistema"]["disco"]["totale_mb"] > 0
     assert aspetta(lambda: any("il certificato TAK scade il" in o for o in oggetti_email(rete)), 30), oggetti_email(rete)
     rete.accesso.ferma()                                    # il Raspberry sparisce da internet
-    assert aspetta(lambda: "[Rete Meshtastic] Ponte casa: non risponde" in oggetti_email(rete), 40), oggetti_email(rete)
+    assert aspetta(lambda: "[Rete Meshtastic] Gateway casa: non risponde" in oggetti_email(rete), 40), oggetti_email(rete)
     vista = rete.stato_api()["avvisi"]
     assert vista["problemi"]["casa"][0]["codice"] == "irraggiungibile" and vista["ultimo"]["esito"] == "mandato"
     rete.accesso = rete.avvia_accesso()
     assert aspetta(lambda: rete.accesso.stato()["collegato"], 60), rete.accesso.stato()
-    assert aspetta(lambda: "[Rete Meshtastic] Ponte casa: di nuovo in linea" in oggetti_email(rete), 40), oggetti_email(rete)
-    assert oggetti_email(rete).count("[Rete Meshtastic] Ponte casa: non risponde") == 1     # una volta sola
+    assert aspetta(lambda: "[Rete Meshtastic] Gateway casa: di nuovo in linea" in oggetti_email(rete), 40), oggetti_email(rete)
+    assert oggetti_email(rete).count("[Rete Meshtastic] Gateway casa: non risponde") == 1     # una volta sola
     assert rete.stato_api()["avvisi"]["problemi"] == {}
 
 
@@ -837,7 +840,7 @@ def test_6g_gestisci_il_raspberry_dalla_pagina(rete, pki):
     codice, r = rete.api("POST", "/api/gestisci-ponte", {"nome": "casa", "azione": "registro"})
     assert codice == 202, r
     assert aspetta(lambda: lavoro_della_pagina(rete, r["lavoro"]).get("esito") == "ok", 60), rete.esiti_lavora[-2:]
-    assert lavoro_della_pagina(rete, r["lavoro"])["messaggio"] == "chiesto al ponte: lo fa subito"
+    assert lavoro_della_pagina(rete, r["lavoro"])["messaggio"] == "chiesto al gateway: lo fa subito"
     assert os.path.exists(rete.g.file_controlla), "avvisato dal tunnel"
     stato, corpo, _ = rete.chiedi(f"{RETE}/accesso/{rete.accesso.impronta}.json", cookie=None)
     [a] = json.loads(corpo)["azioni"]
@@ -849,7 +852,7 @@ def test_6g_gestisci_il_raspberry_dalla_pagina(rete, pki):
     assert sis["comandi"] is True and sis["registro"]["byte"] > 0, sis
     assert [(x["id"], x["azione"], x["stato"]) for x in sis["azioni"]] == [(r["lavoro"], "registro", "fatto")]
     stato, testo, intestazioni = rete.chiedi(f"{RETE}/registro/casa.txt")
-    assert stato == 200 and b"Registro del ponte" in testo and b"psk=[tolto]" in testo, testo[:300]
+    assert stato == 200 and b"Registro del gateway" in testo and b"psk=[tolto]" in testo, testo[:300]
     assert intestazioni.get("Content-Type", "").startswith("text/plain") and "Access-Control-Allow-Origin" not in intestazioni
     assert rete.chiedi(f"{RETE}/registro/casa.txt", cookie=None)[0] == 302
     assert rete.chiedi(f"{RETE}/registro/altro.txt")[0] == 404
@@ -871,7 +874,7 @@ def test_6g_gestisci_il_raspberry_dalla_pagina(rete, pki):
                                                             "pacchetto": p12, "password": "atakatak"})
     assert codice == 202, r
     assert aspetta(lambda: lavoro_della_pagina(rete, r["lavoro"]).get("esito") == "ok", 60), rete.esiti_lavora[-2:]
-    assert lavoro_della_pagina(rete, r["lavoro"])["messaggio"] == ("Certificato 'meshtastic-cnsas' pronto per il ponte "
+    assert lavoro_della_pagina(rete, r["lavoro"])["messaggio"] == ("Certificato 'meshtastic-cnsas' pronto per il gateway "
                                                                   "casa: lo fa subito.")
     assert pwd.getpwuid(f.stat().st_uid).pw_name == "ponte-casa" and oct(f.stat().st_mode)[-3:] == "400"
     assert "atakatak" not in json.dumps(rete.stato_api())
@@ -922,7 +925,7 @@ def test_6h_gestisci_il_raspberry_dal_browser(rete):
                             "Radio del gateway", "Ultimi comandi"]
     assert (r["squadra"], r["validita"], r["invio"]) == ("Cyan", "90", True)
     assert "valido fino al" in r["certificato"]
-    assert "Registro del ponte" in r["registro"] and r["scarica"].startswith("registro-casa-")
+    assert "Registro del gateway" in r["registro"] and r["scarica"].startswith("registro-casa-")
     assert r["statoRegistro"].startswith("Registro pronto (")
     assert r["esitoImpostazioni"] == "fatto", r["statoImpostazioni"]
     assert r["statoImpostazioni"] == "Impostazioni salvate: squadra = Red.", r["statoImpostazioni"]
@@ -959,6 +962,11 @@ def prepara_copertura(rete):
     p.copertura.annota(45.8406, 8.8251, 2, None, None, oggi)
     for _ in range(2):
         p.copertura.annota(45.8606, 8.8051, 1, None, None, oggi, via=RIPETITORE)
+    # storico (1.16.0): tre mezz'ore del gateway e del ripetitore
+    with p.storico._lock:
+        p.storico.ponte = [[round(ora - 1800 * i), 4.0 + i, 0.5, 2, 1] for i in (3, 2, 1)]
+        p.storico.ripetitori = {"!3333cccc": {"nome": "Ripetitore Velate", "campioni": [
+            [round(ora - 1800 * i), 70 + i, 3.9, -7.5 - i, 1 if i != 2 else 0, i] for i in (3, 2, 1)]}}
     return oggi
 
 
@@ -994,7 +1002,15 @@ def test_6j_la_copertura_nel_browser(rete):
     r = json.loads(p.stdout.strip().splitlines()[-1])
     assert "errore" not in r, r
     assert r["errori"] == [], r["errori"]
-    assert r["prima"] is True, "la mappa sta prima delle schede"
+    assert r["prima"] == [True, False], "si apre sulla scheda Mappa"
+    assert r["schede"][:5] == ["Mappa", "Gateway1", "Ripetitori1", "Radio2", "Storico"], r["schede"]
+    assert r["schede"][5] in ("Gestione", "Gestione!"), "il punto esclamativo: c'e' da aggiornare"
+    assert r["prevista"] == ("https://site.meshtastic.org/?lat=45.8750&lon=8.8050&name=Ripetitore+Velate&tx_freq=869.525"
+                             "&tx_power=0.158&tx_height=3&max_range=30&run=1"), r["prevista"]
+    assert [x[0] for x in r["storico"]] == ["Gateway casa", "Ripetitore Velate"] and r["linee"] == 4, r["storico"]
+    assert r["storico"][0][1][0].startswith("Canale radio occupato ultimo 5%, minimo 5%, massimo 7%"), r["storico"]
+    assert r["storico"][1][1][0].startswith("Batteria ultimo 71%, minimo 71%, massimo 73%"), r["storico"]
+    assert r["storico"][1][1][2] == "Sentito dal gateway in 2 mezz'ore su 3 (67%)", r["storico"]
     assert r["riassunto"] == ("6 quadretti: buono 1, discreto 1, debole 1, al limite 1, tramite ripetitore 1, "
                               "tramite altre radio 1."), r["riassunto"]
     assert r["legenda"] == ["Buono", "Discreto", "Debole", "Al limite", "Tramite un ripetitore", "Tramite altre radio",
@@ -1112,7 +1128,7 @@ def test_12_sostituito_da_un_raspberry_reinstallato(rete, tmp_path):
     nuova = nuova_chiave(tmp_path, "nuova")
     porta = porta_libera()
     g = m.Gestione(m.Config(**{**rete.cfg.__dict__, "gestione_porta_pagina": porta}), m.Pausa())
-    g.fornisci_stato = lambda: {"formato": 1, "nome": "Ponte reinstallato", "nodo": {"collegato": True}}
+    g.fornisci_stato = lambda: {"formato": 1, "nome": "Gateway reinstallato", "nodo": {"collegato": True}}
     g.avvia()
     aspetta_porta(porta)
     try:
@@ -1125,7 +1141,7 @@ def test_12_sostituito_da_un_raspberry_reinstallato(rete, tmp_path):
         assert rete.api("POST", "/api/approva", {"id": r["id"]})[0] == 409           # non per sbaglio
         assert rete.api("POST", "/api/approva", {"id": r["id"], "sostituisci": True})[0] == 202
         assert aspetta(lambda: a.stato()["collegato"], 90), (a.stato(), rete.esiti_lavora)
-        assert json.loads(rete.chiedi(f"{RETE}/stato/casa.json")[1])["nome"] == "Ponte reinstallato"
+        assert json.loads(rete.chiedi(f"{RETE}/stato/casa.json")[1])["nome"] == "Gateway reinstallato"
         # il Raspberry vecchio e' fuori: la sua chiave non vale piu', richiede ma non bussa
         assert aspetta(lambda: not rete.accesso.stato()["collegato"], 30)
         assert aspetta(lambda: rete.accesso.stato()["richiesta"] == "in_attesa", 30), rete.accesso.stato()
@@ -1219,7 +1235,7 @@ def test_13_ponte_nuovo_dalla_pagina_all_installazione(rete, pki, tmp_path):
     # la pagina ha seguito l'installazione; il server non ha piu' certificato e canale per questo ponte
     st = rete.stato_api()
     assert st["installazioni"]["velate"]["fase"] == "fatto" and "installato" in st["installazioni"]["velate"]["testo"]
-    assert "[installo] 1/9 Certificato del ponte" in registro and "[fatto] installato" in registro
+    assert "[installo] 1/9 Certificato del gateway" in registro and "[fatto] installato" in registro
     assert not (rete.r / "etc/mesh2tak-rete/configurazioni/velate.json").exists()
     assert [i["stato"] for i in st["inviti"] if i["nome"] == "velate"] == ["usato"]
     assert ("aggiungi", "velate", "ok", "andrea") in [(x["azione"], x["nome"], x["esito"], x["da"]) for x in st["lavori"]]

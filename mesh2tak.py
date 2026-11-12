@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-VERSIONE = "1.15.0"
+VERSIONE = "1.16.0"
 CONFIG_PREDEFINITA = "/etc/mesh2tak/mesh2tak.conf"
 
 log = logging.getLogger("mesh2tak")
@@ -246,7 +246,7 @@ def carica_config(percorso: str) -> Config:
                                "con la radio USB metti porta_app = 0")
         if cfg.gestione_nodo_pagina and not re.match(r"^https?://[^/]+$", cfg.gestione_nodo_pagina):
             raise ErroreConfig("nodo_pagina in [gestione] deve essere tipo https://127.0.0.1:9444 "
-                               "(vuoto con la radio USB: solo lo stato del ponte)")
+                               "(vuoto con la radio USB: solo lo stato del gateway)")
         if not 1 <= cfg.gestione_pausa_massima_min <= 240:
             raise ErroreConfig("pausa_massima_min va da 1 a 240")
         if cfg.gestione_chiusura_s <= 0 or cfg.gestione_silenzio_app_s <= 0:
@@ -264,9 +264,9 @@ def carica_config(percorso: str) -> Config:
         elif not re.match(r"^https?://[A-Za-z0-9.-]+(:\d+)?/?$", cfg.accesso_rete):
             errore = "rete deve essere tipo https://meshtastic.tuodominio.it"
         elif not (os.path.isfile(cfg.accesso_chiave) and os.path.isfile(cfg.accesso_chiave + ".pub")):
-            errore = f"chiave del ponte non trovata ({cfg.accesso_chiave}): rilancia l'installatore con --accesso-esterno"
+            errore = f"chiave del gateway non trovata ({cfg.accesso_chiave}): rilancia l'installatore con --accesso-esterno"
         elif not (cfg.gestione_attiva and cfg.gestione_porta_pagina):
-            errore = "serve la pagina del ponte: in [gestione] attiva = si e porta_pagina = 9443"
+            errore = "serve la pagina del gateway: in [gestione] attiva = si e porta_pagina = 9443"
         if errore:
             cfg.accesso_attivo, cfg.accesso_errore = False, errore
     return cfg
@@ -819,7 +819,7 @@ def spiega_errore_tak(e: BaseException, host: str, porta: int) -> Tuple[str, boo
     if isinstance(e, ssl.SSLError):
         testo = (getattr(e, "reason", None) or str(e)).replace("_", " ").lower()
         if any(a in testo for a in AVVISI_CERTIFICATO):
-            return ("il TAK Server ha rifiutato il certificato del ponte (" + testo + "). Controlla nella "
+            return ("il TAK Server ha rifiutato il certificato del gateway (" + testo + "). Controlla nella "
                     "console infra-TAK che il certificato esista e non sia revocato"), True
         return "errore TLS: " + testo, False
     if isinstance(e, ConnectionError) and "chiusa dal server" in str(e):
@@ -1032,7 +1032,7 @@ def prova_tak(cfg: Config) -> Tuple[bool, str]:
     try:
         ctx = contesto_tls(cfg)
     except (ssl.SSLError, OSError) as e:
-        return False, f"certificato o chiave del ponte non leggibili: {e}"
+        return False, f"certificato o chiave del gateway non leggibili: {e}"
     try:
         grezzo = socket.create_connection((cfg.tak_host, cfg.tak_porta), timeout=15)
     except Exception as e:  # noqa
@@ -1618,6 +1618,117 @@ class RadioSquadra:
                 self._da_salvare = True
 
 
+class Storico:
+    """Come vanno nel tempo il ponte e i ripetitori fissi (dalla 1.16.0), per i grafici della pagina della rete: un
+    campione ogni mezz'ora, tenuto 30 giorni. Per un ripetitore [quando, batteria, tensione, segnale, sentito (0/1
+    nella mezz'ora), messaggi ripetuti nella mezz'ora]; per il ponte [quando, canale occupato, tempo trasmesso, radio
+    sulla mappa, TAK Server collegato (0/1)]. Niente posizioni. Su file:
+    {"formato": 1, "ponte": [...], "ripetitori": {"!1234abcd": {"nome": ..., "campioni": [...]}}}."""
+
+    OGNI_S = 1800
+    TIENI_S = 30 * 86400
+    MASSIMO_RIPETITORI = 30
+    SALVA_OGNI_S = 1800.0
+
+    def __init__(self, percorso: Optional[str] = None):
+        self.percorso = percorso
+        self._lock = threading.Lock()
+        self.ponte: List[list] = []
+        self.ripetitori: Dict[str, dict] = {}
+        self._ripetuti: Dict[str, int] = {}       # contatore al campione precedente
+        self._ultimo = 0.0
+        self._da_salvare = False
+        self._salvato = time.monotonic()
+        if percorso:
+            try:
+                with open(percorso, encoding="utf-8") as f:
+                    d = json.load(f)
+                if not isinstance(d, dict) or d.get("formato") != 1:
+                    raise ValueError("formato sconosciuto")
+                limite = time.time() - self.TIENI_S
+                self.ponte = self._validi(d.get("ponte"), 5, limite)
+                ripetitori = d.get("ripetitori")
+                for chiave, voce in (ripetitori if isinstance(ripetitori, dict) else {}).items():
+                    if (isinstance(chiave, str) and re.fullmatch(r"![0-9a-f]{8}", chiave) and isinstance(voce, dict)
+                            and len(self.ripetitori) < self.MASSIMO_RIPETITORI):
+                        campioni = self._validi(voce.get("campioni"), 6, limite)
+                        if campioni:
+                            self.ripetitori[chiave] = {"nome": pulisci(voce.get("nome"), 40), "campioni": campioni}
+                if self.ponte:
+                    self._ultimo = self.ponte[-1][0]
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError, TypeError) as e:
+                log.warning("Storico: %s non valido (%s), riparto da zero", percorso, e)
+                self.ponte, self.ripetitori = [], {}
+
+    @staticmethod
+    def _validi(campioni, lunghezza: int, limite: float) -> List[list]:
+        buoni = []
+        for c in campioni if isinstance(campioni, list) else []:
+            if (isinstance(c, list) and len(c) == lunghezza and isinstance(c[0], (int, float))
+                    and not isinstance(c[0], bool) and c[0] > limite
+                    and all(x is None or (isinstance(x, (int, float)) and not isinstance(x, bool)) for x in c[1:])):
+                buoni.append(c)
+        return sorted(buoni, key=lambda c: c[0])
+
+    def campiona(self, ora: float, ponte: list, ripetitori: List[Tuple[str, str, list, int]]) -> bool:
+        """Al massimo un campione ogni mezz'ora. ponte: [occupato, trasmesso, radio sulla mappa, tak]; ripetitori:
+        (id, nome, [batteria, tensione, segnale, sentito], contatore dei messaggi ripetuti). True se ha campionato."""
+        with self._lock:
+            if ora - self._ultimo < self.OGNI_S:
+                return False
+            self._ultimo = ora
+            limite = ora - self.TIENI_S
+            self.ponte = [c for c in self.ponte if c[0] > limite]
+            self.ponte.append([round(ora)] + list(ponte))
+            for chiave, nome, valori, contatore in ripetitori:
+                voce = self.ripetitori.get(chiave)
+                if voce is None:
+                    if len(self.ripetitori) >= self.MASSIMO_RIPETITORI:
+                        continue
+                    voce = self.ripetitori[chiave] = {"nome": nome, "campioni": []}
+                voce["nome"] = nome or voce["nome"]
+                prima = self._ripetuti.get(chiave)
+                self._ripetuti[chiave] = contatore
+                # il contatore riparte da zero quando riparte il ponte
+                nuovi = contatore if prima is None or contatore < prima else contatore - prima
+                voce["campioni"].append([round(ora)] + list(valori) + [nuovi])
+            for chiave in list(self.ripetitori):
+                voce = self.ripetitori[chiave]
+                voce["campioni"] = [c for c in voce["campioni"] if c[0] > limite]
+                if not voce["campioni"]:
+                    del self.ripetitori[chiave]
+            self._da_salvare = True
+            return True
+
+    def dati(self) -> dict:
+        with self._lock:
+            return {"formato": 1, "ogni_s": self.OGNI_S, "ponte": [list(c) for c in self.ponte],
+                    "ripetitori": {k: {"nome": v["nome"], "campioni": [list(c) for c in v["campioni"]]}
+                                   for k, v in self.ripetitori.items()}}
+
+    def salva(self, subito: bool = False) -> None:
+        if not self.percorso:
+            return
+        with self._lock:
+            if not self._da_salvare or (not subito and time.monotonic() - self._salvato < self.SALVA_OGNI_S):
+                return
+            self._da_salvare = False
+            self._salvato = time.monotonic()
+        dati = self.dati()
+        del dati["ogni_s"]
+        try:
+            nuovo = self.percorso + ".nuovo"
+            with open(os.open(nuovo, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+                json.dump(dati, f, separators=(",", ":"))
+            os.replace(nuovo, self.percorso)
+        except OSError as e:
+            log.warning("Storico: non riesco a salvarlo (%s); riprovo piu' tardi", e)
+            with self._lock:
+                self._da_salvare = True
+
+
 class Ponte:
     # Attese casuali prima di un inoltro, per lasciar fare a un altro ponte che l'ha gia' in mano
     ATTESA_VERSO_SERVER = (0.5, 2.5)
@@ -1646,6 +1757,7 @@ class Ponte:
         self.nota_ponte: Optional[str] = None   # es. "IN PAUSA: ..." in testa alle note del ponte
         self.icone = IconeMappa()               # dalla 1.11.0: icone scelte dalla pagina della rete (main: su file)
         self.copertura = Copertura()            # dalla 1.14.0: mappa della copertura (main: su file)
+        self.storico = Storico()                # dalla 1.16.0: andamento di ponte e ripetitori (main: su file)
         self.squadra = RadioSquadra()           # dalla 1.15.0: radio sentite sul canale della squadra (main: su file)
         # ultimo nodo visto (resta anche da scollegati, per la pagina della rete)
         self.nodo_nome = ""
@@ -2242,7 +2354,7 @@ class Ponte:
     def _manda_al_server(self, impronta: str, xml: bytes, descrizione: str) -> None:
         if impronta in self._visti_dal_server:
             self.contatori["radio_gia_sul_server"] += 1
-            log.info("-> TAK: %s gia' portato sul server da un altro ponte", descrizione)
+            log.info("-> TAK: %s gia' portato sul server da un altro gateway", descrizione)
             return
         self.tak.invia_una_volta(xml, time.time() + 3600)
         self.contatori["radio_al_server"] += 1
@@ -2337,7 +2449,7 @@ class Ponte:
                                                   ora=time.time()), time.time() + 3600)
 
     def _nome_ponte(self) -> str:
-        return self._nome(self.mio_num) if self.mio_num else "Ponte Meshtastic"
+        return self._nome(self.mio_num) if self.mio_num else "Gateway Meshtastic"
 
     # ---- thread delle uscite: verso il server (con attesa) e verso la radio ----
 
@@ -2670,6 +2782,30 @@ class Ponte:
                      c.get("radio_trasmessi", 0), len(self.coda_radio), c.get("server_troppo_grandi", 0))
         self.copertura.salva()          # al massimo ogni 10 minuti, e solo se e' cambiata
         self.squadra.salva()
+        self._campiona_storico(ora)
+        self.storico.salva()
+
+    def _campiona_storico(self, ora: float) -> None:
+        """Ogni mezz'ora un campione per i grafici: il ponte e ogni ripetitore fisso della squadra."""
+        if ora - self.storico._ultimo < Storico.OGNI_S:
+            return
+        with self._lock:
+            canale = dict(self.canale_locale)
+            sulla_mappa = sum(1 for s in self.stato.values()
+                              if s.num != self.mio_num and s.ultimo_segnale + self.cfg.validita_min * 60 > ora)
+            ripetitori = []
+            for v in self.viste.values():
+                if not v.fisso:
+                    continue
+                recente = v.metriche is not None and ora - v.metriche < 2 * Storico.OGNI_S
+                sentito = max(v.ultimo, v.ultimo_ripetuto or 0.0) > ora - Storico.OGNI_S
+                ripetitori.append((f"!{v.num:08x}", v.nome or self._nome(v.num),
+                                   [v.batteria if recente else None, v.tensione if recente else None,
+                                    v.snr if v.diretto is not None and ora - v.diretto < Storico.OGNI_S else None,
+                                    1 if sentito else 0], v.ripetuti))
+        collegato = getattr(self.tak, "collegato", None)
+        self.storico.campiona(ora, [canale.get("occupato"), canale.get("trasmesso"), sulla_mappa,
+                                    1 if collegato is not None and collegato.is_set() else 0], ripetitori)
 
 
 # --------------------------------------------------------------------------
@@ -2759,6 +2895,7 @@ class Gestione:
         self.radio: Optional["GestioneRadio"] = None                # /mesh2tak/radio/... (dalla 1.10.0)
         self.icone: Optional[Callable[[Optional[bytes]], Tuple[int, dict]]] = None   # /mesh2tak/icone (1.11.0)
         self.copertura: Optional[Callable[[bool, str], dict]] = None   # /mesh2tak/copertura.json (1.14.0)
+        self.storico: Optional[Callable[[], dict]] = None              # /mesh2tak/storico.json (1.16.0)
         # dalla 1.13.0: comandi dalla pagina della rete (li fa mesh2tak-aggiorna, da root) e registro per la pagina
         self.file_controlla = os.path.join(cfg.accesso_cartella_stato, "controlla-adesso")
         self.file_registro = Sistema.REGISTRO
@@ -2841,7 +2978,7 @@ class Gestione:
                     f"{self._ora(fine)}), niente radio verso il TAK Server")
             if self.pausa.chiedi(nota):
                 self.inizio, self.chi = ora, chi
-                log.info("Nodo gestito %s%s: ponte in pausa, il nodo passa a lei (il ponte lo riprende "
+                log.info("Nodo gestito %s%s: gateway in pausa, il nodo passa a lei (il gateway lo riprende "
                          "%g s dopo la chiusura, al massimo tra %g minuti)", chi,
                          "" if chi.startswith("da internet") else f" da {da}", self.cfg.gestione_chiusura_s,
                          self.cfg.gestione_pausa_massima_min)
@@ -2865,7 +3002,7 @@ class Gestione:
 
     def _aspetta_nodo(self) -> Optional[str]:
         if not self.pausa.rilasciato.wait(20):
-            return "Il ponte non ha ancora lasciato il nodo: riprova tra qualche secondo."
+            return "Il gateway non ha ancora lasciato il nodo: riprova tra qualche secondo."
         return None
 
     # ---- pagina nel browser ----
@@ -2891,6 +3028,9 @@ class Gestione:
         if percorso == "/mesh2tak/copertura.json":   # dalla 1.14.0: la mappa della copertura
             self._servi_copertura(h)
             return
+        if percorso == "/mesh2tak/storico.json":     # dalla 1.16.0: andamento di ponte e ripetitori
+            self._servi_storico(h)
+            return
         if percorso.startswith("/mesh2tak/radio/"):   # radio della squadra gestite dalla pagina della rete
             try:
                 troppo = int(h.headers.get("Content-Length") or 0) > 16384
@@ -2898,7 +3038,7 @@ class Gestione:
                 troppo = True
             if troppo or self.radio is None:
                 stato, dati = (413, {"errore": "richiesta troppo grande"}) if troppo else \
-                    (404, {"errore": "gestione delle radio non attiva su questo ponte"})
+                    (404, {"errore": "gestione delle radio non attiva su questo gateway"})
             else:
                 stato, dati = self.radio.servi(h, percorso, self._leggi_corpo(h))
             self._rispondi(h, stato, json.dumps(dati, ensure_ascii=False, separators=(",", ":")),
@@ -2907,7 +3047,7 @@ class Gestione:
         if not self.nodo_pagina:
             self._leggi_corpo(h)
             self._rispondi(h, 200 if percorso in ("/", "/index.html") else 404,
-                           f"Ponte Meshtastic -> TAK (mesh2tak {VERSIONE}). Questo ponte usa una radio collegata via "
+                           f"Gateway Meshtastic -> TAK (mesh2tak {VERSIONE}). Questo gateway usa una radio collegata via "
                            "USB: la radio si gestisce dall'app Meshtastic, via Bluetooth o collegandola a un computer.")
             return
         if h.command == "GET" and percorso in ("/", "/index.html"):
@@ -2916,8 +3056,8 @@ class Gestione:
         if percorso.startswith("/api/") and h.command != "OPTIONS":
             with self._lock:
                 if self.scaduta:
-                    motivo = (f"Pausa del ponte finita ({self.cfg.gestione_pausa_massima_min:g} minuti al massimo): "
-                              "il ponte ha ripreso il nodo. Ricarica la pagina per altri "
+                    motivo = (f"Pausa del gateway finita ({self.cfg.gestione_pausa_massima_min:g} minuti al massimo): "
+                              "il gateway ha ripreso il nodo. Ricarica la pagina per altri "
                               f"{self.cfg.gestione_pausa_massima_min:g} minuti.")
                 else:
                     motivo = self._pausa(h.client_address[0], self._chi(h))
@@ -2960,7 +3100,7 @@ class Gestione:
             elif h.client_address[0] not in ("127.0.0.1", "::1") or h.headers.get("X-Mesh2tak") != "1":
                 stato, dati = 403, {"errore": "le icone arrivano solo dalla pagina della rete"}
             elif self.icone is None:
-                stato, dati = 404, {"errore": "icone non attive su questo ponte"}
+                stato, dati = 404, {"errore": "icone non attive su questo gateway"}
             else:
                 stato, dati = self.icone(corpo)
         self._rispondi(h, stato, json.dumps(dati, ensure_ascii=False, separators=(",", ":")),
@@ -3065,6 +3205,24 @@ class Gestione:
         self._rispondi(h, stato, json.dumps(dati, ensure_ascii=False, separators=(",", ":")),
                        "application/json; charset=utf-8")
 
+    def _servi_storico(self, h) -> None:
+        """L'andamento di ponte e ripetitori (dalla 1.16.0), solo per gli amministratori della pagina della rete:
+        dal tunnel e con il nome che Authentik ha messo. Solo lettura."""
+        _, troppo = self._corpo_al_massimo(h, 0)
+        chi = re.sub(r"[^\w.@+-]", "", pulisci(h.headers.get("X-Authentik-Username"), 40))
+        if troppo:
+            stato, dati = 413, {"errore": "richiesta troppo grande"}
+        elif h.command not in ("GET", "HEAD"):
+            stato, dati = 405, {"errore": "metodo non previsto"}
+        elif h.client_address[0] not in ("127.0.0.1", "::1") or not chi:
+            stato, dati = 403, {"errore": "Lo storico si vede solo dalla pagina della rete."}
+        elif self.storico is None:
+            stato, dati = 404, {"errore": "storico non disponibile"}
+        else:
+            stato, dati = 200, self.storico()
+        self._rispondi(h, stato, json.dumps(dati, ensure_ascii=False, separators=(",", ":")),
+                       "application/json; charset=utf-8")
+
     def _servi_registro(self, h) -> None:
         """Il registro raccolto da mesh2tak-aggiorna (senza chiavi ne' password), solo per gli amministratori della
         pagina della rete: dal tunnel e con il nome che Authentik ha messo."""
@@ -3098,7 +3256,7 @@ class Gestione:
         try:
             dati = self.fornisci_stato() if self.fornisci_stato is not None else {}
         except Exception:  # noqa
-            log.exception("Stato del ponte per la pagina della rete non disponibile")
+            log.exception("Stato del gateway per la pagina della rete non disponibile")
             dati = {"errore": "stato non disponibile"}
         corpo = json.dumps(dati, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         h.send_response(200)
@@ -3264,12 +3422,12 @@ class Gestione:
                 self.scaduta = self.app_bloccata = True
                 self.ultimo_tentativo_app = ora
                 chiudi_app = True
-                messaggio = (f"Pausa massima di {self.cfg.gestione_pausa_massima_min:g} minuti finita: il ponte "
+                messaggio = (f"Pausa massima di {self.cfg.gestione_pausa_massima_min:g} minuti finita: il gateway "
                              "riprende il nodo (per continuare: ricarica la pagina, oppure chiudi l'app e "
                              f"riaprila dopo {self.cfg.gestione_silenzio_app_s / 60:g} minuti)")
             elif not self._app and ora - self.ultima_attivita >= self.cfg.gestione_chiusura_s:
                 messaggio = (f"Gestione del nodo finita (nessuna richiesta da {self.cfg.gestione_chiusura_s:g} s): "
-                             "il ponte riprende il nodo")
+                             "il gateway riprende il nodo")
             else:
                 return
             self.pausa.termina()
@@ -3285,26 +3443,26 @@ class Gestione:
 PORTA_ADMIN = 6
 
 ERRORI_RADIO = {
-    "ADMIN_PUBLIC_KEY_UNAUTHORIZED": "su questa radio non c'e' la chiave di amministrazione di questo ponte: va "
+    "ADMIN_PUBLIC_KEY_UNAUTHORIZED": "su questa radio non c'e' la chiave di amministrazione di questo gateway: va "
                                      "inserita una volta, da vicino, con l'app Meshtastic (Sicurezza > Chiave "
                                      "amministratore)",
-    "NOT_AUTHORIZED": "la radio non accetta comandi da questo ponte: manca la sua chiave di amministrazione (app "
+    "NOT_AUTHORIZED": "la radio non accetta comandi da questo gateway: manca la sua chiave di amministrazione (app "
                       "Meshtastic, da vicino: Sicurezza > Chiave amministratore)",
     "ADMIN_BAD_SESSION_KEY": "la radio ha rifiutato la sessione (scaduta): riprova",
-    "PKI_UNKNOWN_PUBKEY": "il nodo del ponte non conosce ancora la chiave pubblica di questa radio: aspetta che la "
+    "PKI_UNKNOWN_PUBKEY": "il nodo del gateway non conosce ancora la chiave pubblica di questa radio: aspetta che la "
                           "radio si faccia sentire (manda il suo nome ogni qualche ora) e riprova",
-    "PKI_SEND_FAIL_PUBLIC_KEY": "il nodo del ponte non conosce ancora la chiave pubblica di questa radio: aspetta "
+    "PKI_SEND_FAIL_PUBLIC_KEY": "il nodo del gateway non conosce ancora la chiave pubblica di questa radio: aspetta "
                                 "che la radio si faccia sentire e riprova",
-    "PKI_FAILED": "cifratura non riuscita: la chiave pubblica che il ponte ricorda non e' piu' quella della radio "
-                  "(radio azzerata?). Dal nodo del ponte togli quella radio dall'elenco e aspetta che si ripresenti",
+    "PKI_FAILED": "cifratura non riuscita: la chiave pubblica che il gateway ricorda non e' piu' quella della radio "
+                  "(radio azzerata?). Dal nodo del gateway togli quella radio dall'elenco e aspetta che si ripresenti",
     "MAX_RETRANSMIT": "la radio non risponde: spenta, fuori portata o in risparmio di energia",
     "NO_RESPONSE": "la radio non risponde a questa richiesta",
     "NO_ROUTE": "nessuna strada radio verso questa radio in questo momento",
     "TIMEOUT": "la radio non risponde: spenta, fuori portata o in risparmio di energia",
-    "DUTY_CYCLE_LIMIT": "il nodo del ponte ha finito il tempo radio consentito per quest'ora: riprova piu' tardi",
+    "DUTY_CYCLE_LIMIT": "il nodo del gateway ha finito il tempo radio consentito per quest'ora: riprova piu' tardi",
     "TOO_LARGE": "troppi dati per un solo pacchetto radio",
     "BAD_REQUEST": "la radio non ha capito la richiesta (firmware troppo vecchio?)",
-    "NO_CHANNEL": "il nodo del ponte e la radio non hanno un canale in comune",
+    "NO_CHANNEL": "il nodo del gateway e la radio non hanno un canale in comune",
 }
 
 
@@ -3428,7 +3586,7 @@ class GestioneRadio:
             with self._lock:
                 op = self._ops.get(ident)
                 if op is None:
-                    return 404, {"errore": "operazione non trovata (ponte riavviato?)"}
+                    return 404, {"errore": "operazione non trovata (gateway riavviato?)"}
                 return 200, json.loads(json.dumps({k: v for k, v in op.items() if not k.startswith("_")}))
         if h.command == "GET" and dove == "/ops":
             with self._lock:
@@ -3461,11 +3619,11 @@ class GestioneRadio:
             vista = self.ponte.viste.get(num)
             nome = (vista.nome or self.ponte._nome(num)) if vista else ""
         if vista is None or num == self.ponte.mio_num:
-            raise ErroreRadio("questo ponte non ha sentito quella radio sul canale della squadra")
+            raise ErroreRadio("questo gateway non ha sentito quella radio sul canale della squadra")
         param = self._controlla(azione, dati)
         with self._lock:
             if sum(1 for op in self._ops.values() if op["stato"] in ("in_coda", "in_corso")) >= self.MAX_IN_CODA:
-                raise ErroreRadio("troppe operazioni in coda su questo ponte: aspetta che finiscano")
+                raise ErroreRadio("troppe operazioni in coda su questo gateway: aspetta che finiscano")
             ident = uuid.uuid4().hex[:16]
             self._ops[ident] = {"id": ident, "radio": f"!{num:08x}", "nome": nome, "azione": azione, "stato": "in_coda",
                                 "passo": "in coda", "risultato": {}, "errore": None, "chi": chi,
@@ -3527,7 +3685,7 @@ class GestioneRadio:
                 try:
                     p["canale_ponte"] = int(chiave.get("canale_ponte"))
                 except (TypeError, ValueError):
-                    raise ErroreRadio("canale del ponte non valido")
+                    raise ErroreRadio("canale del gateway non valido")
             return p
         if azione == "posizione_fissa":
             try:
@@ -3556,7 +3714,7 @@ class GestioneRadio:
                 esito, errore = "errore", str(e)
             except Exception as e:  # noqa
                 log.exception("Gestione radio: errore inatteso")
-                esito, errore = "errore", f"errore inatteso del ponte ({e})"
+                esito, errore = "errore", f"errore inatteso del gateway ({e})"
             with self._lock:
                 op.update(stato=esito, errore=errore, finita=round(time.time()))
                 if esito == "fatto":
@@ -3718,7 +3876,7 @@ class GestioneRadio:
         elif par["modo"] == "ponte":
             mio = next((c for c in self._canali_ponte() if c.index == par["canale_ponte"] and c.role), None)
             if mio is None:
-                raise ErroreRadio("il ponte non ha quel canale")
+                raise ErroreRadio("il gateway non ha quel canale")
             ch.settings.psk = bytes(mio.settings.psk)
             ch.settings.name = mio.settings.name
         return ch
@@ -3756,7 +3914,7 @@ class GestioneRadio:
         """Manda un messaggio di amministrazione alla radio e aspetta: la risposta, o la conferma di ricezione."""
         iface = self.ponte.iface
         if iface is None:
-            raise ErroreRadio("il ponte non e' collegato al suo nodo in questo momento (in pausa o in riavvio): "
+            raise ErroreRadio("il gateway non e' collegato al suo nodo in questo momento (in pausa o in riavvio): "
                               "riprova tra un minuto")
         if not ((iface.nodesByNum.get(num) or {}).get("user") or {}).get("publicKey"):
             raise ErroreRadio(ERRORI_RADIO["PKI_UNKNOWN_PUBKEY"])
@@ -3799,7 +3957,7 @@ class GestioneRadio:
                                          onResponse=risposta, onResponseAckPermitted=not vuole_risposta,
                                          pkiEncrypted=True)
         except Exception as e:  # noqa
-            raise ErroreRadio(f"il nodo del ponte non ha preso il comando ({pulisci(str(e), 120)})")
+            raise ErroreRadio(f"il nodo del gateway non ha preso il comando ({pulisci(str(e), 120)})")
         ident[0] = getattr(inviato, "id", 0)
         if not arrivato.wait(self.ATTESA_RISPOSTA_S):
             try:
@@ -3979,7 +4137,7 @@ class AccessoEsterno:
             return "approvato sulla pagina della rete: leggo la registrazione", logging.INFO, self.RICHIESTA_OGNI_S
         if codice == 202:
             self.richiesta = "in_attesa"
-            extra = (f". C'e' gia' un ponte '{self.cfg.accesso_nome}' nella rete: sulla pagina va scelto 'Sostituisci'"
+            extra = (f". C'e' gia' un gateway '{self.cfg.accesso_nome}' nella rete: sulla pagina va scelto 'Sostituisci'"
                      if d.get("sostituisce") else "")
             return (f"in attesa di approvazione sulla pagina della rete {self.rete} (codice di controllo {c}){extra}",
                     logging.INFO, self.RICHIESTA_OGNI_S)
@@ -3998,7 +4156,7 @@ class AccessoEsterno:
                     "l'installatore con --accesso-esterno", logging.ERROR, self.RICHIESTA_OGNI_S)
         if codice in (404, 405, 501, 502, 503, 504):
             self.richiesta = "server_da_preparare"
-            return (f"la pagina della rete non riceve ancora le richieste dei ponti (risponde {codice}): sul server, "
+            return (f"la pagina della rete non riceve ancora le richieste dei gateway (risponde {codice}): sul server, "
                     "una volta sola,  sudo bash rete-meshtastic.sh installa  (riprovo tra 5 minuti)",
                     logging.WARNING, self.RICHIESTA_RIPROVA_S)
         self.richiesta = "errore"
@@ -4102,7 +4260,7 @@ class AccessoEsterno:
             if not aperto and ((autenticato[0] and ora - autenticato[0] >= self.CONFERMA_S) or ora - inizio >= 15):
                 aperto = True
                 dove = self.indirizzo or f"porta {reg['porta']} del server"
-                self._segna(True, f"attivo, gestione e stato del ponte su {dove} (tunnel verso {reg['host']})")
+                self._segna(True, f"attivo, gestione e stato del gateway su {dove} (tunnel verso {reg['host']})")
         lettore.join(timeout=2)
         with self._lock:
             self._proc = None
@@ -4166,7 +4324,7 @@ class AccessoEsterno:
                        f"ancora scaduto): riprovo tra {attesa:.0f} s")
             elif esito == "rifiuto":
                 attesa = self.ATTESA_RIFIUTO_S
-                msg = (f"il server ha rifiutato la chiave del ponte: riprovo tra {attesa / 60:.0f} minuti. Se dura, "
+                msg = (f"il server ha rifiutato la chiave del gateway: riprovo tra {attesa / 60:.0f} minuti. Se dura, "
                        "sul server  sudo bash rete-meshtastic.sh aggiorna")
             elif esito == "chiave_server":
                 attesa = self.ATTESA_RIFIUTO_S
@@ -4459,7 +4617,7 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
           f"canale privato: {', '.join(dopo['privati']) or 'nessuno'}, "
           + (f"canali secondari: {', '.join(dopo['accesi'])}" if dopo["accesi"] else "nessun canale secondario"))
     if not dopo["privati"] and "canale" not in parti:
-        print("  ATTENZIONE: il nodo non ha piu' il canale privato della squadra: il ponte non porta le radio al TAK "
+        print("  ATTENZIONE: il nodo non ha piu' il canale privato della squadra: il gateway non porta le radio al TAK "
               "Server. Per rimetterlo: 'Reimposta la radio' sulla pagina della rete (o --reimposta-radio)")
     if file_link and dopo["privati"]:
         try:
@@ -4824,14 +4982,14 @@ def verifica_librerie() -> bool:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Ponte Meshtastic <-> TAK Server")
+    ap = argparse.ArgumentParser(description="Gateway Meshtastic <-> TAK Server")
     ap.add_argument("-c", "--config", default=CONFIG_PREDEFINITA, help="file di configurazione")
     ap.add_argument("--prova", action="store_true", help="controlla nodo, TAK Server e librerie, poi esce")
     ap.add_argument("--verifica-librerie", action="store_true", help="controlla solo le librerie, poi esce")
     ap.add_argument("--debug", action="store_true", help="registro dettagliato")
     ap.add_argument("--versione", action="version", version=f"mesh2tak {VERSIONE}")
     ap.add_argument("--codice-controllo", metavar="CHIAVE.pub",
-                    help="mostra il codice di controllo di una chiave del ponte (lo usa l'installatore)")
+                    help="mostra il codice di controllo di una chiave del gateway (lo usa l'installatore)")
     nodo = ap.add_argument_group("configurazione del nodo (usata dall'installatore)")
     nodo.add_argument("--configura-nodo", metavar="COLLEGAMENTO",
                       help="imposta regione EU 868, nome, ruolo, canale privato; es. tcp:127.0.0.1:4403")
@@ -4926,12 +5084,13 @@ def main(argv=None) -> int:
     try:
         tak = ClienteTAK(cfg)
     except (ssl.SSLError, OSError) as e:
-        log.error("Certificato o chiave del ponte non leggibili (%s): rifai l'installazione", e)
+        log.error("Certificato o chiave del gateway non leggibili (%s): rifai l'installazione", e)
         return 78
     ponte = Ponte(cfg, tak, sdk)
     ponte.icone = IconeMappa(os.path.join(cfg.accesso_cartella_stato, "icone.json"))
     ponte.copertura = Copertura(os.path.join(cfg.accesso_cartella_stato, "copertura.json"))
     ponte.squadra = RadioSquadra(os.path.join(cfg.accesso_cartella_stato, "radio-squadra.json"))
+    ponte.storico = Storico(os.path.join(cfg.accesso_cartella_stato, "storico.json"))
     tak.su_evento = ponte.su_evento_tak
     if os.environ.get("MESH2TAK_ATTESE"):  # solo per le prove automatiche: attese piu' brevi
         f = float(os.environ["MESH2TAK_ATTESE"])
@@ -4968,33 +5127,34 @@ def main(argv=None) -> int:
             gestione.radio = GestioneRadio(ponte)
             gestione.icone = ponte.imposta_icone
             gestione.copertura = ponte.copertura_per_la_pagina
+            gestione.storico = ponte.storico.dati
             gestione.avvia()
             if gestione.nodo_pagina:
                 dove = [f"pagina nel browser sulla porta {cfg.gestione_porta_pagina}"] if cfg.gestione_porta_pagina else []
                 if cfg.gestione_porta_app:
                     dove.append(f"app Meshtastic via Wi-Fi sulla porta {cfg.gestione_porta_app}")
-                log.info("Gestione del nodo: %s. Mentre la si usa il ponte va in pausa da solo", ", ".join(dove))
+                log.info("Gestione del nodo: %s. Mentre la si usa il gateway va in pausa da solo", ", ".join(dove))
             else:
-                log.info("Stato del ponte per la pagina della rete sulla porta %d (radio USB: la radio si gestisce "
+                log.info("Stato del gateway per la pagina della rete sulla porta %d (radio USB: la radio si gestisce "
                          "dall'app Meshtastic)", cfg.gestione_porta_pagina)
         except Exception as e:  # noqa
-            log.error("Gestione del nodo non avviata (%s): il ponte lavora lo stesso", e)
+            log.error("Gestione del nodo non avviata (%s): il gateway lavora lo stesso", e)
             gestione = None
 
     accesso: Optional[AccessoEsterno] = None
     if cfg.accesso_errore:
-        log.error("Accesso da internet spento: %s. Il ponte lavora lo stesso", cfg.accesso_errore)
+        log.error("Accesso da internet spento: %s. Il gateway lavora lo stesso", cfg.accesso_errore)
     elif cfg.accesso_attivo:
         if gestione is None or not cfg.gestione_porta_pagina:
-            log.error("Accesso da internet spento: la pagina del ponte non e' partita")
+            log.error("Accesso da internet spento: la pagina del gateway non e' partita")
         else:
             try:
                 accesso = AccessoEsterno(cfg, cfg.gestione_porta_pagina)
                 accesso.avvia()
-                log.info("Accesso da internet: ponte '%s' sulla pagina della rete %s", cfg.accesso_nome,
+                log.info("Accesso da internet: gateway '%s' sulla pagina della rete %s", cfg.accesso_nome,
                          cfg.accesso_rete)
             except Exception as e:  # noqa
-                log.error("Accesso da internet non avviato (%s): il ponte lavora lo stesso", e)
+                log.error("Accesso da internet non avviato (%s): il gateway lavora lo stesso", e)
                 accesso = None
     avviato = time.time()
     sistema = Sistema()
@@ -5073,6 +5233,7 @@ def main(argv=None) -> int:
     ponte.ferma_uscite()
     ponte.copertura.salva(subito=True)
     ponte.squadra.salva(subito=True)
+    ponte.storico.salva(subito=True)
     tak.ferma()
     return 0
 

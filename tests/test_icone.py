@@ -166,7 +166,7 @@ def test_le_icone_arrivano_ai_ponti(radice):
     corpo = mandate[0][1]
     assert corpo == {"formato": 1, "versione": versione,
                      "icone": {"!7c3a91e2": {"percorso": CANE, "tipo": "a-f-G-U-C-I"}}}
-    assert "andrea" not in json.dumps(corpo), "ai ponti solo figure e tipi, non chi le ha scelte"
+    assert "andrea" not in json.dumps(corpo), "ai gateway solo figure e tipi, non chi le ha scelte"
     assert s.vista_icone(["casa", "velate"])["ponti"] == {"casa": "aggiornato", "velate": "attesa"}
     # gia' uguali: non si rimandano
     s.allinea_icone("casa", 40001, {"formato": 1, "icone": {"versione": versione, "numero": 1}})
@@ -217,7 +217,7 @@ def test_icone_controllate_e_tenute_su_file(tmp_path, caplog):
     assert ic.versione == "" and ic.di("!2222bbbb") is None and ic.stato() == {"versione": "", "numero": 0}
     stato, risposta, cambiate = ic.imposta(corpo_icone({"!2222bbbb": {"percorso": CANE, "tipo": "a-f-G-U-C-I"}}))
     assert (stato, risposta, cambiate) == (200, {"versione": "0123456789abcdef", "numero": 1}, {"!2222bbbb"})
-    assert m.IconeMappa(str(f)).di("!2222bbbb") == ("a-f-G-U-C-I", CANE), "dopo un riavvio del ponte"
+    assert m.IconeMappa(str(f)).di("!2222bbbb") == ("a-f-G-U-C-I", CANE), "dopo un riavvio del gateway"
     for sbagliato in (b"non json", corpo_icone({}, formato=2), corpo_icone({}, versione="corta"),
                       corpo_icone({"2222bbbb": {"percorso": CANE, "tipo": "a-f-G"}}),
                       corpo_icone({"!2222bbbb": {"percorso": CANE, "tipo": "a-f-G-U-C<script>"}}),
@@ -254,7 +254,7 @@ def test_la_radio_con_l_icona_scelta(ponte):
     ev = dopo[-1]
     assert ev.get("type") == "a-f-G-U-C-I" and ev.find("detail/usericon").get("iconsetpath") == CANE
     assert ev.find("detail/__group") is None, "l'icona scelta al posto del colore della squadra"
-    assert ev.find("detail/contact").get("callsign") == "Ponte Sede"
+    assert ev.find("detail/contact").get("callsign") == "Gateway Sede"
     p.manutenzione()
     assert len(eventi(p, "!2222bbbb")) == 2, "poi di nuovo ogni 2 minuti"
     # tornata la predefinita
@@ -318,7 +318,7 @@ def test_le_icone_si_accettano_solo_dal_tunnel(gestione):
     assert chiedi("POST", corpo)[0] == 403, "senza l'intestazione della rete (es. un altro sito nel browser)"
     assert chiedi("GET", **{"X-Mesh2tak": "1"})[0] == 405
     assert chiedi("POST", b"x" * 140000, **{"X-Mesh2tak": "1"})[0] == 413
-    assert len(arrivate) == 1 and not g.pausa.attiva, "le icone non mettono in pausa il ponte"
+    assert len(arrivate) == 1 and not g.pausa.attiva, "le icone non mettono in pausa il gateway"
     # dal Wi-Fi del posto (non dal tunnel): rifiutate, anche con l'intestazione
     h = Finto("POST", corpo, da="192.168.1.50", **{"X-Mesh2tak": "1"})
     g._servi_icone(h)
