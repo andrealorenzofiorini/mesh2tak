@@ -1,7 +1,7 @@
 // Scheda "Radio della rete" dietro Caddy e Authentik: elenco, ordine (prima i problemi), nessun codice eseguito
 // dai nomi delle radio, ricerca che resta dopo l'aggiornamento, ritorno alla scheda dei ponti.
 const { chromium } = require('playwright');
-const { sfondoFinto, IMMAGINI } = require('./pagina_comune');
+const { sfondoFinto, scheda, IMMAGINI } = require('./pagina_comune');
 (async () => {
   const [url, foto] = process.argv.slice(2);
   const b = await chromium.launch({args: ['--host-resolver-rules=MAP *.prova.lan 127.0.0.1', '--no-proxy-server']});
@@ -22,18 +22,20 @@ const { sfondoFinto, IMMAGINI } = require('./pagina_comune');
              ordine: await p.$$eval('li.voce .nome b', x => x.map(e => e.textContent)),
              voci: await p.$$eval('li.voce', x => x.map(e => e.innerText)),
              immagini: await p.evaluate(IMMAGINI)};
-  const inVista = () => { const q = document.getElementById('squadra').getBoundingClientRect(); return q.top < innerHeight && q.bottom > 0 && q.top > -50; };
-  r.visibili = [await p.waitForFunction(inVista, null, {timeout: 5000}).then(() => true, () => false),
-                await p.isVisible('#mappa-copertura')];
+  r.visibili = [await p.isVisible('#squadra'), await p.isVisible('#mappa-copertura')];
   await p.fill('#cerca-radio', 'bianchi');
   await p.evaluate(() => giro());
   await p.waitForTimeout(800);
   r.cerca = await p.$$eval('li.voce .nome b', x => x.map(e => e.textContent));
-  // dall'elenco accanto alla mappa alle radio
-  await p.evaluate(() => window.scrollTo(0, 0));
+  // dalla scheda Mappa, l'elenco accanto alla mappa porta alle radio
+  await scheda(p, 'mappa');
+  r.mappa = [await p.isVisible('#mappa-copertura'), await p.isVisible('#squadra'), p.url().endsWith('#mappa')];
   await p.click('.voce-radio a');
-  r.ponti = [await p.waitForFunction(inVista, null, {timeout: 5000}).then(() => true, () => false), p.url().endsWith('#squadra')];
+  await p.waitForSelector('#scheda-squadra[aria-selected="true"]');
+  r.ponti = [await p.isVisible('#squadra'), p.url().endsWith('#squadra')];
+  await scheda(p, 'ripetitori');
   r.ripetitori = await p.innerText('#ripetitori');
+  r.schede = await p.$$eval('.schede button', x => x.map(b => b.textContent));
   console.log(JSON.stringify(r));
   await b.close();
 })().catch(e => { console.log(JSON.stringify({errore: String(e)})); process.exit(1); });

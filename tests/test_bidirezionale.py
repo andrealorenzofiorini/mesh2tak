@@ -148,7 +148,7 @@ def test_server_radio_e_ritorno(impianto, sdk):
     nodo = impianto.nodo(0xABCD0001)
     ponte = impianto.ponte(nodo, 0.1, "ponte")
     try:
-        assert aspetta(lambda: any(e["type"] == "a-f-G-I" for e in impianto.eventi())), "ponte non partito"
+        assert aspetta(lambda: any(e["type"] == "a-f-G-I" for e in impianto.eventi())), "gateway non partito"
         time.sleep(1)
         # dalla sala operativa: una chat, un'area disegnata, un allarme, la posizione di un telefono, una forma enorme
         impianto.dal_server(cot_fresco("geochat_simple"))
@@ -191,7 +191,7 @@ def test_due_ponti_senza_doppioni(impianto, sdk):
     ponte_a = impianto.ponte(nodo_a, 0.1, "ponte-a")    # il piu' svelto
     ponte_b = impianto.ponte(nodo_b, 1.0, "ponte-b")    # attese vere
     try:
-        assert aspetta(lambda: len({e["conn"] for e in impianto.eventi()}) >= 2), "i due ponti non sono partiti"
+        assert aspetta(lambda: len({e["conn"] for e in impianto.eventi()}) >= 2), "i due gateway non sono partiti"
         time.sleep(1)
         # 1) la sala operativa scrive: la chat va in radio una volta sola
         impianto.dal_server(cot_fresco("geochat_broadcast"))
@@ -213,4 +213,4 @@ def test_due_ponti_senza_doppioni(impianto, sdk):
         registro_b = ferma(ponte_b)
     assert "Traceback" not in registro_a + registro_b, registro_a + registro_b
     assert "gia' trasmesso da" in registro_b, registro_b
-    assert "gia' portato sul server da un altro ponte" in registro_b, registro_b
+    assert "gia' portato sul server da un altro gateway" in registro_b, registro_b

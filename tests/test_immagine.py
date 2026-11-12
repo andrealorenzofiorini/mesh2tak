@@ -88,7 +88,7 @@ def test_immagine_con_il_primo_avvio_e_il_suo_elenco(tmp_path):
     j = json.loads((uscita / "imager.json").read_text())
     voce = j["os_list"][0]
     base = "https://github.com/prova/mesh2tak/releases/download/v1.10.0"
-    assert len(j["os_list"]) == 1 and voce["name"] == "Ponte Meshtastic (mesh2tak)"
+    assert len(j["os_list"]) == 1 and voce["name"] == "Gateway Meshtastic (mesh2tak)"
     assert voce["url"] == f"{base}/ponte-meshtastic-1.10.0.img.xz" and voce["icon"] == f"{base}/icona-imager.png"
     # si personalizza come l'immagine ufficiale (Wi-Fi, utente, chiavi SSH) e gira sugli stessi Raspberry
     assert (voce["init_format"], voce["devices"], voce["capabilities"]) == ("cloudinit-rpi", ["pi5-64bit", "pi3-64bit"],

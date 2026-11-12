@@ -13,7 +13,7 @@ const { sfondoFinto, apri } = require('./pagina_comune');
   p.on('console', m => { if (m.type() === 'error') errori.push(m.text()); });
   p.on('pageerror', e => errori.push(String(e)));
   p.on('dialog', d => { finestre.push(d.message()); d.dismiss(); });
-  await p.goto(url, {waitUntil: 'networkidle'});
+  await p.goto(url + '#gateway', {waitUntil: 'networkidle'});
   await p.waitForSelector('section.ponte .fatti', {timeout: 15000});
   await apri(p, 'avvisi');
   await p.waitForSelector('#avvisi:not([hidden]) .stato-avvisi', {timeout: 15000});

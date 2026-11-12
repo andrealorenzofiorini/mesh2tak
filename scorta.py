@@ -416,7 +416,7 @@ def principale(a) -> int:
 
     print(f"\nCopio il sistema di questo Raspberry ({usati / 1e9:.1f} GB usati) sulla microSD:".replace(".", ","))
     print(f"    {B}{descrizione}{N}  (/dev/{dest})")
-    print(f"{G}Tutto quello che c'e' sopra verra' cancellato.{N} Alla fine il ponte si ferma per circa un minuto.")
+    print(f"{G}Tutto quello che c'e' sopra verra' cancellato.{N} Alla fine il gateway si ferma per circa un minuto.")
     if not a.si:
         try:
             risposta = input("Scrivi SI e premi Invio per continuare: ")
@@ -456,11 +456,11 @@ def principale(a) -> int:
         esegui(["mount", dev[2], mont_radice], attesa=60, spiega="non riesco ad aprire la microSD di scorta")
         esegui(["mount", dev[1], mont_avvio], attesa=60, spiega="non riesco ad aprire la microSD di scorta")
 
-        passo("2/6  Copio il sistema (5-15 minuti, il ponte intanto lavora)")
+        passo("2/6  Copio il sistema (5-15 minuti, il gateway intanto lavora)")
         copia(radice, avvio, mont_radice, mont_avvio, primo=True)
         ok("prima copia fatta")
 
-        passo("3/6  Fermo il ponte per circa un minuto e ricopio i file cambiati")
+        passo("3/6  Fermo il gateway per circa un minuto e ricopio i file cambiati")
         try:
             for sv in SERVIZI:
                 if attivo(sv):
@@ -471,10 +471,10 @@ def principale(a) -> int:
             ok("seconda copia fatta")
         finally:
             if fermati:
-                print(f"\n{B}4/6  Riavvio il ponte{N}", flush=True)
+                print(f"\n{B}4/6  Riavvio il gateway{N}", flush=True)
                 for sv in reversed(fermati):
                     esegui(["systemctl", "start", sv], controlla=False, attesa=120)
-                ok("ponte di nuovo acceso")
+                ok("gateway di nuovo acceso")
 
         passo("5/6  Sistemo l'avvio della microSD di scorta")
         uuid = {blkid(f"/dev/{p_avvio}", "UUID"): blkid(dev[1], "UUID"),
@@ -508,7 +508,7 @@ def principale(a) -> int:
     info("Se un giorno la microSD del Raspberry si rompe: spegni il Raspberry, metti questa al suo posto e")
     info("riaccendilo. Riparte uguale, con lo stesso certificato e la stessa approvazione nella rete.")
     info("Non usarla in un altro Raspberry acceso insieme a questo: avrebbero la stessa identita'.")
-    info("Rifai la copia dopo ogni aggiornamento del ponte:  sudo mesh2tak-scorta")
+    info("Rifai la copia dopo ogni aggiornamento del gateway:  sudo mesh2tak-scorta")
     return 0
 
 

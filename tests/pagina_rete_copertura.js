@@ -4,7 +4,7 @@
 // "Azzera". Le immagini della mappa di sfondo le da' la prova stessa (niente internet): cosi' si controlla anche che la
 // pagina le possa caricare (CSP) e con che intestazioni. Stampa in JSON.
 const { chromium } = require('playwright');
-const { sfondoFinto } = require('./pagina_comune');
+const { sfondoFinto, scheda } = require('./pagina_comune');
 const fs = require('fs');
 let p = null;
 (async () => {
@@ -24,9 +24,10 @@ let p = null;
   const r = {errori, finestre};
   await p.waitForSelector('#mappa-copertura[data-quadretti="6"][data-punti="2"]', {timeout: 30000});
   await p.waitForFunction(() => Number(document.getElementById('mappa-copertura').dataset.disegnati) > 0);
-  await p.waitForSelector('#ripetitori section.ripetitore', {timeout: 30000});
-  r.prima = await p.evaluate(() => { const m = document.getElementById('mappa'), s = document.getElementById('gateway-casa');
-                                     return m && s && m.getBoundingClientRect().top < s.getBoundingClientRect().top; });
+  await p.waitForSelector('#ripetitori section.ripetitore', {state: 'attached', timeout: 30000});
+  r.prima = [await p.isVisible('#mappa-copertura'), await p.isVisible('#gateway-casa')];     // si apre sulla mappa
+  r.schede = await p.$$eval('.schede button', x => x.map(b => b.textContent));
+  r.prevista = await p.getAttribute('#ripetitori section.ripetitore a:has-text("Site Planner")', 'href');
   r.riassunto = await p.innerText('.piede-mappa .riassunto');
   r.legenda = await p.$$eval('.legenda li', x => x.map(e => e.innerText.trim()));
   r.rete = await p.$$eval('.elenco-rete li', x => x.map(e => e.innerText.replace(/\s+/g, ' ').trim()));
@@ -96,6 +97,13 @@ let p = null;
   await p.selectOption('.comandi-copertura label:has-text("Mostra") select', 'r:!3333cccc');
   r.soloRipetitore = [await p.getAttribute('#mappa-copertura', 'data-quadretti'), await p.innerText('.piede-mappa .riassunto'),
                       await p.isVisible('button:has-text("Azzera")')];
+  // lo storico: i grafici del gateway e del ripetitore
+  await scheda(p, 'storico');
+  await p.waitForSelector('.blocco-storico svg path.linea', {timeout: 20000});
+  r.storico = await p.$$eval('.blocco-storico', x => x.map(b => [b.querySelector('h3').textContent,
+    [...b.querySelectorAll('figcaption')].map(f => f.innerText.replace(/\s+/g, ' ').trim())]));
+  r.linee = await p.$$eval('.blocco-storico svg path.linea', x => x.length);
+  await scheda(p, 'mappa');
   // azzera: solo scegliendo un gateway, con la conferma
   r.azzeraPrima = await p.isVisible('button:has-text("Azzera")');
   await p.selectOption('.comandi-copertura label:has-text("Mostra") select', 'g:casa');

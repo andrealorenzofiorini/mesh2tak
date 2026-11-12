@@ -20,7 +20,7 @@ let diagnosi = () => ({});      // se la prova si ferma: cosa diceva la pagina (
   diagnosi = async () => ({errori, risposte, sezione: await p.innerText('#aggiornamenti').catch(() => ''),
                           messaggio: await p.innerText('#messaggio').catch(() => '')});
   p.on('dialog', d => { finestre.push(d.message()); d.dismiss(); });
-  await p.goto(url, {waitUntil: 'networkidle'});
+  await p.goto(url + '#gateway', {waitUntil: 'networkidle'});
   await p.waitForSelector('section.ponte .fatti', {timeout: 15000});
   await apri(p, 'aggiornamenti');
   // la release nuova si vede dopo "Controlla adesso" (il servizio controlla da solo ogni 6 ore)

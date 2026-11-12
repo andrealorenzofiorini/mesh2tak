@@ -52,13 +52,13 @@ def test_comandi_per_un_ponte_controllati(sv):
     codice, r = sv.azione("/api/gestisci-ponte", {"nome": "casa", "azione": "impostazioni",
                                                   "valori": {"squadra": "Dark Blue", "invio": False, "validita_min": 120}},
                           "andrea")
-    assert codice == 202 and r["messaggio"] == "Mando al ponte le impostazioni nuove."
+    assert codice == 202 and r["messaggio"] == "Mando al gateway le impostazioni nuove."
     [lv] = in_coda()
     assert (lv["id"], lv["azione"], lv["nome"], lv["cosa"], lv["da"]) == (r["lavoro"], "azione-ponte", "casa",
                                                                          "impostazioni", "andrea")
     assert lv["valori"] == {"squadra": "Dark Blue", "invio": False, "validita_min": 120}
     codice, r = sv.azione("/api/gestisci-ponte", {"nome": "casa", "azione": "riavvia-raspberry"}, "andrea")
-    assert codice == 409 and "aspetta qualche secondo" in r["errore"], "un comando alla volta per ponte"
+    assert codice == 409 and "aspetta qualche secondo" in r["errore"], "un comando alla volta per gateway"
     assert sv.stato("andrea")["lavori"][0]["cosa"] == "impostazioni"
 
 
@@ -128,7 +128,7 @@ def test_comando_nella_registrazione_e_ponte_avvisato(srv):
     esito, uscita = srv.esegui("lavora")
     assert esito == 0, uscita
     e = esito_di(srv, lavoro)
-    assert (e["esito"], e["messaggio"], e["cosa"]) == ("ok", "chiesto al ponte: lo fa subito", "riavvia-programma"), e
+    assert (e["esito"], e["messaggio"], e["cosa"]) == ("ok", "chiesto al gateway: lo fa subito", "riavvia-programma"), e
     [a] = registrazione(srv)["azioni"]
     assert a["id"] == lavoro and a["azione"] == "riavvia-programma" and a["chiesto"] >= prima
     assert "da" not in a and "andrea" not in json.dumps(registrazione(srv)), "la registrazione e' pubblica"
@@ -155,7 +155,7 @@ def test_aggiornamento_con_la_radio_nella_registrazione(srv):
     e = esito_di(srv, lavoro)
     assert e["esito"] == "ok" and e["reimposta"] is True and "anche la radio come all'installazione" in e["testo"]
     assert registrazione(srv)["aggiorna"]["reimposta"] is True
-    assert srv.ponte.spedite == [("/mesh2tak/controlla", b"{}")], "il ponte comincia subito"
+    assert srv.ponte.spedite == [("/mesh2tak/controlla", b"{}")], "il gateway comincia subito"
     lavoro_in_coda(srv, id="b1b2c3d4e5f60718", azione="aggiorna-ponti", nome="casa", versione="9.9.9")
     assert srv.esegui("lavora")[0] == 0
     assert "reimposta" not in registrazione(srv)["aggiorna"]
@@ -183,7 +183,7 @@ def test_certificato_per_il_solo_ponte_e_tolto_dopo(srv, monkeypatch):
                                           "password": "atakatak", "host": ""})
     esito, uscita = srv.esegui("lavora")
     e = esito_di(srv, lavoro)
-    assert e["esito"] == "ok" and e["messaggio"] == "Certificato 'ponte-casa' pronto per il ponte casa: lo fa subito.", e
+    assert e["esito"] == "ok" and e["messaggio"] == "Certificato 'ponte-casa' pronto per il gateway casa: lo fa subito.", e
     f = srv.radice / "etc/mesh2tak-rete/configurazioni/casa.certificato.json"
     assert stat.S_IMODE(f.stat().st_mode) == 0o400
     dati = json.loads(f.read_text())
@@ -219,7 +219,7 @@ def test_certificati_scaduti_e_ponte_tolto(srv):
         os.utime(f, (time.time() - 2 * 86400, time.time() - 2 * 86400))
     lavoro_in_coda(srv, azione="azione-ponte", nome="casa", cosa="registro")
     assert srv.esegui("lavora")[0] == 0
-    assert not vecchio.exists() and conf.exists(), "il certificato di un ponte dura un giorno, la configurazione 30"
+    assert not vecchio.exists() and conf.exists(), "il certificato di un gateway dura un giorno, la configurazione 30"
     vecchio.write_text("{}")
     assert srv.esegui("rimuovi", "casa", "--si")[0] == 0
     assert not vecchio.exists()

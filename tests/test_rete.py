@@ -16,8 +16,9 @@ from conftest import RADICE, porta_libera
 import mesh2tak as m
 
 SCRIPT = os.path.join(RADICE, "dist", "rete-meshtastic.sh")
-SSHD = "/opt/prova-openssh/sbin/sshd"
-CADDY = {"2.10": "/opt/prova-caddy/caddy-2.10.2", "2.6": "/opt/prova-caddy/caddy-2.6.4"}
+SSHD = os.environ.get("PROVA_SSHD", "/opt/prova-openssh/sbin/sshd")
+_CADDY = os.environ.get("PROVA_CADDY", "/opt/prova-caddy")
+CADDY = {"2.10": f"{_CADDY}/caddy-2.10.2", "2.6": f"{_CADDY}/caddy-2.6.4"}
 DOMINIO = "prova.lan"
 NOMI_DNS = [f"meshtastic.{DOMINIO}", f"meshtastic-casa.{DOMINIO}", f"meshtastic-sede.{DOMINIO}"]
 MARCATORE = "# --- User-added blocks (do not remove) ---"
@@ -243,7 +244,7 @@ def test_stessa_chiave_su_due_ponti_rifiutata(server):
     s = server()
     assert s.esegui("aggiungi", "casa", chiave(1))[0] == 0
     esito, uscita = s.esegui("aggiungi", "sede", chiave(1))
-    assert esito == 1 and "gia' del ponte 'casa'" in uscita
+    assert esito == 1 and "gia' del gateway 'casa'" in uscita
     assert "sede" not in json.loads(s.file("/etc/mesh2tak-rete/registro.json"))["ponti"]
 
 
@@ -358,7 +359,7 @@ def test_disinstalla_rimette_il_server_com_era(server):
 def test_elenco(server):
     s = server()
     esito, uscita = s.esegui("elenco")
-    assert esito == 0 and "nessun ponte registrato" in uscita
+    assert esito == 0 and "nessun gateway registrato" in uscita
     assert s.esegui("aggiungi", "casa", chiave(1))[0] == 0
     assert "tunnel non collegato" in s.esegui("elenco")[1]
     s.porte_occupate.write_text("19443")            # tunnel del Raspberry aperto
@@ -429,7 +430,7 @@ def test_installa_senza_ponti(server):
     s = server()
     esito, uscita = s.esegui("installa")
     assert esito == 0, uscita
-    assert "Da ora i ponti si aggiungono dalla pagina" in uscita and "installa-ponte-meshtastic.sh --accesso-esterno" in uscita
+    assert "Da ora i gateway si aggiungono dalla pagina" in uscita and "installa-ponte-meshtastic.sh --accesso-esterno" in uscita
     assert json.loads(s.file("/var/lib/mesh2tak-rete/sito/ponti.json"))["ponti"] == []
     # servizio della pagina: utente senza privilegi, una sola cartella scrivibile, script copiato in /opt
     web = s.file("/etc/systemd/system/mesh2tak-rete-web.service")
@@ -495,7 +496,11 @@ def test_caddy_richieste_pubbliche_e_azioni_dietro_authentik(server):
     # nessun cookie del browser (sessione di Authentik) arriva al servizio o ai Raspberry
     for blocco in re.findall(r"reverse_proxy (?:https://)?127\.0\.0\.1:\d+ \{(.*?)\n\t\t\t?\}", rete, re.S):
         assert "header_up -Cookie" in blocco and "header_up -Authorization" in blocco, blocco
-    assert rete.count("header_up -Cookie") == 8
+    assert rete.count("header_up -Cookie") == 9
+    # dalla 1.16.0 lo storico di gateway e ripetitori, come la copertura
+    i_storico = pagina.index("handle /storico/casa.json {")
+    assert i_auth < i_storico < pagina.index("handle /storico/* {")
+    assert "rewrite * /mesh2tak/storico.json" in pagina[i_storico:].split("\n\t\t}\n", 1)[0]
 
 
 def lavoro_in_coda(s, **dati):

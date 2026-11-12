@@ -9,14 +9,17 @@ import pytest
 
 QUI = os.path.dirname(os.path.abspath(__file__))
 RADICE = os.path.dirname(QUI)
-SRC = "/home/claude/src"
+# Dove stanno le librerie: di solito in una cartella di sorgenti; su GitHub (prove automatiche prima di ogni rilascio)
+# quelle di Python sono installate con pip e resta da dire solo dov'e' l'SDK dei pacchetti TAK (TAKSDK).
+SRC = os.environ.get("MESH2TAK_SRC", "/home/claude/src")
+SDK = os.environ.get("TAKSDK", f"{SRC}/takpacket-sdk")
 PERCORSI = [RADICE, os.environ.get("MT_SRC", f"{SRC}/meshtastic-python"), f"{SRC}/pypubsub/src", f"{SRC}/pyserial",
-            f"{SRC}/zstd-target", f"{SRC}/takpacket-sdk/python/src"]
+            f"{SRC}/zstd-target", f"{SDK}/python/src"]
+PERCORSI = [p for p in PERCORSI if os.path.isdir(p)]
 for p in PERCORSI:
     if p not in sys.path:
         sys.path.insert(0, p)
-AMBIENTE = dict(os.environ, PYTHONPATH=os.pathsep.join(PERCORSI), TAKSDK=f"{SRC}/takpacket-sdk")
-SDK = f"{SRC}/takpacket-sdk"
+AMBIENTE = dict(os.environ, PYTHONPATH=os.pathsep.join(PERCORSI), TAKSDK=SDK)
 
 
 def porta_libera():

@@ -19,9 +19,9 @@ MIO, A, B = 0xABCD0001, 0x1111AAAA, 0x2222BBBB
 class IfaceFinta:
     def __init__(self):
         self.myInfo = SimpleNamespace(my_node_num=MIO)
-        self.nodesByNum = {MIO: {"user": {"longName": "Ponte CNSAS Varese", "shortName": "PONT"}},
+        self.nodesByNum = {MIO: {"user": {"longName": "Gateway CNSAS Varese", "shortName": "PONT"}},
                            A: {"user": {"longName": "07-BIANCHI", "role": "TAK"}},
-                           B: {"user": {"longName": "Ponte Sede", "role": "CLIENT"}}}
+                           B: {"user": {"longName": "Gateway Sede", "role": "CLIENT"}}}
         pubblico = channel_pb2.Channel(index=0, role=channel_pb2.Channel.Role.PRIMARY)
         pubblico.settings.psk = b"\x01"
         squadra = channel_pb2.Channel(index=1, role=channel_pb2.Channel.Role.SECONDARY)
@@ -274,7 +274,7 @@ def test_troppo_grande_avvisa_chi_l_ha_mandato(ponte):
     assert avviso.get("type") == "b-t-f"
     assert [d.get("callsign") for d in avviso.findall("detail/marti/dest")] == ["07-BIANCHI"]
     assert "Area di ricerca" in avviso.find("detail/remarks").text
-    assert avviso.find("detail/__chat").get("senderCallsign") == "Ponte CNSAS Varese"
+    assert avviso.find("detail/__chat").get("senderCallsign") == "Gateway CNSAS Varese"
 
 
 def test_limite_del_tempo_radio(ponte, sdk):
@@ -315,7 +315,7 @@ def test_posizioni_portate_da_un_altro_ponte_non_tornano_in_radio(ponte):
     ora = time.time()
     # posizione fissa di un altro ponte (inserita a mano, quindi how h-e): ha il segno, non va in radio
     xml = m.cot_evento(uid="!abcd0002", tipo="a-f-G-I", how="h-e", lat=45.9, lon=8.9, t_evento=ora,
-                       stale=ora + 600, callsign="Ponte Sede", segno={"radio": "!abcd0002", "ponte": "!abcd0002"})
+                       stale=ora + 600, callsign="Gateway Sede", segno={"radio": "!abcd0002", "ponte": "!abcd0002"})
     p.su_evento_tak(xml)
     giri(p)
     assert p.iface.trasmessi == [] and len(p.coda_radio) == 0

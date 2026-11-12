@@ -3,6 +3,15 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.16.0
+
+- Avvisi per email anche per i ripetitori: quando un ripetitore non si sente più da 12 ore e quando la sua batteria scende al 20% (e quando tornano a posto). Valgono per i nodi fissi che i gateway sentono; se un gateway non risponde, dei ripetitori non si dice niente.
+- Storico: nuova scheda con i grafici degli ultimi 30 giorni, un punto ogni mezz'ora. Per ogni ripetitore batteria, segnale verso il gateway e quando è stato sentito; per ogni gateway canale radio occupato e radio sulla mappa TAK. Lo storico parte dall'aggiornamento del gateway.
+- La pagina torna a schede: Mappa, Gateway, Ripetitori, Radio, Storico, Gestione. Lo stato di tutta la rete e l'elenco delle cose da controllare restano sempre in alto, e portano alla scheda giusta.
+- Copertura prevista: nella scheda di ogni gateway e ripetitore un collegamento apre il Site Planner di Meshtastic già impostato con posizione, nome e frequenza, per stimare dal rilievo dove arriva. È un sito esterno, che riceve posizione e nome; nella mappa c'è anche il collegamento a MeshPeaks per cercare dove mettere un ripetitore.
+- Un nome solo: anche email, installatore e messaggi dicono "gateway" invece di "ponte". Nomi dei file e comandi non cambiano. In Raspberry Pi Imager il sistema ora si chiama "Gateway Meshtastic (mesh2tak)".
+- Licenza GPL-3.0. Le prove automatiche ora girano su GitHub prima di ogni rilascio: se una non passa, la versione non esce.
+
 ## 1.15.0
 
 - Pagina della rete rifatta, tutta in una pagina: in alto si legge subito se va tutto bene ("Tutto a posto") o quante cose controllare, con l'elenco che porta al punto giusto. Sotto, la mappa della rete con accanto gateway e ripetitori e il loro stato; poi le loro schede (in vista solo quello che conta, il resto in "Altri dettagli"), le radio della squadra e, chiusa in fondo, la gestione: aggiungere un gateway, avvisi per email, aggiornamenti. Sul telefono una colonna sola. Nella pagina il ponte ora si chiama gateway, come il suo nodo.

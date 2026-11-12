@@ -14,7 +14,7 @@ let p = null;
   p.on('console', m => { if (m.type() === 'error') errori.push(m.text()); });
   p.on('pageerror', e => errori.push(String(e)));
   p.on('dialog', d => { finestre.push(d.message()); d.accept(); });
-  await p.goto(url, {waitUntil: 'networkidle'});
+  await p.goto(url + '#gateway', {waitUntil: 'networkidle'});
   const bottone = 'section.ponte:has(h3:text-is("casa")) button:has-text("Gestisci il Raspberry")';
   await p.waitForSelector(bottone, {timeout: 20000});
   const r = {errori, finestre};

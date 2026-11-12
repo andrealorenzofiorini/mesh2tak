@@ -106,7 +106,7 @@ def test_non_risponde_e_torna(tmp_path):
     r.minuti(10)
     assert r.posta.mandate == []
     r.minuti(1)                                 # 10 minuti pieni
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: non risponde"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: non risponde"]
     testo = r.posta.mandate[0][1]
     assert "non risponde dalle 14:01 (da 10 minuti)" in testo and "Cosa fare:" in testo
     assert "Pagina della rete: https://meshtastic.esempio.it/" in testo and "Guard Dog" in testo
@@ -114,7 +114,7 @@ def test_non_risponde_e_torna(tmp_path):
     assert len(r.posta.mandate) == 1            # niente ripetizioni
     r.metti("casa", stato(r.orologio.t))
     r.minuti(1)
-    assert r.oggetti()[1] == "[Rete Meshtastic] Ponte casa: di nuovo in linea"
+    assert r.oggetti()[1] == "[Rete Meshtastic] Gateway casa: di nuovo in linea"
     assert "dalle 14:01, per 31 minuti" in r.posta.mandate[1][1] and "riavviato" not in r.posta.mandate[1][1]
     r.minuti(5)
     assert len(r.posta.mandate) == 2
@@ -127,7 +127,7 @@ def test_riavvio_durante_l_interruzione_detto_nella_stessa_email(tmp_path):
     r.minuti(15)
     r.metti("casa", stato(r.orologio.t, avvio=AVVIO2, acceso=T0 + 14 * 60))
     r.minuti(2)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: non risponde", "[Rete Meshtastic] Ponte casa: di nuovo in linea"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: non risponde", "[Rete Meshtastic] Gateway casa: di nuovo in linea"]
     assert "Il Raspberry si e' riavviato alle 14:14." in r.posta.mandate[1][1]
 
 
@@ -139,7 +139,7 @@ def test_riavvio_breve_avvisato_da_solo(tmp_path):
     r.minuti(2)
     r.metti("casa", stato(r.orologio.t, avvio=AVVIO2, acceso=T0 + 3 * 60))
     r.minuti(2)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: il Raspberry si e' riavviato"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: il Raspberry si e' riavviato"]
     assert "alle 14:03" in r.posta.mandate[0][1] and "ripartito da solo" in r.posta.mandate[0][1]
 
 
@@ -149,16 +149,16 @@ def test_radio_staccata_ma_non_durante_la_gestione(tmp_path):
     assert r.posta.mandate == []
     r.metti("casa", stato(T0, nodo=False))
     r.minuti(11)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: radio non collegata"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: radio non collegata"]
     r.metti("casa", stato(T0))
     r.minuti(1)
-    assert r.oggetti()[-1] == "[Rete Meshtastic] Ponte casa: radio di nuovo collegata"
+    assert r.oggetti()[-1] == "[Rete Meshtastic] Gateway casa: radio di nuovo collegata"
 
 
 def test_tak_non_collegato_con_l_errore(tmp_path):
     r = Rete(tmp_path, casa=stato(T0, tak=False, errore="certificato\n rifiutato dal server"))
     r.minuti(11)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: non arriva al TAK Server"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: non arriva al TAK Server"]
     assert "(ultimo errore: certificato rifiutato dal server)" in r.posta.mandate[0][1]
 
 
@@ -168,7 +168,7 @@ def test_non_risponde_non_porta_anche_il_tak(tmp_path):
     r.minuti(3)
     r.metti("casa", None)
     r.minuti(15)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: non risponde"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: non risponde"]
 
 
 def test_certificato_avvisato_alle_soglie(tmp_path):
@@ -178,7 +178,7 @@ def test_certificato_avvisato_alle_soglie(tmp_path):
     assert r.posta.mandate == []
     r.orologio.t = scade - 29 * GIORNO
     r.minuti(2)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: il certificato TAK scade il 16/12/2026"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: il certificato TAK scade il 16/12/2026"]
     testo = r.posta.mandate[0][1]
     assert "tra 29 giorni" in testo and "meshtastic-cnsas" in testo and "installa-ponte-meshtastic.sh NOMEFILE.zip" in testo
     r.orologio.t = scade - 20 * GIORNO
@@ -188,7 +188,7 @@ def test_certificato_avvisato_alle_soglie(tmp_path):
     r.minuti(1)
     r.orologio.t = scade + 3600
     r.minuti(1)
-    assert len(r.posta.mandate) == 3 and r.oggetti()[2] == "[Rete Meshtastic] Ponte casa: il certificato TAK e' scaduto"
+    assert len(r.posta.mandate) == 3 and r.oggetti()[2] == "[Rete Meshtastic] Gateway casa: il certificato TAK e' scaduto"
     r.metti("casa", stato(T0, scade=scade + 700 * GIORNO))     # rinnovato
     r.minuti(3)
     assert len(r.posta.mandate) == 3
@@ -197,8 +197,8 @@ def test_certificato_avvisato_alle_soglie(tmp_path):
 def test_corrente_insufficiente_al_massimo_una_volta_al_giorno(tmp_path):
     r = Rete(tmp_path, casa=stato(T0, bassa=T0 - 60, volte=3))
     r.minuti(1)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: corrente insufficiente"]
-    assert "l'ultimo alle 13:59; 3 da quando il ponte e' acceso" in r.posta.mandate[0][1]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: corrente insufficiente"]
+    assert "l'ultimo alle 13:59; 3 da quando il gateway e' acceso" in r.posta.mandate[0][1]
     assert "5,1 V e 2,5 A" in r.posta.mandate[0][1]
     r.orologio.t += 2 * 3600
     r.metti("casa", stato(T0, bassa=r.orologio.t - 30, volte=5))
@@ -217,11 +217,11 @@ def test_corrente_insufficiente_al_massimo_una_volta_al_giorno(tmp_path):
 def test_microsd_quasi_piena(tmp_path):
     r = Rete(tmp_path, casa=stato(T0, libero=300))
     r.minuti(11)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: microSD quasi piena"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: microSD quasi piena"]
     assert "restano 300 MB liberi" in r.posta.mandate[0][1]
     r.metti("casa", stato(T0, libero=4000))
     r.minuti(1)
-    assert r.oggetti()[1] == "[Rete Meshtastic] Ponte casa: spazio di nuovo sufficiente"
+    assert r.oggetti()[1] == "[Rete Meshtastic] Gateway casa: spazio di nuovo sufficiente"
 
 
 def test_piu_ponti_una_email_sola(tmp_path):
@@ -230,9 +230,9 @@ def test_piu_ponti_una_email_sola(tmp_path):
     r.metti("casa", None)
     r.metti("sede", None)
     r.minuti(11)
-    assert r.oggetti() == ["[Rete Meshtastic] 2 avvisi: Ponte casa: non risponde e altri"]
+    assert r.oggetti() == ["[Rete Meshtastic] 2 avvisi: Gateway casa: non risponde e altri"]
     testo = r.posta.mandate[0][1]
-    assert "Ponte casa: non risponde" in testo and "Ponte sede: non risponde" in testo
+    assert "Gateway casa: non risponde" in testo and "Gateway sede: non risponde" in testo
 
 
 def test_email_non_partita_si_riprova(tmp_path):
@@ -246,7 +246,7 @@ def test_email_non_partita_si_riprova(tmp_path):
     assert r.posta.tentativi == 1               # riprova dopo 5 minuti
     r.posta.esito = ("mandato", "")
     r.minuti(2)
-    assert r.posta.tentativi == 2 and r.oggetti() == ["[Rete Meshtastic] Ponte casa: non risponde"]
+    assert r.posta.tentativi == 2 and r.oggetti() == ["[Rete Meshtastic] Gateway casa: non risponde"]
     assert r.s.vista()["in_coda"] == 0
     r.minuti(10)
     assert r.posta.tentativi == 2
@@ -287,7 +287,7 @@ def test_dopo_un_riavvio_del_servizio_niente_doppioni(tmp_path):
     assert len(r.posta.mandate) == 1
     r.metti("casa", stato(r.orologio.t))
     r.minuti(1)
-    assert r.oggetti()[-1] == "[Rete Meshtastic] Ponte casa: di nuovo in linea"
+    assert r.oggetti()[-1] == "[Rete Meshtastic] Gateway casa: di nuovo in linea"
 
 
 def test_ponte_tolto_niente_piu_avvisi(tmp_path):
@@ -306,7 +306,7 @@ def test_ponte_vecchio_senza_i_dati_nuovi(tmp_path):
     vecchio = {"formato": 1, "nodo": {"collegato": True}, "tak": {"collegato": False}, "pausa": {"attiva": False}}
     r = Rete(tmp_path, casa=vecchio)
     r.minuti(11)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: non arriva al TAK Server"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: non arriva al TAK Server"]
 
 
 def test_file_di_stato_rovinato(tmp_path):
@@ -314,7 +314,7 @@ def test_file_di_stato_rovinato(tmp_path):
     r = Rete(tmp_path, casa=stato(T0))
     r.metti("casa", None)
     r.minuti(11)
-    assert r.oggetti() == ["[Rete Meshtastic] Ponte casa: non risponde"]
+    assert r.oggetti() == ["[Rete Meshtastic] Gateway casa: non risponde"]
 
 
 def test_parole_delle_ore():
@@ -460,4 +460,98 @@ def test_ponte_che_manda_dati_strani_non_ferma_gli_altri(tmp_path):
     r.minuti(1)
     r.metti("sede", None)
     r.minuti(11)
-    assert "[Rete Meshtastic] Ponte sede: non risponde" in " ".join(r.oggetti())
+    assert "[Rete Meshtastic] Gateway sede: non risponde" in " ".join(r.oggetti())
+
+
+# ---- 1.16.0: i ripetitori fissi (senza internet: li vede solo il gateway che li sente) ----
+
+def con_ripetitore(r, tace_s=600.0, batteria=None, eta_batteria=600.0, fisso=True, ruolo="ROUTER", nome="Rip Velate",
+                   ripetuto_s=None, presente=True):
+    """Lo stato del gateway casa con l'ora di adesso e, se presente, il ripetitore tra le radio."""
+    ora = r.orologio.t
+    st = stato(ora)
+    st["id_nodo"] = "!abcd0001"
+    st["radio_rete"] = [{"id": "!0e5f1a22", "nome": "07-BIANCHI", "ruolo": "TRACKER", "ultimo": ora - 9e5, "fisso": False}]
+    if presente:
+        st["radio_rete"].append({"id": "!3333cccc", "nome": nome, "ruolo": ruolo, "fisso": fisso, "ultimo": ora - tace_s,
+                                 "ultimo_ripetuto": None if ripetuto_s is None else ora - ripetuto_s,
+                                 "batteria": batteria, "metriche": None if batteria is None else ora - eta_batteria})
+    r.metti("casa", st)
+
+
+def giri(r, n, **come):
+    for _ in range(n):
+        con_ripetitore(r, **come)
+        r.minuti(1)
+
+
+def test_ripetitore_che_tace_da_dodici_ore_e_torna(tmp_path):
+    r = Rete(tmp_path, casa=stato(T0))
+    giri(r, 3, tace_s=11 * 3600)
+    giri(r, 12, tace_s=13 * 3600, ripetuto_s=600)        # tace, ma ripete i messaggi degli altri: e' acceso
+    assert r.posta.mandate == []
+    giri(r, 10, tace_s=13 * 3600)
+    assert r.posta.mandate == [], "prima dei 10 minuti"
+    giri(r, 2, tace_s=13 * 3600)
+    assert r.oggetti() == ["[Rete Meshtastic] Ripetitore Rip Velate: non si sente piu'"]
+    testo = r.posta.mandate[0][1]
+    assert "Nessun gateway sente il ripetitore Rip Velate" in testo and "(da 13 ore)" in testo and "Cosa fare:" in testo
+    giri(r, 30, tace_s=14 * 3600)
+    assert len(r.posta.mandate) == 1, "niente ripetizioni"
+    giri(r, 2, tace_s=120)
+    assert r.oggetti()[1] == "[Rete Meshtastic] Ripetitore Rip Velate: si sente di nuovo"
+    # dopo un riavvio del servizio non rimanda
+    r.s = r.nuova()
+    giri(r, 3, tace_s=120)
+    assert len(r.posta.mandate) == 2
+
+
+def test_batteria_del_ripetitore(tmp_path):
+    r = Rete(tmp_path, casa=stato(T0))
+    giri(r, 12, batteria=21)
+    giri(r, 12, batteria=15, eta_batteria=30 * 3600)     # letta piu' di un giorno fa: non dice niente
+    giri(r, 12, batteria=101)                            # alimentato dalla rete
+    assert r.posta.mandate == []
+    giri(r, 12, batteria=18)
+    assert r.oggetti() == ["[Rete Meshtastic] Ripetitore Rip Velate: batteria al 18%"]
+    assert "Storico" in r.posta.mandate[0][1]
+    giri(r, 5, batteria=27)                              # risale, ma non abbastanza
+    giri(r, 5, batteria=12, eta_batteria=30 * 3600)      # non manda piu' la batteria: resta com'era
+    assert len(r.posta.mandate) == 1
+    giri(r, 2, batteria=34)
+    assert r.oggetti()[1] == "[Rete Meshtastic] Ripetitore Rip Velate: batteria risalita al 34%"
+
+
+def test_ripetitori_cosa_non_conta(tmp_path):
+    r = Rete(tmp_path, casa=stato(T0))
+    giri(r, 15, tace_s=20 * 3600, fisso=False)                    # una radio che si muove
+    giri(r, 15, tace_s=20 * 3600, ruolo="CLIENT_MUTE")            # fissa ma non ripete
+    assert r.posta.mandate == []
+    # avvisato e poi sparito dall'elenco (gateway ripartito): esce senza "si sente di nuovo"
+    giri(r, 12, tace_s=20 * 3600)
+    assert len(r.posta.mandate) == 1
+    giri(r, 3, presente=False)
+    giri(r, 3, tace_s=60)
+    assert len(r.posta.mandate) == 1
+    # gateway che non risponde: dei ripetitori non si sa niente, nessun avviso su di loro
+    giri(r, 2, tace_s=20 * 3600)
+    r.metti("casa", None)
+    r.minuti(30)
+    assert [o for o in r.oggetti() if "Ripetitore" in o] == ["[Rete Meshtastic] Ripetitore Rip Velate: non si sente piu'"]
+
+
+def test_ripetitore_sentito_da_un_altro_gateway(tmp_path):
+    r = Rete(tmp_path, casa=stato(T0), sede=stato(T0))
+    for _ in range(15):
+        con_ripetitore(r, tace_s=20 * 3600)
+        st = stato(r.orologio.t)
+        st["radio_rete"] = [{"id": "!3333cccc", "nome": "Rip Velate", "ruolo": "ROUTER", "fisso": True,
+                             "ultimo": r.orologio.t - 300}]
+        r.metti("sede", st)
+        r.minuti(1)
+    assert r.posta.mandate == [], "basta un gateway che lo sente"
+    # il nodo di un gateway non e' un ripetitore
+    d = rete.Sorveglianza.ripetitori_di({"casa": {"ora": 100.0, "id_nodo": "!3333cccc", "radio_rete": []},
+                                         "sede": {"ora": 100.0, "radio_rete": [{"id": "!3333cccc", "fisso": True,
+                                                                                "ruolo": "ROUTER", "ultimo": 50.0}]}})
+    assert d == {}

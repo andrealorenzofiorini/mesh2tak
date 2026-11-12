@@ -15,12 +15,12 @@ let sospese = () => [];
   p.on('console', m => { if (m.type() === 'error') errori.push(m.text()); });
   p.on('pageerror', e => errori.push(String(e)));
   p.on('dialog', d => { finestre.push(d.message()); d.dismiss(); });
-  await p.goto(url, {waitUntil: 'networkidle'});
+  await p.goto(url + '#gateway', {waitUntil: 'networkidle'});
   await p.waitForSelector('section.ponte', {timeout: 15000});
   await p.waitForTimeout(500);
   if (foto) await p.screenshot({path: foto, fullPage: true});
   await p.click('section.ponte details.altri summary');      // canali e il resto, in "Altri dettagli"
-  const testo = await p.innerText('main');
+  const testo = await p.evaluate(() => document.querySelector('main').textContent);   // tutte le schede
   const stato = await p.getAttribute('section.ponte', 'data-stato');
   console.log(JSON.stringify({testo, stato, errori, finestre, immagini: await p.evaluate(IMMAGINI)}));
   await b.close();

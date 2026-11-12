@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Ponte Meshtastic <-> TAK Server  (mesh2tak @@VERSIONE@@)
+#  Gateway Meshtastic <-> TAK Server  (mesh2tak @@VERSIONE@@)
 #
 #  Prepara da zero un Raspberry con Raspberry Pi OS appena installato:
 #  aggiornamenti, Meshtastic (meshtasticd) per la scheda LoRa, configurazione
-#  del nodo con il canale privato della squadra, e il ponte con il TAK Server:
+#  del nodo con il canale privato della squadra, e il gateway con il TAK Server:
 #  posizioni, chat e oggetti dalla radio al server; chat e oggetti dal server alla radio.
 #
 #  Uso:
 #    sudo bash installa-ponte-meshtastic.sh            cerca da solo il certificato (nella cartella
 #                                                      dell'utente o sulla microSD, disco "bootfs")
 #    sudo bash installa-ponte-meshtastic.sh FILE.zip   pacchetto d'integrazione infra-TAK (o .p12)
-#    sudo bash installa-ponte-meshtastic.sh --rimuovi  toglie il ponte (Meshtastic resta)
+#    sudo bash installa-ponte-meshtastic.sh --rimuovi  toglie il gateway (Meshtastic resta)
 #  Opzione: --scheda usb|waveshare|meshadv|meshadv-mini|rak
 #           (predefinita: la radio Meshtastic collegata via USB; le schede sul Raspberry vanno indicate;
 #            rak = scheda RAK6421 sui pin con la radio RAK13300 nello slot 1)
@@ -22,15 +22,15 @@
 #           non cambiano le impostazioni della radio: resta quello che si e' scelto dall'app o dalla pagina.
 #  Opzione: --reimposta-radio  rimette solo la radio come la prepara l'installatore (lo fa anche "Reimposta la
 #           radio" sulla pagina della rete); MESH2TAK_REIMPOSTA_RADIO=1 la rimette durante un aggiornamento
-#  Opzione: --accesso-esterno  gestione del nodo e stato del ponte anche da internet, dalla pagina della
-#           rete Meshtastic sul server: il ponte chiede da solo di entrare, alla fine l'installatore mostra
+#  Opzione: --accesso-esterno  gestione del nodo e stato del gateway anche da internet, dalla pagina della
+#           rete Meshtastic sul server: il gateway chiede da solo di entrare, alla fine l'installatore mostra
 #           il codice da confermare su quella pagina; --accesso-esterno=no lo spegne
 #  Opzione: --aggiorna-meshtasticd  aggiorna meshtasticd (bloccato alla versione installata: gli
 #           aggiornamenti automatici non lo toccano) e lo blocca di nuovo
 #  Dopo:    sudo mesh2tak-scorta  prepara una microSD di scorta (in un lettore USB), copia di questa
-#  Aggiornamenti (dalla 1.8.0): dalla pagina della rete, "Aggiorna i ponti"; il Raspberry scarica la
+#  Aggiornamenti (dalla 1.8.0): dalla pagina della rete, "Aggiorna i gateway"; il Raspberry scarica la
 #           versione nuova da GitHub, la controlla, la installa e se non riparte rimette quella di prima
-#  Ponte nuovo da casa (dalla 1.9.0): microSD scritta con Raspberry Pi Imager (con Raspberry Pi Connect) e
+#  Gateway nuovo da casa (dalla 1.9.0): microSD scritta con Raspberry Pi Imager (con Raspberry Pi Connect) e
 #           il pacchetto del certificato copiato sul disco "bootfs"; poi dal terminale remoto di
 #           connect.raspberrypi.com:
 #    curl -fsSLO https://github.com/andrealorenzofiorini/mesh2tak/releases/latest/download/installa-ponte-meshtastic.sh
@@ -56,9 +56,9 @@ MESHTASTIC_VER=2.7.11
 TAK_SDK_VER=0.10.0
 TAK_SDK_FILE=meshtastic_tak-0.10.0-py3-none-any.whl
 TAK_SDK_SHA256=34c0501137830712f69a41c2a2cfa0d0f57ab55a5f395d7b525e9b14219365d1
-NOME_NODO="Gateway CNSAS Varese"         # installazioni fatte prima della 1.9.0 (il ponte di casa)
+NOME_NODO="Gateway CNSAS Varese"         # installazioni fatte prima della 1.9.0 (il gateway di casa)
 NOME_BREVE="GTSA"
-NOME_NODO_AUTOMATICO=0                   # 1 = ponte installato da zero: nome del nodo dal nome del ponte
+NOME_NODO_AUTOMATICO=0                   # 1 = gateway installato da zero: nome del nodo dal nome del gateway
 CANALE="CNSAS"
 CONFIG_TXT="${MESH2TAK_CONFIG_TXT:-/boot/firmware/config.txt}"
 [ -f "$CONFIG_TXT" ] || [ -n "${MESH2TAK_CONFIG_TXT:-}" ] || CONFIG_TXT=/boot/config.txt
@@ -69,7 +69,7 @@ MESHTASTICD_DIR="${MESH2TAK_MESHTASTICD_DIR:-/etc/meshtasticd}"
 SOLO_LOCALE_DIR=/etc/systemd/system/meshtasticd.service.d
 SOLO_LOCALE="$SOLO_LOCALE_DIR/mesh2tak-solo-locale.conf"
 AVAHI_APP=/etc/avahi/services/mesh2tak-meshtastic.service   # l'app Meshtastic trova il Raspberry da sola
-ACCESSO_DIR="$CONF_DIR/accesso"            # chiave SSH del ponte per il tunnel verso il server della rete
+ACCESSO_DIR="$CONF_DIR/accesso"            # chiave SSH del gateway per il tunnel verso il server della rete
 AIUTO_ACCESSO=/usr/local/bin/mesh2tak-accesso
 AIUTO_SCORTA=/usr/local/bin/mesh2tak-scorta
 UNITA_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.service
@@ -159,7 +159,7 @@ command -v apt-get >/dev/null || fallisci "Questo installatore e' per Raspberry 
 
 # ---------------------------------------------------------------- rimozione
 if [ "$RIMUOVI" = 1 ]; then
-  passo "Rimozione del ponte Meshtastic -> TAK"
+  passo "Rimozione del gateway Meshtastic -> TAK"
   systemctl disable --now mesh2tak >/dev/null 2>&1 || true
   systemctl disable --now mesh2tak-installazione.service >/dev/null 2>&1 || true
   rm -f "$UNITA_RIPRESA"
@@ -190,7 +190,7 @@ if [ "$RIMUOVI" = 1 ]; then
   if installato meshtasticd; then apt-mark unhold meshtasticd >/dev/null 2>&1 || true; fi
   ok "tolte anche le protezioni del Raspberry (riavvio automatico, registri, aggiornamenti automatici)"
   ok "Rimosso. Meshtastic e il canale della squadra restano come sono."
-  [ -n "$NOME_RETE" ] && info "Togli anche il ponte dalla rete: su ${PAGINA_RETE:-la pagina della rete}, 'Togli dalla rete' sotto $NOME_RETE"
+  [ -n "$NOME_RETE" ] && info "Togli anche il gateway dalla rete: su ${PAGINA_RETE:-la pagina della rete}, 'Togli dalla rete' sotto $NOME_RETE"
   exit 0
 fi
 
@@ -200,7 +200,7 @@ if [ "$AGGIORNA_MESHTASTICD" = 1 ]; then
   installato meshtasticd || fallisci "meshtasticd non e' installato (con la radio USB non serve)."
   trap '' HUP     # se la connessione cade, l'aggiornamento finisce lo stesso
   PRIMA=$(dpkg-query -W -f='${Version}' meshtasticd)
-  info "versione installata: $PRIMA. Il ponte si ferma per un minuto: fallo quando non ci sono interventi."
+  info "versione installata: $PRIMA. Il gateway si ferma per un minuto: fallo quando non ci sono interventi."
   touch "$LOG"; chmod 600 "$LOG"
   echo "=== $(date '+%F %T') aggiornamento di meshtasticd (mesh2tak $VERSIONE)" >>"$LOG"
   export DEBIAN_FRONTEND=noninteractive
@@ -220,7 +220,7 @@ if [ "$AGGIORNA_MESHTASTICD" = 1 ]; then
   else
     ok "meshtasticd aggiornato: $PRIMA -> $DOPO"
   fi
-  info "Il ponte si ricollega da solo in pochi secondi. meshtasticd resta fermo alla versione $DOPO."
+  info "Il gateway si ricollega da solo in pochi secondi. meshtasticd resta fermo alla versione $DOPO."
   exit 0
 fi
 
@@ -228,7 +228,7 @@ mkdir -p "$CONF_DIR"; chmod 755 "$CONF_DIR"
 IN_CORSO="$CONF_DIR/.in-corso"            # PID dell'installazione che lavora staccata dal terminale
 SCHERMO="$CONF_DIR/installazione-schermo.log"
 # Com'e' andata (dalla 1.10.0): in_corso | riavvio | ok VERSIONE | errore MESSAGGIO. La legge il primo avvio dei
-# ponti nuovi, che riferisce alla pagina della rete: li' nessuno guarda il terminale.
+# gateway nuovi, che riferisce alla pagina della rete: li' nessuno guarda il terminale.
 ESITO_FILE="$CONF_DIR/esito-installazione"
 segna_esito() { printf '%s\n' "$*" > "$ESITO_FILE" 2>/dev/null || true; }
 if [ -n "${MESH2TAK_DOPO_RIAVVIO:-}" ]; then
@@ -247,7 +247,7 @@ fi
 [ -n "${MESH2TAK_STACCATO:-}" ] || printf '%sPonte Meshtastic <-> TAK Server%s (versione %s)\n' "$B" "$N" "$VERSIONE"
 touch "$LOG"; chmod 600 "$LOG"
 if [ "$SOLO_RADIO" = 1 ]; then
-  # solo la radio: l'esito dell'installazione (per il primo avvio dei ponti nuovi) resta quello di prima
+  # solo la radio: l'esito dell'installazione (per il primo avvio dei gateway nuovi) resta quello di prima
   echo "=== $(date '+%F %T') radio reimpostata (mesh2tak $VERSIONE)" >>"$LOG"
   segna_esito() { :; }
 else
@@ -286,7 +286,7 @@ ACCESSO_NOME=""; ACCESSO_RETE=""
 # dalla 1.13.0: RADIO_PREPARATA=1 dopo che la radio e' stata preparata tutta una volta; RADIO_DA_FARE = parti da
 # sistemare una volta sola al prossimo passo 7 (es. il nome nuovo della 1.12.0), anche se l'installazione si interrompe
 RADIO_PREPARATA=""; RADIO_DA_FARE=""
-[ -f "$STATO" ] || NOME_NODO_AUTOMATICO=1           # Raspberry nuovo: il nodo prendera' il nome del ponte
+[ -f "$STATO" ] || NOME_NODO_AUTOMATICO=1           # Raspberry nuovo: il nodo prendera' il nome del gateway
 # shellcheck disable=SC1090
 [ -f "$STATO" ] && . "$STATO"
 SCHEDA="${SCHEDA:-${SCHEDA_SALVATA:-}}"
@@ -309,7 +309,7 @@ case "$SCHEDA" in
   usb)          FILE_SCHEDA="";                              RUOLO=CLIENT ;;
   *) fallisci "Scheda '$SCHEDA' non prevista: usa waveshare, meshadv, meshadv-mini, rak o usb" ;;
 esac
-nomi_del_nodo() {  # ponte nuovo: nome e sigla del nodo dal nome del ponte (velate -> "Gateway CNSAS Velate", GVEL)
+nomi_del_nodo() {  # gateway nuovo: nome e sigla del nodo dal nome del gateway (velate -> "Gateway CNSAS Velate", GVEL)
   local base parola nome=""
   base=$(printf '%s' "$1" | sed 's/^ponte-//; s/-/ /g')
   for parola in $base; do nome="$nome ${parola^}"; done
@@ -330,8 +330,8 @@ aggiungi_parte() {  # $1 = elenco di parti della radio separate da virgole, $2 =
   case ",$1," in *",$2,"*) printf '%s' "$1" ;; *) printf '%s' "${1:+$1,}$2" ;; esac
 }
 CAMBIO_STATO=0
-# dalla 1.12.0 (scelta dell'11/11/2026) i ponti si chiamano "Gateway": il ponte di casa "Gateway CNSAS
-# Varese" (GTSA), i ponti nuovi "Gateway CNSAS Nome" (G e tre lettere). Si cambiano solo i nomi messi dall'installatore.
+# dalla 1.12.0 (scelta dell'11/11/2026) i gateway si chiamano "Gateway": il gateway di casa "Gateway CNSAS
+# Varese" (GTSA), i gateway nuovi "Gateway CNSAS Nome" (G e tre lettere). Si cambiano solo i nomi messi dall'installatore.
 if [ "$NOME_NODO" = "Ponte CNSAS Varese" ] && [ "$NOME_BREVE" = PONT ]; then
   NOME_NODO="Gateway CNSAS Varese"; NOME_BREVE="GTSA"; NOMI_NUOVI=1
 elif [ "$NOME_NODO_AUTOMATICO" = 1 ] && [ -n "$ACCESSO_NOME" ] && [ "${NOME_NODO#Ponte CNSAS }" != "$NOME_NODO" ]; then
@@ -375,29 +375,29 @@ configura_radio() {  # $1 = parti della radio da sistemare: tutto, nessuna o un 
 
 # ---------------------------------------------------------------- solo la radio (dalla 1.13.0)
 if [ "$SOLO_RADIO" = 1 ]; then
-  passo "Radio del ponte come all'installazione"
+  passo "Radio del gateway come all'installazione"
   [ -f "$STATO" ] && [ -f "$CONF" ] && [ -x "$VENV/bin/python" ] && [ -f "$DIR/mesh2tak.py" ] \
-    || fallisci "Il ponte non e' ancora installato: lancia l'installatore senza --reimposta-radio."
+    || fallisci "Il gateway non e' ancora installato: lancia l'installatore senza --reimposta-radio."
   grep -q "^VERSIONE = \"$VERSIONE\"" "$DIR/mesh2tak.py" \
-    || fallisci "Il ponte ha un'altra versione di mesh2tak: prima aggiornalo con questo installatore (senza --reimposta-radio)."
+    || fallisci "Il gateway ha un'altra versione di mesh2tak: prima aggiornalo con questo installatore (senza --reimposta-radio)."
   COLLEGAMENTO=$(sed -n 's/^[[:space:]]*collegamento[[:space:]]*=[[:space:]]*\([^#;]*\).*/\1/p' "$CONF" | head -n1 | sed 's/[[:space:]]*$//')
-  [ -n "$COLLEGAMENTO" ] || fallisci "Nella configurazione del ponte manca il collegamento alla radio: rilancia l'installatore."
+  [ -n "$COLLEGAMENTO" ] || fallisci "Nella configurazione del gateway manca il collegamento alla radio: rilancia l'installatore."
   info "regione EU 868, nome '$NOME_NODO' ($NOME_BREVE), ruolo $RUOLO, solo il canale privato '$CANALE'" \
        "(la sua chiave resta)${POSIZIONE:+, posizione fissa $POSIZIONE}"
-  info "il ponte si ferma per un minuto e riparte da solo"
+  info "il gateway si ferma per un minuto e riparte da solo"
   systemctl stop mesh2tak >/dev/null 2>&1 || true
   RIPARTI_PONTE=1
   trap 'alla_fine; [ "${RIPARTI_PONTE:-0}" = 1 ] && systemctl start mesh2tak >/dev/null 2>&1' EXIT
   configura_radio tutto
   systemctl start mesh2tak >/dev/null 2>&1 || true
   RIPARTI_PONTE=0
-  ok "radio del ponte come all'installazione; le altre impostazioni scelte dall'app restano"
+  ok "radio del gateway come all'installazione; le altre impostazioni scelte dall'app restano"
   exit 0
 fi
 
 # ---------------------------------------------------------------- 1. certificato e domande
 if [ -z "${MESH2TAK_STACCATO:-}" ]; then
-passo "1/9  Certificato del ponte"
+passo "1/9  Certificato del gateway"
 id "$UTENTE" >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "$UTENTE"
 if [ "$CERTIFICATO_OK" = 1 ] && [ -z "$PACCHETTO" ] && [ -f "$CONF_DIR/client.pem" ] && [ -f "$CONF_DIR/client.key" ]; then
   ok "gia' installato nella prima esecuzione (TAK Server $HOST porta $PORTA)"
@@ -536,7 +536,7 @@ PYZIP
   case "$PACCHETTO_DATO" in
     "$AVVIO_DIR"/*)   # la microSD si legge da qualunque computer: il certificato resta solo dove serve
       rm -rf -- "$PACCHETTO_DATO" "$AVVIO_DIR/._$(basename "$PACCHETTO_DATO")"
-      ok "pacchetto del certificato tolto dalla microSD: ora e' solo in $CONF_DIR, letto solo dal ponte" ;;
+      ok "pacchetto del certificato tolto dalla microSD: ora e' solo in $CONF_DIR, letto solo dal gateway" ;;
   esac
 fi
 if [ "$CHIEDI_CANALE" = 1 ]; then
@@ -571,12 +571,12 @@ if [ "$CHIEDI_CANALE" = 1 ]; then
   fi
 fi
 if [ -n "$CANALE_PUBBLICO_DATO" ]; then
-  info "--canale-pubblico ignorato: dalla 1.12.0 il nodo del ponte ha solo il canale della squadra"
+  info "--canale-pubblico ignorato: dalla 1.12.0 il nodo del gateway ha solo il canale della squadra"
 fi
 if [ "$CHIEDI_ACCESSO" = 1 ]; then
   passo "   Accesso da internet (pagina della rete Meshtastic)"
   if [ "$NOME_ACCESSO_DATO" = no ]; then
-    [ -n "$ACCESSO_NOME" ] && info "togli anche il ponte dalla rete: su ${ACCESSO_RETE:-la pagina della rete}, 'Togli dalla rete' sotto $ACCESSO_NOME"
+    [ -n "$ACCESSO_NOME" ] && info "togli anche il gateway dalla rete: su ${ACCESSO_RETE:-la pagina della rete}, 'Togli dalla rete' sotto $ACCESSO_NOME"
     ACCESSO_NOME=""; ACCESSO_RETE=""
     salva_stato
     ok "accesso da internet spento: lo tolgo al passo 8"
@@ -587,7 +587,7 @@ if [ "$CHIEDI_ACCESSO" = 1 ]; then
     NOME_A="${NOME_ACCESSO_DATO:-${MESH2TAK_ACCESSO_NOME:-}}"
     for _ in 1 2 3; do
       if [ -z "$NOME_A" ] && [ "$INTERATTIVO" = 1 ]; then
-        info "Nome di questo ponte nella rete: diventa l'indirizzo meshtastic-NOME (es. casa, sede, campo-dei-fiori)."
+        info "Nome di questo gateway nella rete: diventa l'indirizzo meshtastic-NOME (es. casa, sede, campo-dei-fiori)."
         read -r -p "    Nome (minuscole, numeri e trattini; Invio = $NOME_DEF): " NOME_A || true
       fi
       NOME_A="${NOME_A:-$NOME_DEF}"
@@ -596,7 +596,7 @@ if [ "$CHIEDI_ACCESSO" = 1 ]; then
       NOME_A=""
       [ "$INTERATTIVO" = 1 ] || break
     done
-    [ -n "$NOME_A" ] || fallisci "Nome del ponte non valido: rilancia con --accesso-esterno=casa (o un altro nome)."
+    [ -n "$NOME_A" ] || fallisci "Nome del gateway non valido: rilancia con --accesso-esterno=casa (o un altro nome)."
     # pagina della rete: dal dominio del TAK Server (takserver.tuodominio.it -> https://meshtastic.tuodominio.it)
     RETE_DEF="${MESH2TAK_ACCESSO_RETE:-$ACCESSO_RETE}"
     if [ -z "$RETE_DEF" ] && [ -n "$HOST" ] && ! printf '%s' "$HOST" | grep -qE '^[0-9.]+$' \
@@ -612,10 +612,10 @@ if [ "$CHIEDI_ACCESSO" = 1 ]; then
     if [ "$NOME_NODO_AUTOMATICO" = 1 ]; then
       nomi_del_nodo "$ACCESSO_NOME"
       RADIO_DA_FARE=$(aggiungi_parte "$RADIO_DA_FARE" nome)     # il nome nuovo va sulla radio anche in un rilancio
-      ok "nome del nodo e del ponte sulla mappa: '$NOME_NODO' (sigla $NOME_BREVE)"
+      ok "nome del nodo e del gateway sulla mappa: '$NOME_NODO' (sigla $NOME_BREVE)"
     fi
     salva_stato
-    ok "ponte '$ACCESSO_NOME' nella rete $ACCESSO_RETE: alla fine chiede da solo di entrare"
+    ok "gateway '$ACCESSO_NOME' nella rete $ACCESSO_RETE: alla fine chiede da solo di entrare"
   fi
 fi
 fi
@@ -698,11 +698,11 @@ else
     cp "$MESHTASTICD_DIR/available.d/$FILE_SCHEDA" "$MESHTASTICD_DIR/config.d/"; CAMBIO_MESHTASTICD=1
   fi
   # meshtasticd su porte interne (pagina 9444, API 4404) e raggiungibile solo dal Raspberry: dalla rete
-  # pagina (9443) e app Meshtastic via Wi-Fi (4403) passano dal ponte, che intanto si mette in pausa.
-  # Il nodo serve un programma collegato alla volta: insieme al ponte, l'app lo butterebbe fuori.
+  # pagina (9443) e app Meshtastic via Wi-Fi (4403) passano dal gateway, che intanto si mette in pausa.
+  # Il nodo serve un programma collegato alla volta: insieme al gateway, l'app lo butterebbe fuori.
   rm -f "$MESHTASTICD_DIR/config.d/cnsas-web.yaml"   # versioni fino alla 1.2.2
-  printf '%s\n' "# Porte interne di Meshtastic per il ponte mesh2tak. Dalla rete: pagina https://<raspberry>.local:9443" \
-    "# e app Meshtastic via Wi-Fi sulla 4403, passando dal ponte (che intanto va in pausa)." \
+  printf '%s\n' "# Porte interne di Meshtastic per il gateway mesh2tak. Dalla rete: pagina https://<raspberry>.local:9443" \
+    "# e app Meshtastic via Wi-Fi sulla 4403, passando dal gateway (che intanto va in pausa)." \
     "Webserver:" "  Port: 9444" "  RootPath: /usr/share/meshtasticd/web" "General:" "  APIPort: 4404" > "$TMP/mesh2tak.yaml"
   if ! cmp -s "$TMP/mesh2tak.yaml" "$MESHTASTICD_DIR/config.d/mesh2tak.yaml"; then
     cp "$TMP/mesh2tak.yaml" "$MESHTASTICD_DIR/config.d/mesh2tak.yaml"; CAMBIO_MESHTASTICD=1
@@ -710,7 +710,7 @@ else
   chown -R meshtasticd:meshtasticd "$MESHTASTICD_DIR/config.d" 2>/dev/null || true
   mkdir -p "$SOLO_LOCALE_DIR"
   printf '%s\n' "# Aggiunto da installa-ponte-meshtastic.sh: meshtasticd risponde solo ai programmi del Raspberry." \
-    "# Dalla rete pagina (9443) e app (4403) passano dal ponte, che si mette in pausa." \
+    "# Dalla rete pagina (9443) e app (4403) passano dal gateway, che si mette in pausa." \
     "[Service]" "IPAddressAllow=localhost" "IPAddressDeny=any" > "$TMP/solo-locale.conf"
   if ! cmp -s "$TMP/solo-locale.conf" "$SOLO_LOCALE"; then
     cp "$TMP/solo-locale.conf" "$SOLO_LOCALE"; systemctl daemon-reload >/dev/null 2>&1 || true; CAMBIO_MESHTASTICD=1
@@ -721,7 +721,7 @@ else
       '    <type>_meshtastic._tcp</type>' '    <port>4403</port>' "    <txt-record>shortname=$NOME_BREVE</txt-record>" \
       '  </service>' '</service-group>' > "$AVAHI_APP"
   fi
-  ok "configurazione: $FILE_SCHEDA; gestione del nodo attraverso il ponte (pagina 9443, app via Wi-Fi 4403)"
+  ok "configurazione: $FILE_SCHEDA; gestione del nodo attraverso il gateway (pagina 9443, app via Wi-Fi 4403)"
   if [ "$SCHEDA" = waveshare ]; then
     info "Nota: Meshtastic sconsiglia questa scheda per i messaggi lunghi. Per le posizioni va bene:"
     info "il nodo resta in ascolto e non ripete i messaggi degli altri (ruolo CLIENT_MUTE)."
@@ -845,16 +845,16 @@ else
     IP_RETE=$(hostname -I 2>/dev/null | awk '{print $1}')
     if [ -n "$IP_RETE" ] && timeout 3 bash -c "exec 3<>/dev/tcp/$IP_RETE/4404" 2>/dev/null; then
       avviso "meshtasticd risponde anche dalla rete (filtro di systemd non attivo): pagina e app passano"
-      info "comunque dal ponte, ma chi conosce le porte interne 9444 e 4404 lo scavalca."
+      info "comunque dal gateway, ma chi conosce le porte interne 9444 e 4404 lo scavalca."
     else
-      ok "meshtasticd risponde solo al Raspberry: pagina e app passano dal ponte"
+      ok "meshtasticd risponde solo al Raspberry: pagina e app passano dal gateway"
     fi
   fi
 fi
 ok "collegamento: $COLLEGAMENTO"
 
-# ---------------------------------------------------------------- 6. programmi del ponte
-passo "6/9  Programmi del ponte"
+# ---------------------------------------------------------------- 6. programmi del gateway
+passo "6/9  Programmi del gateway"
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
   || fallisci "Serve Python 3.9 o piu' recente: aggiorna Raspberry Pi OS."
 [ "$SERIALE" = 1 ] && usermod -a -G dialout "$UTENTE"
@@ -940,7 +940,7 @@ mkdir -p "$STATO_AGGIORNA"; chmod 755 "$STATO_AGGIORNA"
 } > "$TIMER_AGGIORNA.nuovo"
 {
   # dalla 1.13.0: quando la pagina della rete manda un comando (riavvio, registro, impostazioni...) il server lo dice
-  # al ponte dal tunnel e il ponte tocca questo file: il Raspberry guarda subito, non dopo 2 minuti
+  # al gateway dal tunnel e il gateway tocca questo file: il Raspberry guarda subito, non dopo 2 minuti
   echo "[Unit]"
   echo "Description=Ponte Meshtastic: comandi della pagina della rete appena arrivano"
   echo
@@ -1002,8 +1002,8 @@ echo; cat $FILE_LINK
 EOF
 chmod 700 /usr/local/bin/mesh2tak-canale
 
-# ---------------------------------------------------------------- 8. ponte
-passo "8/9  Ponte con il TAK Server"
+# ---------------------------------------------------------------- 8. gateway
+passo "8/9  Gateway con il TAK Server"
 vecchio() {  # valore gia' impostato in una configurazione precedente
   if [ -f "$CONF" ]; then
     sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\([^#;]*\).*/\1/p" "$CONF" | head -n1 | sed 's/[[:space:]]*$//' || true
@@ -1023,7 +1023,7 @@ else ICONA_PONTE="6d781afb-89a6-4c07-b2b9-a89748b6a38f/Landmarks/tower.png"; fi
 GESTIONE=no; PORTA_PAGINA=0; PORTA_APP=4403; NODO_PAGINA=https://127.0.0.1:9444
 if [ "$SCHEDA" = usb ]; then
   PORTA_APP=0; NODO_PAGINA=""
-  # con la radio USB la pagina del ponte da' solo lo stato, per la pagina della rete
+  # con la radio USB la pagina del gateway da' solo lo stato, per la pagina della rete
   [ -n "$ACCESSO_NOME" ] && { GESTIONE=si; PORTA_PAGINA=9443; }
 else
   GESTIONE=si; PORTA_PAGINA=9443
@@ -1042,19 +1042,19 @@ if [ "$PORTA_PAGINA" != 0 ] && { [ ! -s "$CONF_DIR/pagina.pem" ] || [ ! -s "$CON
 fi
 ACCESSO_SEZIONE=""
 if [ -n "$ACCESSO_NOME" ]; then
-  # chiave SSH del ponte per il tunnel verso il server della rete: resta sul Raspberry, solo l'utente del ponte la legge
+  # chiave SSH del gateway per il tunnel verso il server della rete: resta sul Raspberry, solo l'utente del gateway la legge
   command -v ssh-keygen >/dev/null && command -v ssh >/dev/null || installa_pacchetti openssh-client
   mkdir -p "$ACCESSO_DIR"
   if [ ! -s "$ACCESSO_DIR/chiave" ] || [ ! -s "$ACCESSO_DIR/chiave.pub" ]; then
     rm -f "$ACCESSO_DIR/chiave" "$ACCESSO_DIR/chiave.pub"
     ssh-keygen -q -t ed25519 -N "" -C "mesh2tak-$ACCESSO_NOME@$(hostname 2>/dev/null || echo raspberry)" \
-      -f "$ACCESSO_DIR/chiave" >>"$LOG" 2>&1 || fallisci_log "Non riesco a creare la chiave SSH del ponte."
-    ok "chiave SSH del ponte creata (resta sul Raspberry)"
+      -f "$ACCESSO_DIR/chiave" >>"$LOG" 2>&1 || fallisci_log "Non riesco a creare la chiave SSH del gateway."
+    ok "chiave SSH del gateway creata (resta sul Raspberry)"
   fi
   chown -R "$UTENTE:$UTENTE" "$ACCESSO_DIR"; chmod 700 "$ACCESSO_DIR"
   chmod 600 "$ACCESSO_DIR/chiave"; chmod 644 "$ACCESSO_DIR/chiave.pub"
   if [ "$PORTA_PAGINA" = 0 ]; then
-    avviso "accesso da internet spento: serve la pagina del ponte (certificato non creato)"
+    avviso "accesso da internet spento: serve la pagina del gateway (certificato non creato)"
   else
     ACCESSO_SEZIONE="si"
   fi
@@ -1063,7 +1063,7 @@ else
 fi
 [ -f "$CONF" ] && cp "$CONF" "$CONF.prima-di-$(date +%Y%m%d-%H%M%S)"
 cat > "$CONF" <<EOF
-# Ponte Meshtastic <-> TAK Server. Dopo una modifica:  sudo systemctl restart mesh2tak
+# Gateway Meshtastic <-> TAK Server. Dopo una modifica:  sudo systemctl restart mesh2tak
 [tak]
 host = $HOST
 porta = $PORTA
@@ -1079,7 +1079,7 @@ canali = $CANALI
 [mappa]
 # minuti in cui una radio resta sulla mappa dopo l'ultimo segnale ricevuto
 validita_min = $VALIDITA
-# ogni quanti minuti il ponte ripete al TAK Server le posizioni ancora valide, per chi apre l'app
+# ogni quanti minuti il gateway ripete al TAK Server le posizioni ancora valide, per chi apre l'app
 # dopo. Non usa la radio: ogni posizione nuova passa subito; quanto spesso le radio mandano la
 # posizione si imposta sulle radio.
 aggiornamento_min = $AGGIORNAMENTO
@@ -1098,19 +1098,19 @@ icona_ponte = $ICONA_PONTE
 # manda alle radio in campo chat, segnaposti, forme, percorsi, MEDEVAC e allarmi che arrivano dal
 # TAK Server (si/no). Serve un certificato con lettura e scrittura (BOTH) sul canale della squadra.
 invio = $INVIO_RADIO
-# tempo di trasmissione massimo che il ponte usa per questi invii, in percento (la legge ne permette 10;
+# tempo di trasmissione massimo che il gateway usa per questi invii, in percento (la legge ne permette 10;
 # il resto serve alle radio della squadra). Gli allarmi passano anche oltre.
 tempo_radio_percento = $TEMPO_RADIO
 
 [gestione]
 # gestione del nodo (solo con la scheda sui pin): pagina nel browser https://<raspberry>.local:9443 e
-# app Meshtastic via Wi-Fi sulla porta 4403. Mentre si usano il ponte va in pausa da solo e riprende
+# app Meshtastic via Wi-Fi sulla porta 4403. Mentre si usano il gateway va in pausa da solo e riprende
 # 2 minuti dopo la chiusura, al massimo dopo pausa_massima_min minuti (poi: ricaricare la pagina,
 # oppure chiudere l'app e riaprirla dopo 6 minuti). 0 = porta spenta.
 attiva = $GESTIONE
 porta_pagina = $PORTA_PAGINA
 porta_app = $PORTA_APP
-# vuoto con la radio USB: la pagina da' solo lo stato del ponte (per la pagina della rete)
+# vuoto con la radio USB: la pagina da' solo lo stato del gateway (per la pagina della rete)
 nodo_pagina = $NODO_PAGINA
 certificato = $CONF_DIR/pagina.pem
 chiave = $CONF_DIR/pagina.key
@@ -1120,9 +1120,9 @@ if [ -n "$ACCESSO_SEZIONE" ]; then
   cat >> "$CONF" <<EOF
 
 [accesso_esterno]
-# Gestione del nodo e stato del ponte anche da internet, dalla pagina della rete Meshtastic sul server
+# Gestione del nodo e stato del gateway anche da internet, dalla pagina della rete Meshtastic sul server
 # (dietro Authentik, solo amministratori). Il Raspberry apre un tunnel SSH verso il server: a casa non
-# si apre nessuna porta. Codice di controllo, stato e chiave del ponte:  sudo mesh2tak-accesso
+# si apre nessuna porta. Codice di controllo, stato e chiave del gateway:  sudo mesh2tak-accesso
 attivo = si
 nome = $ACCESSO_NOME
 rete = $ACCESSO_RETE
@@ -1165,18 +1165,18 @@ if [ -n "$ACCESSO_SEZIONE" ]; then
   CODICE=$("$VENV/bin/python" "$DIR/mesh2tak.py" --codice-controllo "$ACCESSO_DIR/chiave.pub" 2>>"$LOG" || true)
   {
     echo "#!/bin/sh"
-    echo "# Accesso da internet del ponte (mesh2tak): codice di controllo, stato e chiave del ponte"
+    echo "# Accesso da internet del gateway (mesh2tak): codice di controllo, stato e chiave del gateway"
     echo "NOME='$ACCESSO_NOME'"
     echo "RETE='$ACCESSO_RETE'"
     echo "CODICE='$CODICE'"
     echo "CHIAVE_PUB='$ACCESSO_DIR/chiave.pub'"
     echo "PORTA='$PORTA_PAGINA'"
     cat <<'EOF'
-echo "Ponte '$NOME' nella rete Meshtastic $RETE"
+echo "Gateway '$NOME' nella rete Meshtastic $RETE"
 echo "Codice di controllo di questo Raspberry:  $CODICE"
 echo
 echo "Stato:"
-python3 - "$PORTA" <<'FINE_PY' 2>/dev/null || echo "  il ponte non risponde: guarda  sudo mesh2tak-stato"
+python3 - "$PORTA" <<'FINE_PY' 2>/dev/null || echo "  il gateway non risponde: guarda  sudo mesh2tak-stato"
 import json, ssl, sys, urllib.request
 c = ssl.create_default_context()
 c.check_hostname = False
@@ -1200,7 +1200,7 @@ EOF
 fi
 cat > /usr/local/bin/mesh2tak-stato <<'EOF'
 #!/bin/sh
-# Stato del ponte Meshtastic -> TAK e ultime righe del suo registro
+# Stato del gateway Meshtastic -> TAK e ultime righe del suo registro
 systemctl --no-pager status mesh2tak 2>/dev/null | sed -n '1,3p'
 echo
 journalctl -u mesh2tak -n "${1:-40}" --no-pager -o short-iso 2>/dev/null
@@ -1210,21 +1210,21 @@ systemctl daemon-reload
 systemctl enable mesh2tak >/dev/null 2>&1
 systemctl restart mesh2tak
 sleep 8
-if systemctl is-active --quiet mesh2tak; then ok "ponte attivo, riparte da solo a ogni accensione"; else
+if systemctl is-active --quiet mesh2tak; then ok "gateway attivo, riparte da solo a ogni accensione"; else
   avviso "il servizio non risulta attivo: guarda il registro con  sudo mesh2tak-stato"; fi
 if [ "$GESTIONE" = si ]; then
   for P in $PORTA_PAGINA $PORTA_APP; do
     [ "$P" = 0 ] && continue
     if python3 -c "import socket,sys; socket.create_connection(('127.0.0.1', int(sys.argv[1])), 3).close()" "$P" 2>/dev/null; then
-      if [ -n "$NODO_PAGINA" ]; then ok "gestione del nodo pronta sulla porta $P: mentre la usi il ponte va in pausa da solo"
-      else ok "stato del ponte pronto sulla porta $P (per la pagina della rete)"; fi
+      if [ -n "$NODO_PAGINA" ]; then ok "gestione del nodo pronta sulla porta $P: mentre la usi il gateway va in pausa da solo"
+      else ok "stato del gateway pronto sulla porta $P (per la pagina della rete)"; fi
     else
       avviso "la gestione del nodo non risponde sulla porta $P: guarda  sudo mesh2tak-stato"
     fi
   done
 fi
 
-# cosa dice il ponte della sua richiesta alla pagina della rete:  esito|collegato|messaggio
+# cosa dice il gateway della sua richiesta alla pagina della rete:  esito|collegato|messaggio
 leggi_accesso() {
   python3 - "$PORTA_PAGINA" <<'FINE_PY' 2>/dev/null || true
 import json, ssl, sys, urllib.request
@@ -1331,11 +1331,11 @@ fi
 togli_ripresa    # dopo la copia: dopo il riavvio "questo installatore" e' proprio la copia della ripresa
 segna_esito "ok $VERSIONE"
 printf '\n%sFatto.%s\n' "$B" "$N"
-[ "$ESITO_TAK" = ok ] || avviso "Il TAK Server non ha accettato il collegamento: il ponte riprova da solo, ma leggi il messaggio al passo 8."
-[ "$ESITO_NODO" = ok ] || avviso "Il nodo Meshtastic non ha risposto alla prova: il ponte riprova da solo, ma leggi il messaggio al passo 8."
+[ "$ESITO_TAK" = ok ] || avviso "Il TAK Server non ha accettato il collegamento: il gateway riprova da solo, ma leggi il messaggio al passo 8."
+[ "$ESITO_NODO" = ok ] || avviso "Il nodo Meshtastic non ha risposto alla prova: il gateway riprova da solo, ma leggi il messaggio al passo 8."
 [ "$ESITO_LIB" = ok ] || avviso "La libreria TAK non ha superato la prova: passano solo le posizioni. Leggi il messaggio al passo 8."
 echo
-info "Dalla sala operativa alle radio (chat, aree, segnaposti): il certificato del ponte deve avere"
+info "Dalla sala operativa alle radio (chat, aree, segnaposti): il certificato del gateway deve avere"
 info "lettura e scrittura (BOTH) sul canale della squadra. Con la sola scrittura passa tutto dalla radio"
 info "al server, ma niente dal server alla radio."
 if [ -s "$FILE_LINK" ]; then
@@ -1352,7 +1352,7 @@ if [ "$GESTIONE" = si ]; then
   [ -n "$IP_RETE" ] || IP_RETE="l'indirizzo del Raspberry"
   if [ "$PORTA_APP" != 0 ]; then
     info "Dall'app Meshtastic via Wi-Fi: Rete, $NOME_HOST (o $IP_RETE), porta 4403"
-    info "  (mentre li usi il ponte va in pausa; riprende da solo 2 minuti dopo che chiudi pagina o app)"
+    info "  (mentre li usi il gateway va in pausa; riprende da solo 2 minuti dopo che chiudi pagina o app)"
   fi
 fi
 if [ -n "$ACCESSO_SEZIONE" ]; then
@@ -1370,20 +1370,20 @@ if [ -n "$ACCESSO_SEZIONE" ]; then
     printf '%sAccesso da internet: ultimo passo, sulla pagina della rete%s\n' "$B" "$N"
     info "Codice di controllo di questo Raspberry:   ${B}${CODICE:-?}${N}"
     if [ "$ESITO_A" = server_da_preparare ]; then
-      avviso "il server non riceve ancora le richieste dei ponti. Prima, sul server, una volta sola (vedi la guida):"
+      avviso "il server non riceve ancora le richieste dei gateway. Prima, sul server, una volta sola (vedi la guida):"
       info "    sudo bash rete-meshtastic.sh installa"
     fi
     info "1. Apri $ACCESSO_RETE (accedi con Authentik, da amministratore)."
-    info "2. In cima trovi \"Un ponte chiede di entrare\": se il codice e' ${CODICE:-quello qui sopra}, premi Approva."
-    info "   Se dice che c'e' gia' un ponte '$ACCESSO_NOME': Sostituisci solo se e' questo Raspberry reinstallato;"
-    info "   se e' un altro ponte, qui rilancia con un altro nome:  --accesso-esterno=altronome"
-    info "Poi entro qualche minuto il ponte compare sulla pagina, con la gestione del suo nodo."
-    info "Adesso il ponte dice: $MESSAGGIO_A"
+    info "2. In cima trovi \"Un gateway chiede di entrare\": se il codice e' ${CODICE:-quello qui sopra}, premi Approva."
+    info "   Se dice che c'e' gia' un gateway '$ACCESSO_NOME': Sostituisci solo se e' questo Raspberry reinstallato;"
+    info "   se e' un altro gateway, qui rilancia con un altro nome:  --accesso-esterno=altronome"
+    info "Poi entro qualche minuto il gateway compare sulla pagina, con la gestione del suo nodo."
+    info "Adesso il gateway dice: $MESSAGGIO_A"
   fi
-  info "Codice, stato e chiave del ponte in seguito:   sudo mesh2tak-accesso"
+  info "Codice, stato e chiave del gateway in seguito:   sudo mesh2tak-accesso"
 fi
 info "MicroSD di scorta (lettore USB): sudo mesh2tak-scorta"
-[ -n "$ACCESSO_SEZIONE" ] && info "Aggiornamenti:                  dalla pagina della rete, \"Aggiorna i ponti\""
-info "Stato e registro del ponte:     sudo mesh2tak-stato"
-info "Configurazione del ponte:       $CONF"
+[ -n "$ACCESSO_SEZIONE" ] && info "Aggiornamenti:                  dalla pagina della rete, \"Aggiorna i gateway\""
+info "Stato e registro del gateway:     sudo mesh2tak-stato"
+info "Configurazione del gateway:       $CONF"
 info "Registro dell'installazione:    $LOG"

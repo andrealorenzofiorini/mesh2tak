@@ -363,4 +363,4 @@ def test_ponte_che_non_c_e(srv):
     lavoro = lavoro_in_coda(srv, azione="aggiorna-ponti", nome="casa", versione=NUOVA)
     assert srv.esegui("lavora")[0] == 0
     e = esito_di(srv, lavoro)
-    assert e["esito"] == "errore" and "ponte non trovato" in e["messaggio"]
+    assert e["esito"] == "errore" and "gateway non trovato" in e["messaggio"]

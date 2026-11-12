@@ -204,12 +204,12 @@ def assicura_chiave() -> str:
         r = esegui(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", f"mesh2tak-accesso@{socket.gethostname()}",
                     "-f", privata])
         if r.returncode != 0:
-            raise Errore(f"non riesco a creare la chiave del ponte: {(r.stderr or r.stdout).strip()[:200]}")
+            raise Errore(f"non riesco a creare la chiave del gateway: {(r.stderr or r.stdout).strip()[:200]}")
         os.chmod(privata, 0o600)
-        registra("creata la chiave di questo ponte")
+        registra("creata la chiave di questo gateway")
     riga = (leggi(pubblica, 2000) or "").strip()
     if len(riga.split()) < 2:
-        raise Errore("chiave del ponte non leggibile")
+        raise Errore("chiave del gateway non leggibile")
     return riga
 
 
@@ -318,7 +318,7 @@ def scarica_configurazione(reg: dict) -> dict:
     except subprocess.TimeoutExpired:
         raise Errore("il server della rete non risponde (SSH)")
     if r.returncode == 3:
-        raise Errore("sul server non c'e' una configurazione per questo ponte: sulla pagina della rete usa "
+        raise Errore("sul server non c'e' una configurazione per questo gateway: sulla pagina della rete usa "
                      "'Riprova l'installazione'")
     if r.returncode != 0:
         raise Errore(f"il server della rete ha rifiutato la richiesta della configurazione "
@@ -460,7 +460,7 @@ def passo_dallo_schermo() -> str:
 
 def finisci(st: dict, reg: Optional[dict], versione: str) -> None:
     for i in range(3):
-        if riferisci(reg, "fatto", f"installato: mesh2tak {versione}. Il ponte si collega da solo") or not reg:
+        if riferisci(reg, "fatto", f"installato: mesh2tak {versione}. Il gateway si collega da solo") or not reg:
             break
         time.sleep(0 if RADICE else 15)   # (il server, saputolo, cancella certificato e canale di questo ponte)
     for f in glob.glob(P(STATO_DIR) + "/*"):
@@ -578,7 +578,7 @@ def giro(st: dict) -> Optional[float]:
         if not st.get("avvisato_configurazione"):
             st["avvisato_configurazione"] = True
             salva_stato(st)
-            riferisci(reg, "attesa", "il ponte e' registrato ma non c'e' una configurazione da installare: sulla "
+            riferisci(reg, "attesa", "il gateway e' registrato ma non c'e' una configurazione da installare: sulla "
                                      "pagina della rete usa 'Riprova l'installazione'")
         return 120
     gia_fatto = int(st.get("tentativo") or 0)
@@ -635,7 +635,7 @@ def main() -> int:
     st = carica_stato()
     if st.get("fase") == "fatto":
         return 0
-    registra(f"primo avvio del ponte nuovo (mesh2tak {VERSIONE}) su {socket.gethostname()}")
+    registra(f"primo avvio del gateway nuovo (mesh2tak {VERSIONE}) su {socket.gethostname()}")
     if not st.get("chiesto"):
         aspetta_avvio()         # (dopo il riavvio a meta' installazione no: c'e' da riferire a che punto e')
     una_volta = os.environ.get("MESH2TAK_PROVA_UN_GIRO") == "1"

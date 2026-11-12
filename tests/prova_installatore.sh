@@ -217,7 +217,7 @@ controlla "meshtasticd su porte interne: pagina 9444, API 4404" 'grep -qx "  Por
 controlla "l'app Meshtastic trova il Raspberry da sola (mDNS)" 'grep -q "<type>_meshtastic._tcp</type>" /etc/avahi/services/mesh2tak-meshtastic.service && grep -q "<port>4403</port>" /etc/avahi/services/mesh2tak-meshtastic.service && grep -q "shortname=GTSA" /etc/avahi/services/mesh2tak-meshtastic.service'
 controlla "meshtasticd risponde solo al Raspberry" 'grep -qx "IPAddressAllow=localhost" /etc/systemd/system/meshtasticd.service.d/mesh2tak-solo-locale.conf && grep -qx "IPAddressDeny=any" /etc/systemd/system/meshtasticd.service.d/mesh2tak-solo-locale.conf'
 controlla "riavvio chiesto" 'grep -q RIAVVIO "$STUB/chiamate.log"'
-controlla "esito per il primo avvio dei ponti nuovi: riavvio" 'grep -qx riavvio /etc/mesh2tak/esito-installazione'
+controlla "esito per il primo avvio dei gateway nuovi: riavvio" 'grep -qx riavvio /etc/mesh2tak/esito-installazione'
 controlla "si ferma prima della configurazione del nodo" '! grep -q "5/9" /tmp/pi-run1.log'
 controlla "certificato gia' installato" '[ -s /etc/mesh2tak/client.key ] && grep -q "CERTIFICATO_OK=1" /etc/mesh2tak/installazione.conf'
 controlla "posizione ricordata" '[ "$(. /etc/mesh2tak/installazione.conf; echo "$POSIZIONE")" = "45.8205,8.8257,400" ]'
@@ -233,7 +233,7 @@ controlla "uscita 0" '[ $U2 = 0 ]'
 controlla "ripresa da sola, una volta sola" 'grep -q "dopo il riavvio l.installazione riprende da sola" /tmp/pi-run2.log && grep -q "systemctl disable mesh2tak-installazione.service" "$STUB/chiamate.log"'
 controlla "esito: ok con la versione" 'grep -qE "^ok [0-9]+\.[0-9]+\.[0-9]+$" /etc/mesh2tak/esito-installazione'
 controlla "alla fine niente ripresa rimasta in giro" '[ ! -e /etc/systemd/system/mesh2tak-installazione.service ] && [ ! -e /etc/mesh2tak/installatore-in-corso.sh ] && [ ! -e /etc/mesh2tak/.in-corso ]'
-controlla "ponte nuovo: nome del nodo ricordato per i rilanci" 'grep -q "^NOME_NODO_AUTOMATICO=1" /etc/mesh2tak/installazione.conf'
+controlla "gateway nuovo: nome del nodo ricordato per i rilanci" 'grep -q "^NOME_NODO_AUTOMATICO=1" /etc/mesh2tak/installazione.conf'
 controlla "nessun nuovo riavvio" '! grep -q RIAVVIO "$STUB/chiamate.log"'
 controlla "nessuna domanda: certificato e risposte gia' dati prima del riavvio" '! grep -q -e "1/9" -e "Password del certificato" -e "Coordinate (Invio" /tmp/pi-run2.log && grep -q "2/9" /tmp/pi-run2.log'
 controlla "radio vista nel registro" 'grep -q "la scheda risponde: sx1262 init success" /tmp/pi-run2.log'
@@ -248,7 +248,7 @@ controlla "posizione fissa del Raspberry" '[ "$(nodo "(d[\"posizione_fissa\"], d
 controlla "link del canale salvato, solo root" '[ "$(stat -c %a /root/canale-meshtastic.txt)" = 600 ] && grep -q "^https://meshtastic.org/e/#" /root/canale-meshtastic.txt'
 controlla "QR mostrato" 'grep -q "\[QR di" /tmp/pi-run2.log'
 controlla "comando mesh2tak-canale" '[ -x /usr/local/bin/mesh2tak-canale ]'
-controlla "prova del ponte: nodo e TAK ok" 'grep -q "collegamento riuscito" /tmp/pi-run2.log && grep -q "canale 0 .CNSAS.: privato -> inoltrato" /tmp/pi-run2.log'
+controlla "prova del gateway: nodo e TAK ok" 'grep -q "collegamento riuscito" /tmp/pi-run2.log && grep -q "canale 0 .CNSAS.: privato -> inoltrato" /tmp/pi-run2.log'
 controlla "servizio avviato" '[ -f "$STUB/mesh2tak.pid" ] && grep -q "Collegato al nodo Meshtastic" "$STUB/servizio.log"'
 controlla "il Raspberry compare sul TAK Server" 'grep -q "\"callsign\": \"Gateway CNSAS Varese\"" /tmp/pi-eventi.jsonl'
 controlla "con l'icona del traliccio" 'grep -qx "icona_ponte = 6d781afb-89a6-4c07-b2b9-a89748b6a38f/Landmarks/tower.png" /etc/mesh2tak/mesh2tak.conf && grep -q "Landmarks/tower.png" /tmp/pi-eventi.jsonl'
@@ -258,12 +258,12 @@ controlla "sezione [radio] nella configurazione" 'grep -qx "invio = si" /etc/mes
 controlla "ricorda il certificato con lettura e scrittura" 'grep -q "lettura e scrittura (BOTH)" /tmp/pi-run2.log'
 controlla "posizioni ripetute ogni 2 minuti" 'grep -qx "aggiornamento_min = 2" /etc/mesh2tak/mesh2tak.conf && grep -q "ripetute al TAK Server ogni 2 minuti" "$STUB/servizio.log"'
 controlla "il servizio legge la libreria TAK" 'grep -q "Libreria TAK meshtastic-tak 0.10.0" "$STUB/servizio.log"'
-controlla "certificato della pagina, chiave leggibile solo dal ponte" '[ -s /etc/mesh2tak/pagina.pem ] && [ "$(stat -c %a:%G /etc/mesh2tak/pagina.key)" = 640:mesh2tak ]'
-controlla "sezione [gestione] e ponte sulla porta interna 4404" 'grep -qx "attiva = si" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_pagina = 9443" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_app = 4403" /etc/mesh2tak/mesh2tak.conf && grep -qx "nodo_pagina = https://127.0.0.1:9444" /etc/mesh2tak/mesh2tak.conf && grep -qx "pausa_massima_min = 30" /etc/mesh2tak/mesh2tak.conf && grep -qx "collegamento = tcp:127.0.0.1:4404" /etc/mesh2tak/mesh2tak.conf'
+controlla "certificato della pagina, chiave leggibile solo dal gateway" '[ -s /etc/mesh2tak/pagina.pem ] && [ "$(stat -c %a:%G /etc/mesh2tak/pagina.key)" = 640:mesh2tak ]'
+controlla "sezione [gestione] e gateway sulla porta interna 4404" 'grep -qx "attiva = si" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_pagina = 9443" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_app = 4403" /etc/mesh2tak/mesh2tak.conf && grep -qx "nodo_pagina = https://127.0.0.1:9444" /etc/mesh2tak/mesh2tak.conf && grep -qx "pausa_massima_min = 30" /etc/mesh2tak/mesh2tak.conf && grep -qx "collegamento = tcp:127.0.0.1:4404" /etc/mesh2tak/mesh2tak.conf'
 controlla "gestione pronta: pagina 9443 e app 4403" 'grep -q "gestione del nodo pronta sulla porta 9443" /tmp/pi-run2.log && grep -q "gestione del nodo pronta sulla porta 4403" /tmp/pi-run2.log && grep -q "Gestione del nodo: pagina nel browser sulla porta 9443, app Meshtastic via Wi-Fi sulla porta 4403" "$STUB/servizio.log"'
 controlla "istruzioni per l'app via Wi-Fi" "grep -q \"Dall'app Meshtastic via Wi-Fi: Rete\" /tmp/pi-run2.log"
 controlla "la pagina risponde in HTTPS" 'python3 -c "import ssl,socket; ssl._create_unverified_context().wrap_socket(socket.create_connection((\"127.0.0.1\", 9443), 3)).close()"'
-controlla "istruzioni finali sulla pausa" 'grep -q "mentre la usi il ponte va in pausa" /tmp/pi-run2.log'
+controlla "istruzioni finali sulla pausa" 'grep -q "mentre la usi il gateway va in pausa" /tmp/pi-run2.log'
 controlla "nessun errore o traceback" '! grep -q -e "✘" -e Traceback /tmp/pi-run1.log /tmp/pi-run2.log'
 controlla "passo 9: protezioni del Raspberry" 'grep -q "9/9  Protezioni del Raspberry" /tmp/pi-run2.log && ! grep -q "/8  " /tmp/pi-run2.log'
 controlla "riavvio automatico: watchdog di 14 secondi" 'grep -qx "RuntimeWatchdogSec=14s" "$FINTO/systemd/system.conf.d/mesh2tak-watchdog.conf" && grep -q "systemctl daemon-reexec" "$STUB/chiamate.log" && grep -q "riavvio automatico se il Raspberry si blocca (watchdog di 14 secondi)" /tmp/pi-run2.log'
@@ -352,14 +352,14 @@ esegui boot2 /tmp/pi-run3p.log --canale-pubblico=Public; U3P=$?
 controlla "aggiornamento: LongFast lasciato acceso, --canale-pubblico ignorato" '[ $U3P = 0 ] && longfast_acceso && grep -q "canale-pubblico ignorato" /tmp/pi-run3p.log && grep -q "impostazioni della radio lasciate come sono" /tmp/pi-run3p.log && grep -q "canali secondari: LongFast" /tmp/pi-run3p.log && ! grep -q "spento" /tmp/pi-run3p.log'
 sed -i '/^RADIO_PREPARATA=/d; /^RADIO_DA_FARE=/d' /etc/mesh2tak/installazione.conf          # come la 1.12.0 e prima
 esegui boot2 /tmp/pi-run3s.log; U3S=$?
-controlla "ponte di prima della 1.13.0: i secondari si spengono una volta sola" '[ $U3S = 0 ] && canali_nodo && grep -q "7/9  Nodo Meshtastic: solo canali secondari spenti" /tmp/pi-run3s.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3s.log && grep -qx "RADIO_PREPARATA=1" /etc/mesh2tak/installazione.conf'
+controlla "gateway di prima della 1.13.0: i secondari si spengono una volta sola" '[ $U3S = 0 ] && canali_nodo && grep -q "7/9  Nodo Meshtastic: solo canali secondari spenti" /tmp/pi-run3s.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3s.log && grep -qx "RADIO_PREPARATA=1" /etc/mesh2tak/installazione.conf'
 controlla "QR del canale come prima (solo la squadra)" '[ "$(cat /root/canale-meshtastic.txt)" = "$LINK2" ]'
 accendi_longfast; esegui boot2 /tmp/pi-run3t.log; U3T=$?
 controlla "dopo: l'interfaccia vale di nuovo" '[ $U3T = 0 ] && longfast_acceso && grep -q "impostazioni della radio lasciate come sono" /tmp/pi-run3t.log'
 : > "$STUB/chiamate.log"
 esegui boot2 /tmp/pi-run3r.log --reimposta-radio; U3R=$?
-controlla "--reimposta-radio: solo la radio, come all'installazione" '[ $U3R = 0 ] && canali_nodo && grep -q "Radio del ponte come all.installazione" /tmp/pi-run3r.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3r.log && ! grep -q -e "1/9" -e "6/9" -e "8/9" /tmp/pi-run3r.log && ruolo_e_nome'
-controlla "--reimposta-radio: il ponte si ferma e riparte" 'grep -q "systemctl stop mesh2tak" "$STUB/chiamate.log" && grep -q "systemctl start mesh2tak" "$STUB/chiamate.log" && grep -qx "ok [0-9.]*" /etc/mesh2tak/esito-installazione'
+controlla "--reimposta-radio: solo la radio, come all'installazione" '[ $U3R = 0 ] && canali_nodo && grep -q "Radio del gateway come all.installazione" /tmp/pi-run3r.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3r.log && ! grep -q -e "1/9" -e "6/9" -e "8/9" /tmp/pi-run3r.log && ruolo_e_nome'
+controlla "--reimposta-radio: il gateway si ferma e riparte" 'grep -q "systemctl stop mesh2tak" "$STUB/chiamate.log" && grep -q "systemctl start mesh2tak" "$STUB/chiamate.log" && grep -qx "ok [0-9.]*" /etc/mesh2tak/esito-installazione'
 accendi_longfast
 (export MESH2TAK_REIMPOSTA_RADIO=1; esegui boot2 /tmp/pi-run3u.log); U3U=$?
 controlla "aggiornamento con MESH2TAK_REIMPOSTA_RADIO=1: radio come all'installazione" '[ $U3U = 0 ] && canali_nodo && grep -q "7/9  Nodo Meshtastic: regione EU 868, nome, ruolo CLIENT_MUTE, solo il canale privato" /tmp/pi-run3u.log && grep -q "canale secondario .LongFast. spento" /tmp/pi-run3u.log'
@@ -390,13 +390,13 @@ printf 'NOME_NODO=%q\nNOME_BREVE=PONT\n' "Ponte CNSAS Varese" >> /etc/mesh2tak/i
   MESH2TAK_CONFIG_TXT="$FINTO/config.txt" MESH2TAK_MESHTASTICD_DIR="$FINTO/meshtasticd" \
   MESH2TAK_ACCESSO_RETE=https://meshtastic.prova.lan:8443 SSL_CERT_FILE="$PKI/rete-ca.pem" \
   bash "$INST" --accesso-esterno=casa </dev/null > /tmp/pi-run3d.log 2>&1); U3D=$?
-controlla "ponte di casa (prima della 1.9.0): diventa Gateway CNSAS Varese, GTSA" '[ "$(nodo "d[\"nome\"], d[\"nome_breve\"]")" = "('"'"'Gateway CNSAS Varese'"'"', '"'"'GTSA'"'"')" ] && grep -q "^NOME_NODO_AUTOMATICO=0" /etc/mesh2tak/installazione.conf && grep -qx "NOME_BREVE=GTSA" /etc/mesh2tak/installazione.conf && grep -q "nome nuovo del nodo: .Gateway CNSAS Varese. (sigla GTSA)" /tmp/pi-run3d.log && ! grep -q "nome del nodo e del ponte sulla mappa" /tmp/pi-run3d.log'
+controlla "gateway di casa (prima della 1.9.0): diventa Gateway CNSAS Varese, GTSA" '[ "$(nodo "d[\"nome\"], d[\"nome_breve\"]")" = "('"'"'Gateway CNSAS Varese'"'"', '"'"'GTSA'"'"')" ] && grep -q "^NOME_NODO_AUTOMATICO=0" /etc/mesh2tak/installazione.conf && grep -qx "NOME_BREVE=GTSA" /etc/mesh2tak/installazione.conf && grep -q "nome nuovo del nodo: .Gateway CNSAS Varese. (sigla GTSA)" /tmp/pi-run3d.log && ! grep -q "nome del nodo e del gateway sulla mappa" /tmp/pi-run3d.log'
 CODICE_ATTESO=$(python3 "$QUI/../mesh2tak.py" --codice-controllo /etc/mesh2tak/accesso/chiave.pub 2>/dev/null)
 controlla "uscita 0" '[ $U3D = 0 ]'
-controlla "chiave SSH del ponte, leggibile solo dall'utente del ponte" '[ "$(stat -c %a:%U /etc/mesh2tak/accesso/chiave)" = 600:mesh2tak ] && [ "$(stat -c %a:%U /etc/mesh2tak/accesso)" = 700:mesh2tak ] && grep -q "^ssh-ed25519 .* mesh2tak-casa@" /etc/mesh2tak/accesso/chiave.pub'
+controlla "chiave SSH del gateway, leggibile solo dall'utente del gateway" '[ "$(stat -c %a:%U /etc/mesh2tak/accesso/chiave)" = 600:mesh2tak ] && [ "$(stat -c %a:%U /etc/mesh2tak/accesso)" = 700:mesh2tak ] && grep -q "^ssh-ed25519 .* mesh2tak-casa@" /etc/mesh2tak/accesso/chiave.pub'
 controlla "sezione [accesso_esterno]" 'grep -qx "\[accesso_esterno\]" /etc/mesh2tak/mesh2tak.conf && grep -qx "nome = casa" /etc/mesh2tak/mesh2tak.conf && grep -qx "rete = https://meshtastic.prova.lan:8443" /etc/mesh2tak/mesh2tak.conf && grep -qx "chiave = /etc/mesh2tak/accesso/chiave" /etc/mesh2tak/mesh2tak.conf'
 controlla "cartella di stato scrivibile dal servizio" 'grep -qx "StateDirectory=mesh2tak" /etc/systemd/system/mesh2tak.service'
-controlla "il ponte ha chiesto da solo di entrare, con nome e chiave pubblica" 'python3 -c "
+controlla "il gateway ha chiesto da solo di entrare, con nome e chiave pubblica" 'python3 -c "
 import json, sys
 righe = [json.loads(x) for x in open(\"/tmp/pi-hub.jsonl\")]
 post = [r for r in righe if r[\"metodo\"] == \"POST\"]
@@ -407,10 +407,10 @@ assert (c[\"formato\"], c[\"nome\"], c[\"chiave\"]) == (1, \"casa\", chiave), c
 assert set(c) == {\"formato\", \"nome\", \"chiave\", \"macchina\", \"versione\"}, c
 assert righe[0][\"metodo\"] == \"GET\" and righe[0][\"percorso\"].startswith(\"/accesso/\"), righe
 "'
-controlla "alla fine: codice di controllo e approvazione sulla pagina della rete" '[ -n "$CODICE_ATTESO" ] && grep -q "ultimo passo, sulla pagina della rete" /tmp/pi-run3d.log && grep -q "Codice di controllo di questo Raspberry: .*$CODICE_ATTESO" /tmp/pi-run3d.log && grep -q "1. Apri https://meshtastic.prova.lan:8443" /tmp/pi-run3d.log && grep -q "Adesso il ponte dice: in attesa di approvazione sulla pagina della rete" /tmp/pi-run3d.log && ! grep -q "rete-meshtastic.sh aggiungi" /tmp/pi-run3d.log'
+controlla "alla fine: codice di controllo e approvazione sulla pagina della rete" '[ -n "$CODICE_ATTESO" ] && grep -q "ultimo passo, sulla pagina della rete" /tmp/pi-run3d.log && grep -q "Codice di controllo di questo Raspberry: .*$CODICE_ATTESO" /tmp/pi-run3d.log && grep -q "1. Apri https://meshtastic.prova.lan:8443" /tmp/pi-run3d.log && grep -q "Adesso il gateway dice: in attesa di approvazione sulla pagina della rete" /tmp/pi-run3d.log && ! grep -q "rete-meshtastic.sh aggiungi" /tmp/pi-run3d.log'
 controlla "mesh2tak-accesso: codice, stato e chiave per aggiungerlo a mano" '/usr/local/bin/mesh2tak-accesso > /tmp/pi-accesso.txt 2>&1; grep -q "Codice di controllo di questo Raspberry:  $CODICE_ATTESO" /tmp/pi-accesso.txt && grep -q "in attesa di approvazione" /tmp/pi-accesso.txt && grep -qF "$(cat /etc/mesh2tak/accesso/chiave.pub)" /tmp/pi-accesso.txt'
-controlla "il ponte non cerca server SSH prima dell'approvazione" '! grep -q "Authenticated to\|tunnel verso" "$STUB/servizio.log"'
-controlla "alla fine dice come si aggiorna" 'grep -q "Aggiornamenti:.*dalla pagina della rete, .Aggiorna i ponti." /tmp/pi-run3d.log'
+controlla "il gateway non cerca server SSH prima dell'approvazione" '! grep -q "Authenticated to\|tunnel verso" "$STUB/servizio.log"'
+controlla "alla fine dice come si aggiorna" 'grep -q "Aggiornamenti:.*dalla pagina della rete, .Aggiorna i gateway." /tmp/pi-run3d.log'
 echo "== 3d2 le opzioni insieme, come nei comandi della guida (--accesso-esterno=casa --canale-pubblico, ignorata)"
 CHIAVE_PRIMA=$(cat /etc/mesh2tak/accesso/chiave.pub)
 esegui boot2 /tmp/pi-run3d2.log --accesso-esterno=casa --canale-pubblico; U3D2=$?
@@ -420,7 +420,7 @@ controlla "la stessa chiave a ogni rilancio" 'CHIAVE1=$(cat /etc/mesh2tak/access
 echo "== 3d3 aggiornamento chiesto dalla pagina della rete: installatore vero, scaricato da un GitHub finto"
 NUOVA=$(echo "$ORA" | awk -F. '{print $1"."$2+1".0"}'); ROTTA=$(echo "$ORA" | awk -F. '{print $1"."$2+2".0"}')
 GH=/tmp/pi-github
-rilascio() {  # $1 = versione, $2 = "rotta": il ponte parte ma la sua pagina non risponde piu'
+rilascio() {  # $1 = versione, $2 = "rotta": il gateway parte ma la sua pagina non risponde piu'
   local d="$GH/andrealorenzofiorini/mesh2tak/releases/download/v$1"; mkdir -p "$d"
   sed -e "s/^VERSIONE=\"$ORA\"\$/VERSIONE=\"$1\"/" -e "s/^VERSIONE = \"$ORA\"\$/VERSIONE = \"$1\"/" "$INST" \
     > "$d/installa-ponte-meshtastic.sh"
@@ -452,15 +452,15 @@ controlla "aggiornato alla versione chiesta dalla pagina" '[ $UA1 = 0 ] && [ "$(
 controlla "scaricato da GitHub (la pagina della rete chiede soltanto)" 'grep -q "GET /andrealorenzofiorini/mesh2tak/releases/download/v$NUOVA/SHA256SUMS" /tmp/pi-github.log && grep -q "GET /andrealorenzofiorini/mesh2tak/releases/download/v$NUOVA/installa-ponte-meshtastic.sh" /tmp/pi-github.log'
 controlla "installatore vero, senza domande: configurazione, certificato e accesso tenuti" 'grep -q "systemctl restart mesh2tak" "$STUB/chiamate.log" && grep -qx "nome = casa" /etc/mesh2tak/mesh2tak.conf && [ "$(cat /etc/mesh2tak/accesso/chiave.pub)" = "$CHIAVE1" ] && grep -q "gia. installato nella prima esecuzione" /var/log/mesh2tak-aggiornamento.log && grep -q "esito: fatto: aggiornato dalla $ORA alla $NUOVA" /var/log/mesh2tak-aggiornamento.log'
 controlla "installatore nuovo tenuto, quello di prima da parte" 'cmp -s /opt/mesh2tak/installatore.sh "$GH/andrealorenzofiorini/mesh2tak/releases/download/v$NUOVA/installa-ponte-meshtastic.sh" && cmp -s /var/lib/mesh2tak-aggiorna/installatore-precedente.sh "$INST" && [ ! -e "/var/lib/mesh2tak-aggiorna/installatore-$NUOVA.sh" ]'
-controlla "la pagina del ponte lo dice alla pagina della rete" '[ "$(pagina_del_ponte "d[\"versione\"], d[\"sistema\"][\"aggiornabile\"], d[\"sistema\"][\"aggiornamento\"][\"stato\"]")" = "('"'$NUOVA', True, 'fatto'"')" ]'
+controlla "la pagina del gateway lo dice alla pagina della rete" '[ "$(pagina_del_ponte "d[\"versione\"], d[\"sistema\"][\"aggiornabile\"], d[\"sistema\"][\"aggiornamento\"][\"stato\"]")" = "('"'$NUOVA', True, 'fatto'"')" ]'
 QUANDO=$(stato_aggiornamento 'd["quando"]'); aggiorna_dalla_pagina /tmp/pi-agg2.log; UA2=$?
 controlla "dopo: la stessa richiesta non rifa' niente" '[ $UA2 = 0 ] && [ "$(stato_aggiornamento "d[\"quando\"]")" = "$QUANDO" ]'
 chiedi_dalla_pagina "$ORA" 2000; aggiorna_dalla_pagina /tmp/pi-agg3.log; UA3=$?
 controlla "mai indietro, anche se la pagina lo chiede" '[ $UA3 = 0 ] && grep -q "^VERSIONE = \"$NUOVA\"" /opt/mesh2tak/mesh2tak.py && [ "$(stato_aggiornamento "d[\"quando\"]")" = "$QUANDO" ]'
 chiedi_dalla_pagina "$ROTTA" 3000
 aggiorna_dalla_pagina /tmp/pi-agg4.log; UA4=$?
-controlla "versione che non riparte: rimessa quella di prima, da sola" '[ $UA4 = 1 ] && [ "$(stato_aggiornamento "d[\"stato\"], d[\"messaggio\"]")" = "('"'ripristinato', 'con la $ROTTA il ponte non riparte; rimessa la $NUOVA'"')" ] && grep -q "^VERSIONE = \"$NUOVA\"" /opt/mesh2tak/mesh2tak.py'
-controlla "dopo il ritorno il ponte risponde di nuovo" '[ "$(pagina_del_ponte "d[\"versione\"], d[\"sistema\"][\"aggiornamento\"][\"stato\"]")" = "('"'$NUOVA', 'ripristinato'"')" ]'
+controlla "versione che non riparte: rimessa quella di prima, da sola" '[ $UA4 = 1 ] && [ "$(stato_aggiornamento "d[\"stato\"], d[\"messaggio\"]")" = "('"'ripristinato', 'con la $ROTTA il gateway non riparte; rimessa la $NUOVA'"')" ] && grep -q "^VERSIONE = \"$NUOVA\"" /opt/mesh2tak/mesh2tak.py'
+controlla "dopo il ritorno il gateway risponde di nuovo" '[ "$(pagina_del_ponte "d[\"versione\"], d[\"sistema\"][\"aggiornamento\"][\"stato\"]")" = "('"'$NUOVA', 'ripristinato'"')" ]'
 controlla "nessun errore o traceback nei controlli" '! grep -q -e Traceback /tmp/pi-agg0.log /tmp/pi-agg1.log /tmp/pi-agg2.log /tmp/pi-agg3.log /tmp/pi-agg4.log /var/log/mesh2tak-aggiornamento.log'
 
 echo "== 3d4 comandi dalla pagina della rete (Gestisci il Raspberry, 1.13.0): li fa mesh2tak-aggiorna, da root"
@@ -473,15 +473,15 @@ cat > /tmp/pi-registrazione.json <<FINE_REGISTRAZIONE
  {"id": "00000000000000a4", "azione": "riavvia-programma", "chiesto": $ADESSO},
  {"id": "00000000000000a5", "azione": "riavvia-programma", "chiesto": $((ADESSO - 7200))}]}
 FINE_REGISTRAZIONE
-accendi_longfast                     # dall'app; ferma anche il ponte, che i comandi rimettono in moto
+accendi_longfast                     # dall'app; ferma anche il gateway, che i comandi rimettono in moto
 : > "$STUB/chiamate.log"
 aggiorna_dalla_pagina /tmp/pi-agg5.log; UA5=$?
 esito_comando() { python3 -c "import json,sys; d={a['id']: a for a in json.load(open('/var/lib/mesh2tak-aggiorna/azioni.json'))['azioni']}; print(d[sys.argv[1]]['stato'])" "$1"; }
-controlla "impostazioni dalla pagina: salvate, commenti tenuti, ponte ripartito" '[ $UA5 = 0 ] && [ "$(esito_comando 00000000000000a1)" = fatto ] && grep -qx "squadra = Red" /etc/mesh2tak/mesh2tak.conf && grep -qx "validita_min = 120" /etc/mesh2tak/mesh2tak.conf && grep -qx "invio = no" /etc/mesh2tak/mesh2tak.conf && grep -q "^# colore squadra TAK" /etc/mesh2tak/mesh2tak.conf && [ -s /etc/mesh2tak/mesh2tak.conf.prima-della-pagina ]'
-controlla "registro per la pagina: lo leggono solo root e il ponte, senza la chiave del canale" '[ "$(esito_comando 00000000000000a2)" = fatto ] && [ "$(stat -c %a:%U:%G /var/lib/mesh2tak-aggiorna/registro.txt)" = 640:root:mesh2tak ] && grep -q "===== Programma del ponte (mesh2tak)" /var/lib/mesh2tak-aggiorna/registro.txt && grep -q "sx1262 init success" /var/lib/mesh2tak-aggiorna/registro.txt && ! grep -q "$CHIAVE_PROVA" /var/lib/mesh2tak-aggiorna/registro.txt'
+controlla "impostazioni dalla pagina: salvate, commenti tenuti, gateway ripartito" '[ $UA5 = 0 ] && [ "$(esito_comando 00000000000000a1)" = fatto ] && grep -qx "squadra = Red" /etc/mesh2tak/mesh2tak.conf && grep -qx "validita_min = 120" /etc/mesh2tak/mesh2tak.conf && grep -qx "invio = no" /etc/mesh2tak/mesh2tak.conf && grep -q "^# colore squadra TAK" /etc/mesh2tak/mesh2tak.conf && [ -s /etc/mesh2tak/mesh2tak.conf.prima-della-pagina ]'
+controlla "registro per la pagina: lo leggono solo root e il gateway, senza la chiave del canale" '[ "$(esito_comando 00000000000000a2)" = fatto ] && [ "$(stat -c %a:%U:%G /var/lib/mesh2tak-aggiorna/registro.txt)" = 640:root:mesh2tak ] && grep -q "===== Programma del gateway (mesh2tak)" /var/lib/mesh2tak-aggiorna/registro.txt && grep -q "sx1262 init success" /var/lib/mesh2tak-aggiorna/registro.txt && ! grep -q "$CHIAVE_PROVA" /var/lib/mesh2tak-aggiorna/registro.txt'
 controlla "radio reimpostata dalla pagina: LongFast spento" '[ "$(esito_comando 00000000000000a3)" = fatto ] && canali_nodo && grep -q "lancio /opt/mesh2tak/installatore.sh --reimposta-radio" /var/log/mesh2tak-aggiornamento.log'
 controlla "programma riavviato dalla pagina; il comando vecchio scade" '[ "$(esito_comando 00000000000000a4)" = fatto ] && [ "$(esito_comando 00000000000000a5)" = scaduto ]'
-controlla "la pagina del ponte mostra comandi, impostazioni e registro" '[ "$(pagina_del_ponte "d[\"sistema\"][\"comandi\"] and sorted(a[\"stato\"] for a in d[\"sistema\"][\"azioni\"]) == [\"fatto\"] * 4 + [\"scaduto\"] and d[\"impostazioni\"][\"squadra\"] == \"Red\" and d[\"impostazioni\"][\"invio\"] is False and d[\"sistema\"][\"registro\"][\"byte\"] > 0")" = True ]'
+controlla "la pagina del gateway mostra comandi, impostazioni e registro" '[ "$(pagina_del_ponte "d[\"sistema\"][\"comandi\"] and sorted(a[\"stato\"] for a in d[\"sistema\"][\"azioni\"]) == [\"fatto\"] * 4 + [\"scaduto\"] and d[\"impostazioni\"][\"squadra\"] == \"Red\" and d[\"impostazioni\"][\"invio\"] is False and d[\"sistema\"][\"registro\"][\"byte\"] > 0")" = True ]'
 controlla "dal tunnel: avviso dei comandi e registro solo per gli amministratori" 'python3 -c "
 import os, ssl, urllib.error, urllib.request
 c = ssl._create_unverified_context()
@@ -498,7 +498,7 @@ assert chiedi(\"/mesh2tak/controlla\", b\"{}\", **{\"X-Mesh2tak\": \"1\"})[0] ==
 assert os.path.exists(\"/var/lib/mesh2tak/controlla-adesso\")
 assert chiedi(\"/mesh2tak/registro\")[0] == 403
 s, t = chiedi(\"/mesh2tak/registro\", **{\"X-Authentik-Username\": \"andrea\"})
-assert s == 200 and b\"Registro del ponte\" in t
+assert s == 200 and b\"Registro del gateway\" in t
 "'
 controlla "mappa della copertura (1.14.0; formato 2 con i ripetitori dalla 1.15.0): solo dal tunnel, per gli amministratori" 'python3 -c "
 import json, ssl, urllib.error, urllib.request
@@ -549,7 +549,7 @@ echo "== rimozione"
 (cd /tmp && PATH="$STUB:$PATH" MESH2TAK_MESHTASTICD_DIR="$FINTO/meshtasticd" bash "$INST" --rimuovi </dev/null > /tmp/pi-rim.log 2>&1)
 controlla "protezioni tolte, meshtasticd sbloccato, mesh2tak-scorta tolto" '[ ! -e "$FINTO/systemd/system.conf.d/mesh2tak-watchdog.conf" ] && [ ! -e "$FINTO/systemd/journald.conf.d/mesh2tak.conf" ] && [ ! -e "$FINTO/apt.conf.d/52mesh2tak-aggiornamenti" ] && [ -e "$FINTO/apt.conf.d/50unattended-upgrades" ] && grep -q "apt-mark unhold meshtasticd" "$STUB/chiamate.log" && grep -q "systemctl daemon-reexec" "$STUB/chiamate.log" && [ ! -e /usr/local/bin/mesh2tak-scorta ] && grep -q "tolte anche le protezioni del Raspberry" /tmp/pi-rim.log'
 controlla "meshtasticd come prima: porte normali, niente filtro, niente annuncio" '[ ! -e /etc/systemd/system/meshtasticd.service.d/mesh2tak-solo-locale.conf ] && [ ! -e "$FINTO/meshtasticd/config.d/mesh2tak.yaml" ] && grep -qx "  Port: 9443" "$FINTO/meshtasticd/config.d/cnsas-web.yaml" && [ ! -e /etc/avahi/services/mesh2tak-meshtastic.service ]'
-controlla "file del ponte rimossi" '[ ! -e /opt/mesh2tak ] && [ ! -e /etc/mesh2tak ] && [ ! -e /usr/local/bin/mesh2tak-canale ] && [ ! -e /etc/systemd/system/mesh2tak-installazione.service ] && grep -q "systemctl disable --now mesh2tak-installazione.service" "$STUB/chiamate.log"'
+controlla "file del gateway rimossi" '[ ! -e /opt/mesh2tak ] && [ ! -e /etc/mesh2tak ] && [ ! -e /usr/local/bin/mesh2tak-canale ] && [ ! -e /etc/systemd/system/mesh2tak-installazione.service ] && grep -q "systemctl disable --now mesh2tak-installazione.service" "$STUB/chiamate.log"'
 controlla "aggiornamenti e comandi dalla pagina tolti" '[ ! -e /etc/systemd/system/mesh2tak-aggiorna.timer ] && [ ! -e /etc/systemd/system/mesh2tak-aggiorna.service ] && [ ! -e /etc/systemd/system/mesh2tak-aggiorna.path ] && [ ! -e /var/lib/mesh2tak-aggiorna ] && grep -q "systemctl disable --now mesh2tak-aggiorna.timer mesh2tak-aggiorna.path" "$STUB/chiamate.log"'
 controlla "configurazione meshtasticd lasciata" '[ -f "$FINTO/meshtasticd/config.d/lora-waveshare-sxxx.yaml" ]'
 
@@ -575,9 +575,9 @@ controlla "riconosciuta la radio USB senza indicare la scheda" 'grep -q "3/9  Me
 controlla "nessun meshtasticd ne' SPI" 'cmp -s "$FINTO/config-usb.txt" "$FINTO/config.txt.originale" && [ -z "$(ls -A "$FINTO/meshtasticd-usb")" ]'
 controlla "radio configurata via USB: EU_868, CLIENT, canale CNSAS" '[ "$(radio "d[\"regione\"], d[\"ruolo\"], d[\"canali\"][0][\"nome\"], d[\"canali\"][0][\"psk_len\"]")" = "('"'"'EU_868'"'"', '"'"'CLIENT'"'"', '"'"'CNSAS'"'"', 32)" ]'
 controlla "posizione fissa sulla radio" '[ "$(radio "d[\"posizione_fissa\"]")" = True ]'
-controlla "radio USB: niente gestione attraverso il ponte" 'grep -qx "attiva = no" /etc/mesh2tak/mesh2tak.conf && [ ! -e /etc/mesh2tak/pagina.pem ] && ! grep -q -e "Gestione del nodo dal browser" -e "via Wi-Fi: Rete" /tmp/pi-run-usb.log'
+controlla "radio USB: niente gestione attraverso il gateway" 'grep -qx "attiva = no" /etc/mesh2tak/mesh2tak.conf && [ ! -e /etc/mesh2tak/pagina.pem ] && ! grep -q -e "Gestione del nodo dal browser" -e "via Wi-Fi: Rete" /tmp/pi-run-usb.log'
 controlla "servizio con il gruppo dialout" 'grep -q "^SupplementaryGroups=dialout" /etc/systemd/system/mesh2tak.service && id -nG mesh2tak | grep -qw dialout'
-controlla "ponte collegato alla radio USB" 'grep -q "Collegato al nodo Meshtastic .* radio USB" "$STUB/servizio.log"'
+controlla "gateway collegato alla radio USB" 'grep -q "Collegato al nodo Meshtastic .* radio USB" "$STUB/servizio.log"'
 controlla "QR del canale" 'grep -q "\[QR di" /tmp/pi-run-usb.log && [ -s /root/canale-meshtastic.txt ]'
 controlla "nessun errore o traceback" '! grep -q -e "✘" -e Traceback /tmp/pi-run-usb.log'
 (cd /tmp && PATH="$STUB:$PATH" MESH2TAK_SALTA_SISTEMA=1 MESH2TAK_SALTA_PIP=1 MESH2TAK_BOOT_ID=usb1 \
@@ -585,21 +585,21 @@ controlla "nessun errore o traceback" '! grep -q -e "✘" -e Traceback /tmp/pi-r
   MESH2TAK_COLLEGAMENTO="serial:$RADIO" MESH2TAK_ACCESSO_RETE=https://meshtastic.prova.lan \
   bash "$INST" --accesso-esterno=deposito </dev/null > /tmp/pi-run-usb-accesso.log 2>&1); UUA=$?
 sleep 8
-controlla "ponte nuovo nella rete: il nodo prende il nome del ponte" '[ "$(radio "d[\"nome\"], d[\"nome_breve\"]")" = "('"'"'Gateway CNSAS Deposito'"'"', '"'"'GDEP'"'"')" ] && grep -q "nome del nodo e del ponte sulla mappa: .Gateway CNSAS Deposito. (sigla GDEP)" /tmp/pi-run-usb-accesso.log'
-controlla "radio USB con accesso da internet: pagina del ponte solo per lo stato" '[ $UUA = 0 ] && grep -qx "attiva = si" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_pagina = 9443" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_app = 0" /etc/mesh2tak/mesh2tak.conf && grep -qx "nodo_pagina = " /etc/mesh2tak/mesh2tak.conf && grep -qx "nome = deposito" /etc/mesh2tak/mesh2tak.conf'
-controlla "il servizio da' lo stato sulla 9443 e cerca la registrazione" 'grep -q "Stato del ponte per la pagina della rete sulla porta 9443" "$STUB/servizio.log" && grep -q "Accesso da internet: ponte .deposito." "$STUB/servizio.log" && grep -q "stato del ponte pronto sulla porta 9443" /tmp/pi-run-usb-accesso.log'
-controlla "pagina della rete irraggiungibile: alla fine lo dice, con il codice" 'grep -q "Codice di controllo di questo Raspberry:" /tmp/pi-run-usb-accesso.log && grep -q "Adesso il ponte dice: la pagina della rete https://meshtastic.prova.lan non risponde" /tmp/pi-run-usb-accesso.log'
+controlla "gateway nuovo nella rete: il nodo prende il nome del gateway" '[ "$(radio "d[\"nome\"], d[\"nome_breve\"]")" = "('"'"'Gateway CNSAS Deposito'"'"', '"'"'GDEP'"'"')" ] && grep -q "nome del nodo e del gateway sulla mappa: .Gateway CNSAS Deposito. (sigla GDEP)" /tmp/pi-run-usb-accesso.log'
+controlla "radio USB con accesso da internet: pagina del gateway solo per lo stato" '[ $UUA = 0 ] && grep -qx "attiva = si" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_pagina = 9443" /etc/mesh2tak/mesh2tak.conf && grep -qx "porta_app = 0" /etc/mesh2tak/mesh2tak.conf && grep -qx "nodo_pagina = " /etc/mesh2tak/mesh2tak.conf && grep -qx "nome = deposito" /etc/mesh2tak/mesh2tak.conf'
+controlla "il servizio da' lo stato sulla 9443 e cerca la registrazione" 'grep -q "Stato del gateway per la pagina della rete sulla porta 9443" "$STUB/servizio.log" && grep -q "Accesso da internet: gateway .deposito." "$STUB/servizio.log" && grep -q "stato del gateway pronto sulla porta 9443" /tmp/pi-run-usb-accesso.log'
+controlla "pagina della rete irraggiungibile: alla fine lo dice, con il codice" 'grep -q "Codice di controllo di questo Raspberry:" /tmp/pi-run-usb-accesso.log && grep -q "Adesso il gateway dice: la pagina della rete https://meshtastic.prova.lan non risponde" /tmp/pi-run-usb-accesso.log'
 controlla "nessun errore o traceback" '! grep -q -e "✘" -e Traceback /tmp/pi-run-usb-accesso.log'
-# un ponte nuovo installato dalla 1.9.0 alla 1.11.0 si chiamava "Ponte CNSAS Deposito" (PDEP): l'aggiornamento lo cambia
+# un gateway nuovo installato dalla 1.9.0 alla 1.11.0 si chiamava "Gateway CNSAS Deposito" (PDEP): l'aggiornamento lo cambia
 sed -i 's/^NOME_NODO=.*/NOME_NODO=Ponte\\ CNSAS\\ Deposito/; s/^NOME_BREVE=.*/NOME_BREVE=PDEP/' /etc/mesh2tak/installazione.conf
 (cd /tmp && PATH="$STUB:$PATH" MESH2TAK_SALTA_SISTEMA=1 MESH2TAK_SALTA_PIP=1 MESH2TAK_BOOT_ID=usb1 \
   MESH2TAK_CONFIG_TXT="$FINTO/config-usb.txt" MESH2TAK_MESHTASTICD_DIR="$FINTO/meshtasticd-usb" \
   MESH2TAK_COLLEGAMENTO="serial:$RADIO" MESH2TAK_ACCESSO_RETE=https://meshtastic.prova.lan \
   bash "$INST" </dev/null > /tmp/pi-run-usb-nomi.log 2>&1); UUN=$?
 sleep 8
-controlla "ponte nuovo della 1.9.0-1.11.0: all'aggiornamento diventa Gateway CNSAS Deposito (GDEP)" '[ $UUN = 0 ] && [ "$(radio "d[\"nome\"], d[\"nome_breve\"]")" = "('"'"'Gateway CNSAS Deposito'"'"', '"'"'GDEP'"'"')" ] && grep -q "nome nuovo del nodo: .Gateway CNSAS Deposito. (sigla GDEP)" /tmp/pi-run-usb-nomi.log && grep -qx "NOME_BREVE=GDEP" /etc/mesh2tak/installazione.conf'
+controlla "gateway nuovo della 1.9.0-1.11.0: all'aggiornamento diventa Gateway CNSAS Deposito (GDEP)" '[ $UUN = 0 ] && [ "$(radio "d[\"nome\"], d[\"nome_breve\"]")" = "('"'"'Gateway CNSAS Deposito'"'"', '"'"'GDEP'"'"')" ] && grep -q "nome nuovo del nodo: .Gateway CNSAS Deposito. (sigla GDEP)" /tmp/pi-run-usb-nomi.log && grep -qx "NOME_BREVE=GDEP" /etc/mesh2tak/installazione.conf'
 (cd /tmp && PATH="$STUB:$PATH" bash "$INST" --rimuovi </dev/null > /tmp/pi-rim-usb.log 2>&1)
-controlla "rimozione: ricorda di togliere il ponte dalla pagina della rete" 'grep -q "su https://meshtastic.prova.lan, .Togli dalla rete. sotto deposito" /tmp/pi-rim-usb.log && [ ! -e /usr/local/bin/mesh2tak-accesso ]'
+controlla "rimozione: ricorda di togliere il gateway dalla pagina della rete" 'grep -q "su https://meshtastic.prova.lan, .Togli dalla rete. sotto deposito" /tmp/pi-rim-usb.log && [ ! -e /usr/local/bin/mesh2tak-accesso ]'
 pkill -f 'fake_node[.]py --porta 4403 --nuovo --primo-scenario 99 --stato'
 
 echo "== scheda RAK6421 sui pin (in config.txt e' rimasta una riga spi0-0cs di un'altra scheda)"

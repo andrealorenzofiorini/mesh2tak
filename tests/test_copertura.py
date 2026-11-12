@@ -210,7 +210,7 @@ def test_la_copertura_solo_per_gli_amministratori_dal_tunnel(gestione):
         testo = h.wfile.getvalue()
         return h.codice, (json.loads(testo) if testo else None)
     amministratore = {"X-Authentik-Username": "andrea"}
-    assert chiedi("GET", **amministratore)[0] == 404, "ponte senza mappa della copertura"
+    assert chiedi("GET", **amministratore)[0] == 404, "gateway senza mappa della copertura"
     g.copertura = copertura
     assert chiedi("GET", **amministratore) == (200, {"formato": 1, "celle": [[1, 2, 1, -5.0, -5.0, -100, 0, 20261111]]})
     assert chiedi("GET")[0] == 403, "senza il nome messo da Authentik"

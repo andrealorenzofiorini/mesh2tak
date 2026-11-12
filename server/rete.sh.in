@@ -2,19 +2,19 @@
 # =============================================================================
 #  Rete Meshtastic sul server infra-TAK  (mesh2tak @@VERSIONE@@)
 #
-#  Pagina https://meshtastic.<dominio> con lo stato di tutti i ponti Meshtastic -> TAK, da cui si
-#  aggiungono e tolgono i ponti; per ognuno la gestione del suo nodo a https://meshtastic-<nome>.<dominio>.
+#  Pagina https://meshtastic.<dominio> con lo stato di tutti i gateway Meshtastic -> TAK, da cui si
+#  aggiungono e tolgono i gateway; per ognuno la gestione del suo nodo a https://meshtastic-<nome>.<dominio>.
 #  Tutto dietro Authentik, solo per il gruppo "authentik Admins". I Raspberry arrivano con un tunnel SSH
 #  aperto da loro: a casa non si apre nessuna porta. Nessun pacchetto nuovo: usa sshd, Caddy, Authentik
 #  e il python3 di Ubuntu. Dalla 1.5.0 resta acceso un piccolo servizio senza privilegi (mesh2tak-rete-web,
 #  solo su 127.0.0.1) che riceve le richieste dei Raspberry e le azioni della pagina; dalla 1.7.0 controlla
-#  anche i ponti ogni minuto e avvisa per email con la posta di infra-TAK (destinatari di Guard Dog).
+#  anche i gateway ogni minuto e avvisa per email con la posta di infra-TAK (destinatari di Guard Dog).
 #
 #  Uso (da root sul server della console infra-TAK):
 #    sudo bash rete-meshtastic.sh installa      una volta sola (e dopo aver aggiornato questo script)
-#    sudo bash rete-meshtastic.sh elenco        ponti e tunnel collegati
+#    sudo bash rete-meshtastic.sh elenco        gateway e tunnel collegati
 #    sudo bash rete-meshtastic.sh disinstalla   toglie tutto
-#  I ponti si aggiungono dalla pagina: sul Raspberry
+#  I gateway si aggiungono dalla pagina: sul Raspberry
 #    sudo bash installa-ponte-meshtastic.sh --accesso-esterno
 #  e sulla pagina si approva la sua richiesta. A mano: aggiungi NOME 'CHIAVE', rimuovi NOME.
 # =============================================================================

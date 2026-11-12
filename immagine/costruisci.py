@@ -24,7 +24,7 @@ import urllib.request
 
 ELENCO_UFFICIALE = "https://downloads.raspberrypi.com/os_list_imagingutility_v4.json"
 NOME_UFFICIALE = "Raspberry Pi OS Lite (64-bit)"
-NOME = "Ponte Meshtastic (mesh2tak)"
+NOME = "Gateway Meshtastic (mesh2tak)"
 QUI = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -108,7 +108,7 @@ def aggiungi_primo_avvio(immagine, agente, versione, base, lavoro):
         os.symlink("/etc/systemd/system/mesh2tak-primo-avvio.service", collegamento)
         nota = os.path.join(punto, "etc/mesh2tak-immagine")
         with open(nota, "w", encoding="utf-8") as f:
-            f.write(f"Ponte Meshtastic (mesh2tak {versione}), immagine del {datetime.date.today().isoformat()}\n"
+            f.write(f"Gateway Meshtastic (mesh2tak {versione}), immagine del {datetime.date.today().isoformat()}\n"
                     f"Base: {base.get('name')} del {base.get('release_date', '?')}\n{base.get('url')}\n")
         for f, modo in ((os.path.dirname(programma), 0o755), (programma, 0o755), (unita, 0o644), (nota, 0o644)):
             os.chown(f, 0, 0)
@@ -158,7 +158,7 @@ def main():
     if base.get("extract_sha256") and somma(immagine) != base["extract_sha256"]:
         sys.exit("l'immagine scompattata non e' quella pubblicata (somma di controllo diversa)")
 
-    info("3/5  Aggiungo il primo avvio del ponte (nient'altro)")
+    info("3/5  Aggiungo il primo avvio del gateway (nient'altro)")
     aggiungi_primo_avvio(immagine, a.agente, a.versione, base, lavoro)
 
     info("4/5  Ricomprimo (qualche minuto)")
@@ -173,7 +173,7 @@ def main():
     shutil.copyfile(os.path.join(QUI, "icona.png"), os.path.join(a.uscita, "icona-imager.png"))
     voce = {
         "name": NOME,
-        "description": f"Ponte Meshtastic-TAK {a.versione}: si installa da solo dalla pagina della rete "
+        "description": f"Gateway Meshtastic-TAK {a.versione}: si installa da solo dalla pagina della rete "
                        f"(base: Raspberry Pi OS Lite 64 bit del {base.get('release_date', '?')})",
         "icon": f"{a.url_base}/icona-imager.png",
         "url": f"{a.url_base}/{nome_file}",

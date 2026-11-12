@@ -284,14 +284,14 @@ def test_coda_radio_priorita_e_versioni():
 
 
 def test_avviso_al_mittente_e_mittenti():
-    xml = m.cot_chat_diretta(da_uid="!abcd0001", da_callsign="Ponte CNSAS Varese", a_uid="ANDROID-7",
+    xml = m.cot_chat_diretta(da_uid="!abcd0001", da_callsign="Gateway CNSAS Varese", a_uid="ANDROID-7",
                              a_callsign="07-BIANCHI", testo="troppo grande <&>", ora=1_790_000_000)
     ev = ET.fromstring(xml)
     assert ev.get("type") == "b-t-f" and ev.get("uid").startswith("GeoChat.!abcd0001.ANDROID-7.")
     assert [d.get("callsign") for d in ev.findall("detail/marti/dest")] == ["07-BIANCHI"]
     assert ev.find("detail/remarks").text == "troppo grande <&>"
     assert ev.find("detail/__mesh2tak") is not None, "l'avviso non deve finire in radio"
-    assert m.mittente_evento(ev) == ("!abcd0001", "Ponte CNSAS Varese")
+    assert m.mittente_evento(ev) == ("!abcd0001", "Gateway CNSAS Varese")
     assert m.mittente_evento(_radice("marker_spot")) == ("ANDROID-0000000000000001", "SIM-01")
     assert m.mittente_evento(_radice("geochat_simple")) == ("ANDROID-0000000000000002", "TESTNODE-01")
 

@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(QUI))
 import aggiorna  # noqa: E402
 
 CHIAVE_CANALE = base64.b64encode(bytes(range(32))).decode()        # 44 caratteri con '=' in fondo
-CONF = """# Ponte Meshtastic <-> TAK Server. Dopo una modifica:  sudo systemctl restart mesh2tak
+CONF = """# Gateway Meshtastic <-> TAK Server. Dopo una modifica:  sudo systemctl restart mesh2tak
 [tak]
 host = takserver.esempio.it
 porta = 8089
@@ -83,13 +83,13 @@ class Pi(Raspberry):
         scrivi_eseguibile(self.dir / "installatore.sh",
                           '#!/bin/bash\necho "installatore $* password=${MESH2TAK_PASSWORD:-} host=${MESH2TAK_HOST:-}'
                           ' da_aggiornamento=${MESH2TAK_DA_AGGIORNAMENTO:-}" >> "$PROVA_CHIAMATE"\n'
-                          'case "$1" in\n  --reimposta-radio) echo "  ✔ radio del ponte come all\'installazione" ;;\n'
+                          'case "$1" in\n  --reimposta-radio) echo "  ✔ radio del gateway come all\'installazione" ;;\n'
                           '  *) [ -f "$1" ] || { echo "✘ pacchetto mancante"; exit 1; }\n'
                           '     cp "$1" "$PROVA_SERVER_SSH/pacchetto-installato"\n'
                           '     [ -n "$PROVA_PASSWORD_GIUSTA" ] && [ "$MESH2TAK_PASSWORD" != "$PROVA_PASSWORD_GIUSTA" ] && '
                           '{ echo "✘ Password del certificato sbagliata (quella mostrata nella console infra-TAK)."; exit 1; }\n'
                           '     echo "  ✔ certificato \'ponte-casa\' (scade: Nov 11 12:00:00 2027 GMT)"\n'
-                          '     [ -n "$PROVA_TAK_RIFIUTA" ] && echo "  ! Il TAK Server non ha accettato il collegamento: il ponte riprova da solo" ;;\n'
+                          '     [ -n "$PROVA_TAK_RIFIUTA" ] && echo "  ! Il TAK Server non ha accettato il collegamento: il gateway riprova da solo" ;;\n'
                           'esac\nexit 0\n')
         (self.dir / "venv" / "bin").mkdir(parents=True)
         scrivi_eseguibile(self.dir / "venv" / "bin" / "python",
@@ -135,9 +135,9 @@ def test_riavvia_il_programma_una_volta_sola(pi):
     r = pi.lancia()
     assert r.returncode == 0, r.stdout + r.stderr
     e = pi.esiti()["0000000000000001"]
-    assert (e["stato"], e["messaggio"], e["azione"]) == ("fatto", "programma del ponte riavviato", "riavvia-programma")
+    assert (e["stato"], e["messaggio"], e["azione"]) == ("fatto", "programma del gateway riavviato", "riavvia-programma")
     assert "systemctl restart mesh2tak" in pi.fatte()
-    assert oct((pi.stato / "azioni.json").stat().st_mode)[-3:] == "644", "lo legge il ponte, per la pagina"
+    assert oct((pi.stato / "azioni.json").stat().st_mode)[-3:] == "644", "lo legge il gateway, per la pagina"
     pi.lancia()
     assert pi.fatte().count("systemctl restart mesh2tak") == 1, "un comando si fa una volta sola"
 
@@ -224,8 +224,8 @@ def test_registro_senza_chiavi_ne_password(pi):
     assert e["stato"] == "fatto" and e["messaggio"].startswith("registro pronto")
     f = pi.stato / "registro.txt"
     testo = f.read_text()
-    assert oct(f.stat().st_mode)[-3:] == "640", "lo legge solo il ponte (gruppo mesh2tak)"
-    assert "===== Programma del ponte (mesh2tak)" in testo and "===== Installazione" in testo
+    assert oct(f.stat().st_mode)[-3:] == "640", "lo legge solo il gateway (gruppo mesh2tak)"
+    assert "===== Programma del gateway (mesh2tak)" in testo and "===== Installazione" in testo
     assert CHIAVE_CANALE not in testo and "segreta" not in testo and "MIGHAgEAMBMG" not in testo
     assert "CgcSAQE6" not in testo and "https://meshtastic.org/e/[canale tolto]" in testo
     assert "psk=[tolto]" in testo and "[chiave privata tolta]" in testo
@@ -403,9 +403,9 @@ def test_il_registro_solo_per_gli_amministratori_dal_tunnel(gestione, tmp_path):
         g._servi_registro(h)
         return h.codice, h.wfile.getvalue()
     assert leggi(**{"X-Authentik-Username": "andrea"})[0] == 404, "registro non ancora raccolto"
-    (tmp_path / "registro.txt").write_text("Registro del ponte\n===== Servizi\n")
+    (tmp_path / "registro.txt").write_text("Registro del gateway\n===== Servizi\n")
     codice, corpo = leggi(**{"X-Authentik-Username": "andrea"})
-    assert codice == 200 and b"Registro del ponte" in corpo
+    assert codice == 200 and b"Registro del gateway" in corpo
     assert leggi()[0] == 403, "senza il nome messo da Authentik"
     assert leggi(da="192.168.1.50", **{"X-Authentik-Username": "andrea"})[0] == 403, "non dal tunnel"
     assert leggi(metodo="POST", **{"X-Authentik-Username": "andrea"})[0] == 405

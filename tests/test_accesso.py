@@ -146,9 +146,9 @@ def test_config_accesso_senza_chiave(pki, tmp_path):
 
 def test_stato_json_non_mette_in_pausa(gestione):  # noqa: F811
     g, pagina, _ = gestione()
-    g.fornisci_stato = lambda: {"versione": m.VERSIONE, "nome": "Ponte <b>"}
+    g.fornisci_stato = lambda: {"versione": m.VERSIONE, "nome": "Gateway <b>"}
     stato, corpo = chiedi(g.cfg.gestione_porta_pagina, "/mesh2tak/stato.json")
-    assert stato == 200 and json.loads(corpo) == {"versione": m.VERSIONE, "nome": "Ponte <b>"}
+    assert stato == 200 and json.loads(corpo) == {"versione": m.VERSIONE, "nome": "Gateway <b>"}
     assert not g.pausa.attiva and not pagina.chiamate
     assert chiedi(g.cfg.gestione_porta_pagina, "/mesh2tak/stato.json", "PUT", b"x")[0] == 405
 
@@ -355,7 +355,7 @@ def test_senza_registrazione_chiede_di_entrare_e_non_bussa(tunnel):
     (403, {"errore": "questo Raspberry e' stato tolto dalla rete sulla pagina della rete"}, "rifiutata",
      "tolto dalla rete sulla pagina della rete: per farlo rientrare, sulla pagina 'Lascia rientrare'"),
     (429, {"errore": "troppe richieste da questo indirizzo: riprovo tra un'ora"}, "troppe", "riprovo tra un'ora"),
-    (400, {"errore": "nome del ponte: solo minuscole"}, "non_valida", "rilancia l'installatore"),
+    (400, {"errore": "nome del gateway: solo minuscole"}, "non_valida", "rilancia l'installatore"),
     (405, {}, "server_da_preparare", "sudo bash rete-meshtastic.sh installa"),     # server ancora alla 1.4.0
     (502, {}, "server_da_preparare", "risponde 502"),
     (500, {"errore": "boh\n\n<script>"}, "errore", "risponde 500 alla richiesta (boh <script>)"),

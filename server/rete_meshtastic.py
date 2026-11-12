@@ -441,9 +441,9 @@ def comando_ponte() -> str:
 
 def testo_dropin() -> str:
     return "\n".join([
-        "# Aggiunto da rete-meshtastic.sh (mesh2tak): utenti dei ponti Meshtastic.",
+        "# Aggiunto da rete-meshtastic.sh (mesh2tak): utenti dei gateway Meshtastic.",
         "# Possono solo tenere aperto un tunnel verso la loro porta sul server (127.0.0.1) e, dalla 1.10.0,",
-        "# lanciare un solo comando: configurazione e avanzamento dell'installazione del loro ponte.",
+        "# lanciare un solo comando: configurazione e avanzamento dell'installazione del loro gateway.",
         f"Match Group {GRUPPO}",
         f"\tAuthorizedKeysFile {P(CHIAVI_DIR)}/%u",
         "\tAuthenticationMethods publickey",
@@ -508,7 +508,7 @@ def prepara_sshd() -> None:
         raise Errore(f"manca {os.path.dirname(SSHD_DROPIN)}: serve OpenSSH 8.2 o piu' recente (Ubuntu 22.04 va bene)")
     principale = leggi(P("/etc/ssh/sshd_config")) or ""
     if principale and not re.search(r"^\s*Include\s+/etc/ssh/sshd_config\.d/", principale, re.M | re.I):
-        avviso("sshd_config non include sshd_config.d: le regole dei ponti valgono solo per le chiavi "
+        avviso("sshd_config non include sshd_config.d: le regole dei gateway valgono solo per le chiavi "
                "(restrizioni comunque attive)")
     scrivi(percorso, testo_dropin(), 0o644)
     r = esegui(["sshd", "-t"], controlla=False, attesa=30)
@@ -517,10 +517,10 @@ def prepara_sshd() -> None:
             togli(percorso)
         else:
             scrivi(percorso, prima, 0o644)
-        raise Errore("sshd rifiuta le regole per i ponti (nessuna modifica applicata): "
+        raise Errore("sshd rifiuta le regole per i gateway (nessuna modifica applicata): "
                      + ((r.stdout or "") + (r.stderr or "")).strip()[-300:])
     ricarica_ssh()
-    ok(f"regole di sshd per i ponti: {SSHD_DROPIN}")
+    ok(f"regole di sshd per i gateway: {SSHD_DROPIN}")
 
 
 def prepara_cartelle_ponti() -> None:
@@ -579,10 +579,10 @@ def prepara_utente(nome: str) -> str:
         pw = pwd.getpwnam(utente)
     except KeyError:
         esegui(["useradd", "--system", "--no-create-home", "--home-dir", "/nonexistent", "--shell",
-                SHELL_PONTI, "--gid", GRUPPO, "--comment", f"Ponte Meshtastic {nome} (mesh2tak)", utente])
+                SHELL_PONTI, "--gid", GRUPPO, "--comment", f"Gateway Meshtastic {nome} (mesh2tak)", utente])
     else:
         if pw.pw_gid != grp.getgrnam(GRUPPO).gr_gid:
-            raise Errore(f"esiste gia' un utente {utente} che non e' di un ponte: scegli un altro nome")
+            raise Errore(f"esiste gia' un utente {utente} che non e' di un gateway: scegli un altro nome")
         if pw.pw_shell != SHELL_PONTI:
             # utenti creati prima della 1.10.0. Resta tutto chiuso: sshd lancia solo il comando forzato
             # (ForceCommand), senza terminale, e l'account non ha password
@@ -770,7 +770,7 @@ def chiedi_al_ponte(imp: Impostazioni, reg: dict, lavoro: dict) -> str:
     con lo stesso numero del lavoro (la pagina segue com'e' andata nello stato del ponte)."""
     nome = lavoro["nome"]
     if nome not in reg["ponti"]:
-        raise Errore("ponte non trovato: ricarica la pagina")
+        raise Errore("gateway non trovato: ricarica la pagina")
     p = reg["ponti"][nome]
     ora = int(time.time())
     azione = {"id": lavoro["id"], "azione": lavoro["cosa"], "chiesto": ora, "da": lavoro["da"]}
@@ -782,10 +782,10 @@ def chiedi_al_ponte(imp: Impostazioni, reg: dict, lavoro: dict) -> str:
     salva_registro(reg)
     pubblica_registrazioni(imp, reg, [nome])
     if sveglia_ponte(p["porta"]):
-        ok(f"il ponte {nome} lo fa subito")
-        return "chiesto al ponte: lo fa subito"
-    info(f"il ponte {nome} non risponde adesso: lo fa appena torna raggiungibile (entro mezz'ora, poi scade)")
-    return "chiesto al ponte: non risponde adesso, lo fa appena torna raggiungibile (entro mezz'ora)"
+        ok(f"il gateway {nome} lo fa subito")
+        return "chiesto al gateway: lo fa subito"
+    info(f"il gateway {nome} non risponde adesso: lo fa appena torna raggiungibile (entro mezz'ora, poi scade)")
+    return "chiesto al gateway: non risponde adesso, lo fa appena torna raggiungibile (entro mezz'ora)"
 
 
 def file_certificato_ponte(nome: str) -> str:
@@ -797,10 +797,10 @@ def prepara_certificato_ponte(imp: Impostazioni, reg: dict, lavoro: dict) -> str
     ponte, poi chiede al Raspberry di installarlo (comando "certificato")."""
     nome, d = lavoro["nome"], lavoro["impostazioni"]
     if nome not in reg["ponti"]:
-        raise Errore("ponte non trovato: ricarica la pagina")
+        raise Errore("gateway non trovato: ricarica la pagina")
     dati = base64.b64decode(d["pacchetto"])
     password = d["password"] or "atakatak"
-    info(f"pacchetto {d['nome_pacchetto']} ({len(dati) // 1024 + 1} kB) per il ponte {nome}")
+    info(f"pacchetto {d['nome_pacchetto']} ({len(dati) // 1024 + 1} kB) per il gateway {nome}")
     c = controlla_pacchetto(dati, d["nome_pacchetto"], password)
     if c["certificato"]:
         ok(f"certificato '{c['certificato']}'" + (f", scade il {giorno_it(c['scade'])}" if c["scade"] else ""))
@@ -820,7 +820,7 @@ def prepara_certificato_ponte(imp: Impostazioni, reg: dict, lavoro: dict) -> str
     finally:
         os.close(fd)
     esito = chiedi_al_ponte(imp, reg, dict(lavoro, cosa="certificato", valori=None))
-    return (f"Certificato '{c['certificato'] or '?'}' pronto per il ponte {nome}: " + esito.replace("chiesto al ponte: ", "")
+    return (f"Certificato '{c['certificato'] or '?'}' pronto per il gateway {nome}: " + esito.replace("chiesto al gateway: ", "")
             + ".")
 
 
@@ -862,7 +862,7 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
             "\t\t\ttrusted_proxies private_ranges",
             "\t\t}"]
     r = ["# Generato da rete-meshtastic.sh (mesh2tak): non modificarlo a mano, rilancia lo script.",
-         f"# Pagina della rete: {imp.url()}  -  un indirizzo per ponte: {imp.url('NOME')}", ""]
+         f"# Pagina della rete: {imp.url()}  -  un indirizzo per gateway: {imp.url('NOME')}", ""]
     r += [f"{imp.host()} {{"] + ([tls] if tls else []) + ["\troute {"] + togli_ak
     senza_cookie = ["\t\t\t\theader_up -Cookie", "\t\t\t\theader_up -Authorization"]
     r += ["\t\t# pubbliche: richieste dei Raspberry, loro registrazioni (nome = impronta della chiave) e icona",
@@ -884,7 +884,7 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
           "\t\t\tfile_server",
           "\t\t}"]
     r += auth
-    r += ["\t\t# certificato e canale per i ponti nuovi (dalla 1.10.0) e certificato nuovo di un ponte (1.13.0): il",
+    r += ["\t\t# certificato e canale per i gateway nuovi (dalla 1.10.0) e certificato nuovo di un gateway (1.13.0): il",
           "\t\t# pacchetto della console e' piu' grande",
           "\t\t@certificati path /api/impostazioni-nuovi /api/certificato-ponte",
           "\t\thandle @certificati {",
@@ -956,6 +956,17 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
               "\t\t\t\t\tresponse_header_timeout 30s",
               "\t\t\t\t}",
               "\t\t\t}",
+              "\t\t}",
+              # dalla 1.16.0: l'andamento di gateway e ripetitori (sola lettura, solo amministratori)
+              f"\t\thandle /storico/{n}.json {{",
+              "\t\t\trewrite * /mesh2tak/storico.json",
+              f"\t\t\treverse_proxy https://127.0.0.1:{p['porta']} {{"] + senza_cookie + [
+              "\t\t\t\ttransport http {",
+              "\t\t\t\t\ttls_insecure_skip_verify",
+              "\t\t\t\t\tdial_timeout 5s",
+              "\t\t\t\t\tresponse_header_timeout 30s",
+              "\t\t\t\t}",
+              "\t\t\t}",
               "\t\t}"]
     r += ["\t\thandle /stato/* {",
           "\t\t\trespond 404",
@@ -967,6 +978,9 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
           "\t\t\trespond 404",
           "\t\t}",
           "\t\thandle /copertura/* {",
+          "\t\t\trespond 404",
+          "\t\t}",
+          "\t\thandle /storico/* {",
           "\t\t\trespond 404",
           "\t\t}",
           "\t\theader Cache-Control no-store",
@@ -983,7 +997,7 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
           "}",
           ""]
     for n, p in sorted(reg["ponti"].items()):
-        r += [f"# Gestione del nodo del ponte {n} (tunnel SSH dal Raspberry alla porta {p['porta']})",
+        r += [f"# Gestione del nodo del gateway {n} (tunnel SSH dal Raspberry alla porta {p['porta']})",
               f"{imp.host(n)} {{"] + ([tls] if tls else []) + ["\troute {"] + togli_ak + auth
         # il Raspberry non riceve i cookie del browser: con la sessione di Authentik (valida per tutto il
         # dominio) un Raspberry rubato potrebbe entrare nella console di infra-TAK
@@ -999,8 +1013,8 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
               "\thandle_errors {",
               "\t\t@giu expression `{err.status_code} in [502, 503, 504]`",
               "\t\theader @giu Content-Type \"text/plain; charset=utf-8\"",
-              f"\t\trespond @giu \"Il ponte {n} non risponde: Raspberry spento, senza internet o tunnel in "
-              f"riconnessione. Riprova tra un minuto. Stato di tutti i ponti: {imp.url()}\" 502",
+              f"\t\trespond @giu \"Il gateway {n} non risponde: Raspberry spento, senza internet o tunnel in "
+              f"riconnessione. Riprova tra un minuto. Stato di tutti i gateway: {imp.url()}\" 502",
               "\t}",
               "}",
               ""]
@@ -1283,7 +1297,7 @@ def configura_authentik(imp: Impostazioni, reg: dict, rimossi: Optional[Dict[str
     nuovi_provider = []
     pv = ak.provider(PROVIDER_RETE, imp.url(), cookie, flussi)
     app = ak.applicazione(APP_RETE, "Rete Meshtastic", pv, imp.url(),
-                          "Stato dei ponti Meshtastic -> TAK e gestione dei nodi", icona=imp.url() + "icona.svg")
+                          "Stato dei gateway Meshtastic -> TAK e gestione dei nodi", icona=imp.url() + "icona.svg")
     ak.solo_admin(app["pk"], politica)
     voci["rete"] = {"provider": pv, "app": APP_RETE}
     nuovi_provider.append(pv)
@@ -1293,7 +1307,7 @@ def configura_authentik(imp: Impostazioni, reg: dict, rimossi: Optional[Dict[str
         pv = ak.provider(f"Meshtastic {n}", imp.url(n), cookie, flussi)
         # nascosta nella pagina iniziale (blank://blank): ci si arriva dalla pagina della rete
         app = ak.applicazione(slug, f"Meshtastic {n}", pv, "blank://blank",
-                              f"Gestione del nodo del ponte {n} (si apre dalla pagina Rete Meshtastic)")
+                              f"Gestione del nodo del gateway {n} (si apre dalla pagina Rete Meshtastic)")
         ak.solo_admin(app["pk"], politica)
         voci["ponti"][n] = {"provider": pv, "app": slug}
         nuovi_provider.append(pv)
@@ -1368,7 +1382,7 @@ def prepara_ponti(imp: Impostazioni, reg: dict, nomi: List[str]) -> None:
             togli(P(f"{ACCESSO_DIR}/{vecchia}.json"))   # il Raspberry con la chiave vecchia non trova piu' nulla
         if cambiata and not stessa_chiave_e_porta(prima, riga):
             chiudi_sessioni(utente)   # chiave o porta cambiate: il tunnel si riapre con quelle nuove
-    ok(f"utenti dei ponti pronti: {', '.join(utente_ponte(n) for n in nomi) or 'nessuno'} (solo tunnel)")
+    ok(f"utenti dei gateway pronti: {', '.join(utente_ponte(n) for n in nomi) or 'nessuno'} (solo tunnel)")
 
 
 def pubblica_registrazioni(imp: Impostazioni, reg: dict, nomi: List[str]) -> None:
@@ -1384,7 +1398,7 @@ def pubblica_registrazioni(imp: Impostazioni, reg: dict, nomi: List[str]) -> Non
 def valida_nome(nome: str) -> str:
     nome = (nome or "").strip().lower()
     if not RE_NOME.match(nome):
-        raise Errore("nome del ponte: solo minuscole, numeri e trattini, al massimo 20 caratteri (es. casa)")
+        raise Errore("nome del gateway: solo minuscole, numeri e trattini, al massimo 20 caratteri (es. casa)")
     return nome
 
 
@@ -1536,7 +1550,7 @@ def salva_impostazioni_nuovi(lavoro: dict) -> str:
     os.chmod(P(PONTI_NUOVI_DIR), 0o700)
     scrivi(P(IMPOSTAZIONI_NUOVI), json.dumps(salvate, ensure_ascii=False) + "\n", 0o600)
     scrivi_riassunto_nuovi(salvate)
-    ok(f"TAK Server {host}:{c['porta']}, canale '{d['canale']}' (l'unico dei ponti nuovi)")
+    ok(f"TAK Server {host}:{c['porta']}, canale '{d['canale']}' (l'unico dei gateway nuovi)")
     return (f"Impostazioni salvate: certificato '{c['certificato'] or '?'}', TAK Server {host}:{c['porta']}, "
             f"canale {d['canale']}.")
 
@@ -1571,7 +1585,7 @@ def prepara_configurazione(imp: Impostazioni, reg: dict, nome: str, installa: di
     numero del tentativo, che va nella registrazione: il Raspberry lo vede e la scarica."""
     s = leggi_impostazioni_nuovi()
     if not s:
-        raise Errore("mancano certificato e canale per i ponti nuovi: caricali sulla pagina della rete")
+        raise Errore("mancano certificato e canale per i gateway nuovi: caricali sulla pagina della rete")
     p = reg["ponti"][nome]
     prima = p.get("installa") if isinstance(p.get("installa"), dict) else {}
     tentativo = int(prima.get("tentativo") or 0) + 1
@@ -1596,7 +1610,7 @@ def prepara_configurazione(imp: Impostazioni, reg: dict, nome: str, installa: di
         os.close(fd)
     p["installa"] = {"tentativo": tentativo, "chiesto": int(time.time()), "scheda": installa["scheda"],
                      "posizione": installa.get("posizione") or "", "da": da}
-    ok(f"configurazione per il ponte nuovo pronta (tentativo {tentativo}, radio {installa['scheda']}): la legge "
+    ok(f"configurazione per il gateway nuovo pronta (tentativo {tentativo}, radio {installa['scheda']}): la legge "
        f"solo il Raspberry di {nome}")
     return tentativo
 
@@ -1605,10 +1619,10 @@ def riprova_installazione(imp: Impostazioni, reg: dict, lavoro: dict) -> None:
     """Lavoro "installa" (da root): la configurazione di nuovo, con le scelte nuove o quelle di prima."""
     nome = lavoro["nome"]
     if nome not in reg["ponti"]:
-        raise Errore("ponte non trovato: ricarica la pagina")
+        raise Errore("gateway non trovato: ricarica la pagina")
     prima = reg["ponti"][nome].get("installa")
     if not isinstance(prima, dict):
-        raise Errore(f"il ponte {nome} non e' stato installato dalla pagina: da qui non si reinstalla")
+        raise Errore(f"il gateway {nome} non e' stato installato dalla pagina: da qui non si reinstalla")
     installa = {"scheda": lavoro["installa"].get("scheda") or prima.get("scheda") or "usb",
                 "posizione": (lavoro["installa"]["posizione"] if "posizione" in lavoro["installa"]
                               else prima.get("posizione") or "")}
@@ -1623,14 +1637,14 @@ def aggiungi_ponte(imp: Impostazioni, reg: dict, nome: str, chiave: str, impront
     """Registra (o aggiorna) un ponte: DNS, utente SSH, pagina, Caddy, Authentik, registrazione. Con installa
     (ponte nuovo dalla 1.10.0) prepara anche la configurazione che il Raspberry scarica per installarsi."""
     if installa is not None and not leggi_impostazioni_nuovi():
-        raise Errore("mancano certificato e canale per i ponti nuovi: caricali sulla pagina della rete")
+        raise Errore("mancano certificato e canale per i gateway nuovi: caricali sulla pagina della rete")
     reg["dominio"] = imp.dominio
     nuovo = nome not in reg["ponti"]
     passo(f"1/5  Indirizzi: {imp.url()} e {imp.url(nome)}")
     controlla_dns(imp, [imp.host(), imp.host(nome)], ignora_dns)
     for altro, p in reg["ponti"].items():
         if altro != nome and p.get("impronta") == impronta:
-            raise Errore(f"questa chiave e' gia' del ponte '{altro}': ogni Raspberry ha la sua")
+            raise Errore(f"questa chiave e' gia' del gateway '{altro}': ogni Raspberry ha la sua")
     ora = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     if nuovo:
         usate = {p["porta"] for p in reg["ponti"].values()}
@@ -1643,12 +1657,12 @@ def aggiungi_ponte(imp: Impostazioni, reg: dict, nome: str, chiave: str, impront
         p = reg["ponti"][nome]
         if p["impronta"] != impronta:
             if not cambio_chiave:
-                raise Errore(f"il ponte '{nome}' c'e' gia' con un'altra chiave (un altro Raspberry, o lo stesso "
+                raise Errore(f"il gateway '{nome}' c'e' gia' con un'altra chiave (un altro Raspberry, o lo stesso "
                              "reinstallato): sulla pagina della rete usa 'Sostituisci'")
             p.setdefault("impronte_vecchie", []).append(p["impronta"])
-            info(f"il ponte '{nome}' cambia chiave (Raspberry reinstallato?): quella vecchia non vale piu'")
+            info(f"il gateway '{nome}' cambia chiave (Raspberry reinstallato?): quella vecchia non vale piu'")
         p.update({"chiave": chiave, "impronta": impronta, "aggiornato": ora})
-    passo("2/5  Utente del ponte sul server (SSH, solo tunnel)")
+    passo("2/5  Utente del gateway sul server (SSH, solo tunnel)")
     prepara_ponti(imp, reg, [nome])
     passo("3/5  Caddy")
     configura_caddy(imp, reg)
@@ -1665,7 +1679,7 @@ def aggiungi_ponte(imp: Impostazioni, reg: dict, nome: str, chiave: str, impront
 
 def rimuovi_ponte(imp: Impostazioni, reg: dict, nome: str) -> None:
     if nome not in reg["ponti"]:
-        raise Errore(f"il ponte '{nome}' non e' registrato")
+        raise Errore(f"il gateway '{nome}' non e' registrato")
     p = reg["ponti"].pop(nome)
     utente = utente_ponte(nome)
     togli(P(f"{ACCESSO_DIR}/{p['impronta']}.json"))
@@ -1686,7 +1700,7 @@ def rimuovi_ponte(imp: Impostazioni, reg: dict, nome: str) -> None:
     passo("Authentik")
     configura_authentik(imp, reg, {nome: reg["authentik"]["ponti"].get(nome, {})})
     salva_registro(reg)
-    ok(f"ponte '{nome}' tolto dalla rete")
+    ok(f"gateway '{nome}' tolto dalla rete")
 
 
 # ---- servizio della pagina (senza privilegi) e passo dei lavori (root) ----
@@ -1724,7 +1738,7 @@ WantedBy=multi-user.target
 
 def testo_unita_lavori() -> str:
     return f"""[Unit]
-Description=Rete Meshtastic: esegue i lavori chiesti dalla pagina della rete (aggiungi o togli un ponte)
+Description=Rete Meshtastic: esegue i lavori chiesti dalla pagina della rete (aggiungi o togli un gateway)
 
 [Service]
 Type=oneshot
@@ -1781,7 +1795,7 @@ def installa_servizio_web() -> None:
         esegui(["systemctl", "restart", "mesh2tak-rete-web.service"], attesa=60)
     r = esegui(["systemctl", "is-active", "mesh2tak-rete-web.service"], controlla=False, attesa=20)
     if r.returncode == 0:
-        ok("servizio della pagina attivo: dalla pagina si aggiungono e tolgono i ponti")
+        ok("servizio della pagina attivo: dalla pagina si aggiungono e tolgono i gateway")
     else:
         avviso("servizio della pagina non attivo: guarda  journalctl -u mesh2tak-rete-web")
 
@@ -1805,7 +1819,7 @@ def installa_rete(imp: Impostazioni, reg: dict, ignora_dns: bool) -> None:
     reg["dominio"] = imp.dominio
     passo(f"1/6  Indirizzo della pagina: {imp.url()}")
     controlla_dns(imp, [imp.host()] + [imp.host(n) for n in sorted(reg["ponti"])], ignora_dns)
-    passo("2/6  Utenti dei ponti (SSH, solo tunnel)")
+    passo("2/6  Utenti dei gateway (SSH, solo tunnel)")
     prepara_ponti(imp, reg, sorted(reg["ponti"]))
     passo("3/6  Servizio della pagina (senza privilegi)")
     installa_servizio_web()
@@ -1831,7 +1845,7 @@ def prepara_avvisi(imp: Impostazioni) -> None:
     if os.path.exists(P(AVVISI_PROVATI)):
         return
     esito, dettaglio = Sorveglianza.invia(porta_console(imp), "[Rete Meshtastic] Email di prova",
-                                          "Gli avvisi della rete Meshtastic sono attivi: ti scrivo quando un ponte non "
+                                          "Gli avvisi della rete Meshtastic sono attivi: ti scrivo quando un gateway non "
                                           "risponde da 10 minuti, perde la radio o il TAK Server, quando il suo "
                                           "certificato sta per scadere, quando la corrente non basta e quando un "
                                           f"Raspberry si riavvia.\nPagina della rete: {imp.url()}")
@@ -1849,7 +1863,7 @@ def cmd_installa(a) -> int:
         installa_rete(imp, reg, a.ignora_dns)
     prepara_avvisi(imp)
     print(f"\n{B}Fatto.{N} Pagina della rete: {imp.url()}  (in Authentik: applicazione 'Rete Meshtastic')")
-    info("Da ora i ponti si aggiungono dalla pagina: sul Raspberry")
+    info("Da ora i gateway si aggiungono dalla pagina: sul Raspberry")
     info("    sudo bash installa-ponte-meshtastic.sh --accesso-esterno")
     info("e sulla pagina approvi la sua richiesta. Qui sul server non serve altro.")
     return 0
@@ -1865,9 +1879,9 @@ def cmd_aggiungi(a) -> int:
         passo("Servizio della pagina")
         installa_servizio_web()
     print(f"\n{B}Fatto.{N}")
-    info(f"Entro un paio di minuti il Raspberry apre il tunnel e il ponte '{nome}' compare su:")
+    info(f"Entro un paio di minuti il Raspberry apre il tunnel e il gateway '{nome}' compare su:")
     info(f"    {imp.url()}   (in Authentik: applicazione 'Rete Meshtastic')")
-    info(f"Gestione del suo nodo: {imp.url(nome)}  (mentre la usi il ponte va in pausa)")
+    info(f"Gestione del suo nodo: {imp.url(nome)}  (mentre la usi il gateway va in pausa)")
     info("Sul Raspberry lo stato del tunnel:  sudo mesh2tak-accesso")
     return 0
 
@@ -1877,7 +1891,7 @@ def cmd_elenco(a) -> int:
     reg = carica_registro()
     print(f"{B}Rete Meshtastic{N}: {imp.url()}  (versione dello script {VERSIONE})")
     if not reg["ponti"]:
-        info("nessun ponte registrato: sul Raspberry  sudo bash installa-ponte-meshtastic.sh --accesso-esterno")
+        info("nessun gateway registrato: sul Raspberry  sudo bash installa-ponte-meshtastic.sh --accesso-esterno")
         info("e poi approva la richiesta sulla pagina della rete")
         return 0
     ascolto = porte_in_ascolto()
@@ -1894,10 +1908,10 @@ def cmd_rimuovi(a) -> int:
     with Blocco():
         reg = carica_registro()
         if nome not in reg["ponti"]:
-            raise Errore(f"il ponte '{nome}' non e' registrato (vedi: sudo bash {sys.argv[0]} elenco)")
-        conferma(f"Tolgo il ponte '{nome}' ({imp.url(nome)}).", nome, a.si)
+            raise Errore(f"il gateway '{nome}' non e' registrato (vedi: sudo bash {sys.argv[0]} elenco)")
+        conferma(f"Tolgo il gateway '{nome}' ({imp.url(nome)}).", nome, a.si)
         rimuovi_ponte(imp, reg, nome)
-    print(f"\n{B}Fatto.{N} Ponte '{nome}' tolto. Sul Raspberry, per spegnere anche il tunnel:")
+    print(f"\n{B}Fatto.{N} Gateway '{nome}' tolto. Sul Raspberry, per spegnere anche il tunnel:")
     info("sudo bash installa-ponte-meshtastic.sh --accesso-esterno=no")
     return 0
 
@@ -1915,7 +1929,7 @@ def cmd_disinstalla(a) -> int:
     imp = trova_impostazioni()
     with Blocco():
         reg = carica_registro()
-        conferma(f"Tolgo la pagina {imp.url()}, i {len(reg['ponti'])} ponti registrati e le loro voci in Caddy, "
+        conferma(f"Tolgo la pagina {imp.url()}, i {len(reg['ponti'])} gateway registrati e le loro voci in Caddy, "
                  "Authentik e sshd.", "disinstalla", a.si)
         passo("1/5  Servizio della pagina")
         togli_servizio_web()
@@ -1927,7 +1941,7 @@ def cmd_disinstalla(a) -> int:
             avviso(f"Authentik: {e} (le applicazioni 'Rete Meshtastic' e 'Meshtastic ...' toglile a mano)")
         passo("3/5  Caddy")
         configura_caddy(imp, reg, con=False)
-        passo("4/5  Utenti dei ponti e sshd")
+        passo("4/5  Utenti dei gateway e sshd")
         for n in list(reg["ponti"]):
             utente = utente_ponte(n)
             chiudi_sessioni(utente)
@@ -1945,7 +1959,7 @@ def cmd_disinstalla(a) -> int:
             esegui(["groupdel", GRUPPO], controlla=False)
         except KeyError:
             pass
-        ok("utenti, gruppo e regole sshd dei ponti tolti")
+        ok("utenti, gruppo e regole sshd dei gateway tolti")
         passo("5/5  File")
         shutil.rmtree(P(WEB_DIR), ignore_errors=True)
         shutil.rmtree(P(CADDY_DIR), ignore_errors=True)
@@ -2307,7 +2321,7 @@ def chiedi_aggiornamento_ponti(imp: Impostazioni, reg: dict, lavoro: dict) -> No
     """Scrive la richiesta nella registrazione dei ponti: ognuno la vede entro 2 minuti e si aggiorna da solo."""
     nomi = sorted(reg["ponti"]) if lavoro["nome"] == "tutti" else [lavoro["nome"]]
     if not nomi or any(n not in reg["ponti"] for n in nomi):
-        raise Errore("ponte non trovato: ricarica la pagina")
+        raise Errore("gateway non trovato: ricarica la pagina")
     ora = int(time.time())
     for n in nomi:
         reg["ponti"][n]["aggiorna"] = {"versione": lavoro["versione"], "chiesto": ora}
@@ -2435,18 +2449,18 @@ def cmd_ponte(a) -> int:
             utente = ""
     nome = utente[len("ponte-"):] if utente.startswith("ponte-") else ""
     if not RE_NOME.match(nome):
-        print("Questo comando e' solo per i ponti della rete Meshtastic.", file=sys.stderr)
+        print("Questo comando e' solo per i gateway della rete Meshtastic.", file=sys.stderr)
         return 1
     parti = os.environ.get("SSH_ORIGINAL_COMMAND", "").split(None, 2)
     if not parti:
-        print("Questo utente serve solo al tunnel del ponte: niente terminale.", file=sys.stderr)
+        print("Questo utente serve solo al tunnel del gateway: niente terminale.", file=sys.stderr)
         return 1
     try:
         if parti[0] == "configurazione" and len(parti) == 1:
             try:
                 fd = os.open(file_configurazione(nome), os.O_RDONLY | os.O_NOFOLLOW)
             except FileNotFoundError:
-                print("nessuna configurazione da installare per questo ponte", file=sys.stderr)
+                print("nessuna configurazione da installare per questo gateway", file=sys.stderr)
                 return 3
             with os.fdopen(fd, "rb") as h:
                 dati = h.read(1 << 20)
@@ -2466,7 +2480,7 @@ def cmd_ponte(a) -> int:
             try:
                 fd = os.open(file_certificato_ponte(nome), os.O_RDONLY | os.O_NOFOLLOW)
             except FileNotFoundError:
-                print("nessun certificato da installare per questo ponte", file=sys.stderr)
+                print("nessun certificato da installare per questo gateway", file=sys.stderr)
                 return 3
             with os.fdopen(fd, "rb") as h:
                 dati = h.read(1 << 20)
@@ -2565,6 +2579,12 @@ class Sorveglianza:
     CORRENTE_FINESTRA_S = 3600         # cali di corrente nell'ultima ora...
     CORRENTE_OGNI_S = 24 * 3600        # ...avvisati al massimo una volta al giorno
     PROVA_OGNI_S = 30
+    # dalla 1.16.0 anche i ripetitori fissi (nodi senza internet: li vede solo chi li sente)
+    RIPETITORE_SILENZIO_S = 12 * 3600  # un Router manda il nome ogni 3 ore: 12 ore senza niente e' spento o isolato
+    RIPETITORE_BATTERIA = 20           # % o meno: avviso; passa sopra il 30%
+    RIPETITORE_BATTERIA_OK = 30
+    RIPETITORE_METRICHE_S = 24 * 3600  # una batteria letta piu' di un giorno fa non dice niente
+    RUOLI_MUTI = ("CLIENT_MUTE", "CLIENT_HIDDEN")
 
     def __init__(self, ora=time.time, prendi=None, manda=None, percorso: Optional[str] = None, config=None):
         self.ora = ora
@@ -2590,6 +2610,8 @@ class Sorveglianza:
             d["ultimo"] = None
         if not isinstance(d.get("tentativo"), (int, float)):
             d["tentativo"] = 0
+        if not isinstance(d.get("ripetitori"), dict):
+            d["ripetitori"] = {}
         return d
 
     def _salva(self) -> None:
@@ -2619,16 +2641,99 @@ class Sorveglianza:
             for nome in [n for n in self.s["ponti"] if n not in ponti]:   # ponte tolto: niente piu' avvisi
                 del self.s["ponti"][nome]
                 self.s["coda"] = [m for m in self.s["coda"] if m.get("ponte") != nome]
+        stati = {}
         for nome, porta in sorted(ponti.items()):
-            st = self.prendi(porta)
+            st = stati[nome] = self.prendi(porta)
             with self.lock:
                 self._valuta(nome, st, self.ora())
             if self.dopo is not None:
                 try:
                     self.dopo(nome, porta, st)
                 except Exception as e:  # noqa
-                    print(f"icone: ponte {nome} ({type(e).__name__}: {e})", flush=True)
+                    print(f"icone: gateway {nome} ({type(e).__name__}: {e})", flush=True)
+        with self.lock:
+            self._valuta_ripetitori(stati, self.ora())
         self._consegna(cfg)
+
+    @classmethod
+    def ripetitori_di(cls, stati: Dict[str, Optional[dict]]) -> Dict[str, dict]:
+        """I ripetitori fissi sentiti dai gateway, uniti: per ognuno da quanto tace (il minimo tra i gateway, contando
+        anche l'ultimo messaggio che ha ripetuto) e la batteria piu' recente. Le eta' con l'orologio di ogni gateway."""
+        out: Dict[str, dict] = {}
+        nodi = {str(_d(st).get("id_nodo") or "") for st in stati.values()}
+        for nome, st in stati.items():
+            st = _d(st)
+            adesso = st.get("ora")
+            if not isinstance(adesso, (int, float)) or not isinstance(st.get("radio_rete"), list):
+                continue
+            for x in st["radio_rete"]:
+                x = _d(x)
+                chiave = x.get("id")
+                if (not isinstance(chiave, str) or not re.fullmatch(r"![0-9a-f]{8}", chiave) or chiave in nodi
+                        or x.get("fisso") is not True or x.get("ruolo") in cls.RUOLI_MUTI):
+                    continue
+                volte = [v for v in (x.get("ultimo"), x.get("ultimo_ripetuto"))
+                         if isinstance(v, (int, float)) and not isinstance(v, bool)]
+                if not volte:
+                    continue
+                tace = max(0.0, adesso - max(volte))
+                r = out.setdefault(chiave, {"nome": "", "tace": tace, "batteria": None, "eta_batteria": None,
+                                            "gateway": nome})
+                if tace <= r["tace"]:
+                    r["tace"], r["gateway"] = tace, nome
+                titolo = re.sub(r"[^\w .,()'+-]", "", str(x.get("nome") or ""))[:40].strip()
+                if titolo:
+                    r["nome"] = titolo
+                b, m = x.get("batteria"), x.get("metriche")
+                if (isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 101 and isinstance(m, (int, float))
+                        and (r["eta_batteria"] is None or adesso - m < r["eta_batteria"])):
+                    r["batteria"], r["eta_batteria"] = b, max(0.0, adesso - m)
+        return out
+
+    def _valuta_ripetitori(self, stati: Dict[str, Optional[dict]], ora: float) -> None:
+        """Ripetitore che tace da 12 ore e batteria al 20% o meno, dopo i soliti 10 minuti; e quando passa. Se un
+        gateway non risponde non si sa chi sente: tutto resta com'era. Un ripetitore sparito dagli elenchi (gateway
+        ripartito, radio tolta) esce senza dire "di nuovo attivo"."""
+        if not stati or any(st is None for st in stati.values()):
+            return
+        noti = self.s["ripetitori"]
+        visti = self.ripetitori_di(stati)
+        for chiave in [c for c in noti if c not in visti]:
+            del noti[chiave]
+            self.s["coda"] = [m for m in self.s["coda"] if not (m.get("ponte") == "" and m.get("id") == chiave)]
+        for chiave, r in visti.items():
+            p = noti.setdefault(chiave, {"problemi": {}})
+            problemi = p["problemi"]
+            nome = r["nome"] or p.get("nome") or chiave
+            p["nome"] = nome
+            attuali = {}
+            if r["tace"] >= self.RIPETITORE_SILENZIO_S:
+                attuali["rip_silenzio"] = {"tace_dal": ora - r["tace"]}
+            b = r["batteria"]
+            recente = r["eta_batteria"] is not None and r["eta_batteria"] < self.RIPETITORE_METRICHE_S
+            if b is not None and b <= 100 and recente and (
+                    b <= self.RIPETITORE_BATTERIA or ("rip_batteria" in problemi and b <= self.RIPETITORE_BATTERIA_OK)):
+                attuali["rip_batteria"] = {"batteria": b}
+            elif "rip_batteria" in problemi and not recente:
+                attuali["rip_batteria"] = {}             # non si sa: resta com'era
+            for codice, dati in attuali.items():
+                q = problemi.get(codice)
+                if q is None:
+                    q = problemi[codice] = {"dal": ora, "avvisato": False}
+                if not q["avvisato"] and dati and ora - q["dal"] >= self.ATTESA_S:
+                    q["avvisato"] = True
+                    self._accoda("", codice, "nuovo", ora, dal=q["dal"], id=chiave, titolo=nome, gateway=r["gateway"],
+                                 **dati)
+            for codice in [c for c in problemi if c not in attuali]:
+                q = problemi.pop(codice)
+                if q.get("avvisato"):
+                    prima = len(self.s["coda"])
+                    self.s["coda"] = [m for m in self.s["coda"] if not (
+                        m.get("ponte") == "" and m.get("id") == chiave and m.get("codice") == codice
+                        and m.get("tipo") == "nuovo")]
+                    if len(self.s["coda"]) == prima:
+                        self._accoda("", codice, "risolto", ora, dal=q["dal"], id=chiave, titolo=nome,
+                                     gateway=r["gateway"], batteria=b)
 
     def _accoda(self, nome: str, codice: str, tipo: str, ora: float, **dati) -> None:
         self.s["coda"].append(dict(dati, ponte=nome, codice=codice, tipo=tipo, quando=ora))
@@ -2762,74 +2867,97 @@ class Sorveglianza:
         dal = m.get("dal") if isinstance(m.get("dal"), (int, float)) else m.get("quando", ora)
         q = m.get("quando", ora)
         per = durata_it(q - dal)
+        if codice in ("rip_silenzio", "rip_batteria"):
+            chi = re.sub(r"[^\w .,()'+!-]", "", str(m.get("titolo") or m.get("id") or "?"))[:40]
+            if codice == "rip_silenzio":
+                if tipo == "nuovo":
+                    tace = m.get("tace_dal") if isinstance(m.get("tace_dal"), (int, float)) else dal
+                    return (f"Ripetitore {chi}: non si sente piu'",
+                            f"Nessun gateway sente il ripetitore {chi} dalle {quando_it(tace, ora)} (da "
+                            f"{durata_it(q - tace)}). Puo' essere spento, con la batteria scarica o con l'antenna "
+                            "fuori posto: le radio che passavano da lui non arrivano piu' alla rete.\n"
+                            "Cosa fare: guarda la sua scheda nella pagina della rete (ultima batteria nota e "
+                            "andamento); se non torna da solo con il sole, va controllato sul posto.")
+                return (f"Ripetitore {chi}: si sente di nuovo",
+                        f"Il ripetitore {chi} si sente di nuovo (il problema era stato segnalato alle "
+                        f"{quando_it(dal, ora)}).")
+            b = m.get("batteria") if isinstance(m.get("batteria"), int) else None
+            if tipo == "nuovo":
+                return (f"Ripetitore {chi}: batteria al {b}%" if b is not None else f"Ripetitore {chi}: batteria bassa",
+                        f"La batteria del ripetitore {chi} e' al {b if b is not None else '?'}%. Sotto il 20% puo' "
+                        "spegnersi in poche ore, soprattutto di notte o con il pannello coperto.\n"
+                        "Cosa fare: guarda l'andamento nella scheda Storico della pagina della rete; se non risale "
+                        "con il sole, controlla pannello e batteria sul posto.")
+            return (f"Ripetitore {chi}: batteria risalita" + (f" al {b}%" if b is not None else ""),
+                    f"La batteria del ripetitore {chi} e' risalita" + (f" al {b}%." if b is not None else "."))
         if codice == "irraggiungibile":
             if tipo == "nuovo":
-                return (f"Ponte {n}: non risponde",
-                        f"Il ponte {n} non risponde dalle {quando_it(dal, ora)} (da {per}). Il Raspberry puo' essere "
+                return (f"Gateway {n}: non risponde",
+                        f"Il gateway {n} non risponde dalle {quando_it(dal, ora)} (da {per}). Il Raspberry puo' essere "
                         "spento o bloccato, senza corrente o senza internet.\n"
                         "Cosa fare: guarda la pagina della rete. Se resta cosi', vai al Raspberry e stacca e riattacca "
                         "la corrente.")
             extra = (f" Il Raspberry si e' riavviato alle {quando_it(m['riavvio'], ora)}."
                      if isinstance(m.get("riavvio"), (int, float)) else "")
-            return (f"Ponte {n}: di nuovo in linea",
-                    f"Il ponte {n} risponde di nuovo: non rispondeva dalle {quando_it(dal, ora)}, per {per}.{extra}")
+            return (f"Gateway {n}: di nuovo in linea",
+                    f"Il gateway {n} risponde di nuovo: non rispondeva dalle {quando_it(dal, ora)}, per {per}.{extra}")
         if codice == "radio":
             if tipo == "nuovo":
-                return (f"Ponte {n}: radio non collegata",
-                        f"Dalle {quando_it(dal, ora)} il ponte {n} non parla con la sua radio: le radio della squadra "
-                        "sentite da li' non arrivano sulla mappa. Il ponte riprova da solo.\n"
+                return (f"Gateway {n}: radio non collegata",
+                        f"Dalle {quando_it(dal, ora)} il gateway {n} non parla con la sua radio: le radio della squadra "
+                        "sentite da li' non arrivano sulla mappa. Il gateway riprova da solo.\n"
                         "Cosa fare: se dura, riavvia il Raspberry (stacca e riattacca la corrente); con la radio USB "
                         "controlla il cavo.")
-            return (f"Ponte {n}: radio di nuovo collegata",
-                    f"Il ponte {n} parla di nuovo con la sua radio (era staccata dalle {quando_it(dal, ora)}, per {per}).")
+            return (f"Gateway {n}: radio di nuovo collegata",
+                    f"Il gateway {n} parla di nuovo con la sua radio (era staccata dalle {quando_it(dal, ora)}, per {per}).")
         if codice == "tak":
             if tipo == "nuovo":
                 errore = f" (ultimo errore: {m['testo']})" if m.get("testo") else ""
-                return (f"Ponte {n}: non arriva al TAK Server",
-                        f"Dalle {quando_it(dal, ora)} il ponte {n} non e' collegato al TAK Server{errore}. Il ponte "
+                return (f"Gateway {n}: non arriva al TAK Server",
+                        f"Dalle {quando_it(dal, ora)} il gateway {n} non e' collegato al TAK Server{errore}. Il gateway "
                         "riprova da solo.\n"
-                        "Cosa fare: se il certificato del ponte e' scaduto o e' stato revocato serve un certificato "
+                        "Cosa fare: se il certificato del gateway e' scaduto o e' stato revocato serve un certificato "
                         "nuovo; altrimenti di solito e' internet di casa o il server.")
-            return (f"Ponte {n}: di nuovo collegato al TAK Server",
-                    f"Il ponte {n} e' di nuovo collegato al TAK Server (non lo era dalle {quando_it(dal, ora)}, per {per}).")
+            return (f"Gateway {n}: di nuovo collegato al TAK Server",
+                    f"Il gateway {n} e' di nuovo collegato al TAK Server (non lo era dalle {quando_it(dal, ora)}, per {per}).")
         if codice == "spazio":
             if tipo == "nuovo":
-                return (f"Ponte {n}: microSD quasi piena",
-                        f"Sul Raspberry del ponte {n} restano {m.get('testo') or 'pochi'} MB liberi: con la microSD "
-                        "piena il ponte si ferma.\n"
+                return (f"Gateway {n}: microSD quasi piena",
+                        f"Sul Raspberry del gateway {n} restano {m.get('testo') or 'pochi'} MB liberi: con la microSD "
+                        "piena il gateway si ferma.\n"
                         "Cosa fare: sul Raspberry  sudo apt clean  e  sudo journalctl --vacuum-size=100M; se non "
                         "basta, guarda la guida.")
-            return (f"Ponte {n}: spazio di nuovo sufficiente", f"Sulla microSD del ponte {n} c'e' di nuovo spazio.")
+            return (f"Gateway {n}: spazio di nuovo sufficiente", f"Sulla microSD del gateway {n} c'e' di nuovo spazio.")
         if codice == "riavvio":
             alle = (f" alle {quando_it(m['acceso_dal'], ora)}" if isinstance(m.get("acceso_dal"), (int, float))
                     else "")
-            return (f"Ponte {n}: il Raspberry si e' riavviato",
-                    f"Il Raspberry del ponte {n} si e' riavviato{alle}. Se non e' stato un aggiornamento o qualcuno di "
+            return (f"Gateway {n}: il Raspberry si e' riavviato",
+                    f"Il Raspberry del gateway {n} si e' riavviato{alle}. Se non e' stato un aggiornamento o qualcuno di "
                     "voi, si era bloccato ed e' ripartito da solo: se succede spesso, controlla alimentatore e "
                     "microSD.")
         if codice == "certificato":
             scade = m.get("scade") or 0
             chi = f" {m['nome_cert']}" if m.get("nome_cert") else ""
-            rinnovo = ("Cosa fare: nella console infra-TAK crea un certificato nuovo per il ponte (TAK Server, "
+            rinnovo = ("Cosa fare: nella console infra-TAK crea un certificato nuovo per il gateway (TAK Server, "
                        "Create Client Certificate, lettura e scrittura BOTH sul canale della squadra, Integration "
                        "package), copialo sul Raspberry e lancia:  sudo bash installa-ponte-meshtastic.sh "
                        "NOMEFILE.zip")
             if scade <= q:
-                return (f"Ponte {n}: il certificato TAK e' scaduto",
-                        f"Il certificato{chi} del ponte {n} e' scaduto il {giorno_it(scade)}: il TAK Server non lo "
+                return (f"Gateway {n}: il certificato TAK e' scaduto",
+                        f"Il certificato{chi} del gateway {n} e' scaduto il {giorno_it(scade)}: il TAK Server non lo "
                         f"accetta piu'.\n{rinnovo}")
             giorni = max(1, int((scade - q) // 86400))
-            return (f"Ponte {n}: il certificato TAK scade il {giorno_it(scade)}",
-                    f"Il certificato{chi} del ponte {n} scade il {giorno_it(scade)}, tra {giorni} "
-                    f"giorn{'o' if giorni == 1 else 'i'}. Dopo, il ponte non entra piu' nel TAK Server.\n{rinnovo}")
+            return (f"Gateway {n}: il certificato TAK scade il {giorno_it(scade)}",
+                    f"Il certificato{chi} del gateway {n} scade il {giorno_it(scade)}, tra {giorni} "
+                    f"giorn{'o' if giorni == 1 else 'i'}. Dopo, il gateway non entra piu' nel TAK Server.\n{rinnovo}")
         if codice == "corrente":
-            volte = f"; {m['volte']} da quando il ponte e' acceso" if isinstance(m.get("volte"), int) else ""
+            volte = f"; {m['volte']} da quando il gateway e' acceso" if isinstance(m.get("volte"), int) else ""
             ultima = m.get("ultima") if isinstance(m.get("ultima"), (int, float)) else q
-            return (f"Ponte {n}: corrente insufficiente",
-                    f"Il Raspberry del ponte {n} ha avuto cali di corrente (l'ultimo alle {quando_it(ultima, ora)}"
+            return (f"Gateway {n}: corrente insufficiente",
+                    f"Il Raspberry del gateway {n} ha avuto cali di corrente (l'ultimo alle {quando_it(ultima, ora)}"
                     f"{volte}). Se la corrente non basta il Raspberry si puo' bloccare o rovinare la microSD.\n"
                     "Cosa fare: usa l'alimentatore ufficiale da 5,1 V e 2,5 A, con un cavo corto.")
-        return (f"Ponte {n}: avviso", "")
+        return (f"Gateway {n}: avviso", "")
 
     @staticmethod
     def invia(porta: int, oggetto: str, testo: str) -> Tuple[str, str]:
@@ -3280,11 +3408,11 @@ class Servizio:
         risposta = self.manda_icone(porta, corpo.encode("utf-8"))
         if isinstance(risposta, dict) and risposta.get("versione") == versione:
             self.icone_ponti[nome] = versione
-            print(f"icone: il ponte {nome} usa quelle scelte ({len(mappa)} radio)", flush=True)
+            print(f"icone: il gateway {nome} usa quelle scelte ({len(mappa)} radio)", flush=True)
         else:
             self.icone_ponti[nome] = str(ic.get("versione") or "")
             errore = risposta.get("errore") if isinstance(risposta, dict) else "nessuna risposta"
-            print(f"icone: il ponte {nome} non le ha prese ({errore})", flush=True)
+            print(f"icone: il gateway {nome} non le ha prese ({errore})", flush=True)
 
     def vista_icone(self, ponti) -> dict:
         scelte = self.scelte_icone()
@@ -3298,12 +3426,12 @@ class Servizio:
     # ---- Gestisci il Raspberry (dalla 1.13.0): il comando va nella registrazione del ponte, lo fa il Raspberry ----
 
     MESSAGGI_PONTE = {
-        "riavvia-programma": "Chiedo al ponte di riavviare il programma.",
-        "riavvia-radio": "Chiedo al ponte di riavviare la radio.",
-        "riavvia-raspberry": "Chiedo al ponte di riavviare il Raspberry: torna in linea in 2-3 minuti.",
-        "registro": "Chiedo al ponte il registro.",
-        "impostazioni": "Mando al ponte le impostazioni nuove.",
-        "reimposta-radio": "Chiedo al ponte di rimettere la radio come all'installazione.",
+        "riavvia-programma": "Chiedo al gateway di riavviare il programma.",
+        "riavvia-radio": "Chiedo al gateway di riavviare la radio.",
+        "riavvia-raspberry": "Chiedo al gateway di riavviare il Raspberry: torna in linea in 2-3 minuti.",
+        "registro": "Chiedo al gateway il registro.",
+        "impostazioni": "Mando al gateway le impostazioni nuove.",
+        "reimposta-radio": "Chiedo al gateway di rimettere la radio come all'installazione.",
     }
 
     def _ponte_occupato(self, nome: str) -> bool:
@@ -3313,7 +3441,7 @@ class Servizio:
     def gestisci_ponte(self, dati: dict, utente: str) -> Tuple[int, dict]:
         nome, cosa = str(dati.get("nome") or ""), str(dati.get("azione") or "")
         if not RE_NOME.match(nome) or nome not in self.ponti():
-            return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+            return 404, {"errore": "gateway non trovato: ricarica la pagina"}
         if cosa not in AZIONI_PONTE:
             return 400, {"errore": "comando sconosciuto: ricarica la pagina"}
         valori = None
@@ -3324,24 +3452,24 @@ class Servizio:
                 return 400, {"errore": str(e)}
         with self.lock:
             if self._ponte_occupato(nome):
-                return 409, {"errore": "sto gia' passando un comando a questo ponte: aspetta qualche secondo"}
+                return 409, {"errore": "sto gia' passando un comando a questo gateway: aspetta qualche secondo"}
             lavoro = self.accoda("azione-ponte", nome, utente, cosa=cosa, valori=valori)
         return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": self.MESSAGGI_PONTE[cosa]}
 
     def certificato_ponte(self, dati: dict, utente: str) -> Tuple[int, dict]:
         nome = str(dati.get("nome") or "")
         if not RE_NOME.match(nome) or nome not in self.ponti():
-            return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+            return 404, {"errore": "gateway non trovato: ricarica la pagina"}
         try:
             impostazioni = controlla_certificato_ponte(dati)
         except Errore as e:
             return 400, {"errore": str(e)}
         with self.lock:
             if self._ponte_occupato(nome):
-                return 409, {"errore": "sto gia' passando un comando a questo ponte: aspetta qualche secondo"}
+                return 409, {"errore": "sto gia' passando un comando a questo gateway: aspetta qualche secondo"}
             lavoro = self.accoda("certificato-ponte", nome, utente, impostazioni=impostazioni)
         return 202, {"esito": "in_corso", "lavoro": lavoro,
-                     "messaggio": "Controllo il certificato e lo passo al ponte, che lo installa da solo."}
+                     "messaggio": "Controllo il certificato e lo passo al gateway, che lo installa da solo."}
 
     def _salva_installazione(self, nome: str, installa: dict, utente: str) -> None:
         self._scrivi_json(P(f"{INSTALLAZIONI_DIR}/{nome}.json"), dict(installa, da=utente, quando=int(time.time())))
@@ -3354,18 +3482,18 @@ class Servizio:
             return 400, {"errore": str(e)}
         scheda = str(dati.get("scheda") or "")
         if scheda not in SCHEDE:
-            return 400, {"errore": "scegli la radio del ponte"}
+            return 400, {"errore": "scegli la radio del gateway"}
         if not self.riassunto_nuovi().get("pronto"):
-            return 409, {"errore": "prima carica certificato e canale per i ponti nuovi"}
+            return 409, {"errore": "prima carica certificato e canale per i gateway nuovi"}
         rete = self.pagina_rete()
         if not rete:
             return 503, {"errore": "manca l'indirizzo della pagina: sul server  sudo bash rete-meshtastic.sh installa"}
         if nome in self.ponti():
-            return 409, {"errore": f"il nome '{nome}' e' gia' di un ponte della rete: scegline un altro"}
+            return 409, {"errore": f"il nome '{nome}' e' gia' di un gateway della rete: scegline un altro"}
         with self.lock:
             aperti = [i for i in self.inviti() if i.get("stato") == "attesa"]
             if any(i.get("nome") == nome for i in aperti):
-                return 409, {"errore": f"c'e' gia' un invito per il ponte '{nome}': usa quello, o annullalo"}
+                return 409, {"errore": f"c'e' gia' un invito per il gateway '{nome}': usa quello, o annullalo"}
             if len(aperti) >= self.INVITI_MAX:
                 return 429, {"errore": "troppi inviti aperti: annulla quelli che non servono"}
             # una chiave pubblica SSH a caso, di cui nessuno ha la chiave privata: Raspberry Pi Imager la scrive sul
@@ -3376,7 +3504,7 @@ class Servizio:
                    "riga": f"ssh-ed25519 {base64.b64encode(blob).decode()} mesh2tak-invito {rete}",
                    "creato": int(time.time()), "da": utente, "stato": "attesa"}
             self._scrivi_json(P(f"{INVITI_DIR}/{inv['id']}.json"), inv)
-        print(f"invito per il ponte nuovo '{nome}' preparato da {utente}", flush=True)
+        print(f"invito per il gateway nuovo '{nome}' preparato da {utente}", flush=True)
         return 200, {"esito": "ok", "invito": self.vista_invito(inv)}
 
     @staticmethod
@@ -3474,14 +3602,14 @@ class Servizio:
                 installa = {"scheda": invito["scheda"], "posizione": invito.get("posizione") or ""}
                 r.update(nome=nome, invito=invito["id"], installa=installa)
                 if nome in self.ponti():
-                    r["errore"] = (f"nel frattempo c'e' un altro ponte '{nome}': toglilo dalla rete o rifiuta "
+                    r["errore"] = (f"nel frattempo c'e' un altro gateway '{nome}': toglilo dalla rete o rifiuta "
                                    "questa richiesta")
                 else:
                     lavoro = self.accoda("aggiungi", nome, invito["da"], chiave, impronta, installa=installa)
                     r.update(stato="in_corso", lavoro=lavoro, approvata=int(ora), da=invito["da"], errore=None,
                              dettagli=None)
                     self._salva_installazione(nome, installa, invito["da"])
-                    print(f"il Raspberry {macchina} ({ip}) ha la chiave d'invito del ponte nuovo '{nome}': lo "
+                    print(f"il Raspberry {macchina} ({ip}) ha la chiave d'invito del gateway nuovo '{nome}': lo "
                           "aggiungo", flush=True)
                 invito.update(stato="usato", usato=int(ora), richiesta=impronta)
                 self._scrivi_json(P(f"{INVITI_DIR}/{invito['id']}.json"), invito)
@@ -3490,8 +3618,8 @@ class Servizio:
             return 202, {"esito": "in_attesa", "controllo": controllo, "in_corso": True}
         sostituisce = nome in self.ponti()
         if not vecchia:
-            print(f"richiesta del ponte '{nome}' da {macchina} ({ip}), codice di controllo {controllo}"
-                  + (" (c'e' gia' un ponte con questo nome)" if sostituisce else "")
+            print(f"richiesta del gateway '{nome}' da {macchina} ({ip}), codice di controllo {controllo}"
+                  + (" (c'e' gia' un gateway con questo nome)" if sostituisce else "")
                   + (" (Raspberry nuovo, senza una chiave d'invito valida)" if nuovo is not None else ""), flush=True)
         return 202, {"esito": "in_attesa", "controllo": controllo, "sostituisce": sostituisce}
 
@@ -3541,10 +3669,10 @@ class Servizio:
             if not r.get("nuovo"):
                 return 400, {"errore": "questo Raspberry e' stato installato a mano: approvalo senza installazione"}
             if not self.riassunto_nuovi().get("pronto"):
-                return 409, {"errore": "prima carica certificato e canale per i ponti nuovi"}
+                return 409, {"errore": "prima carica certificato e canale per i gateway nuovi"}
         sostituisci = r["nome"] in self.ponti()
         if sostituisci and not sostituisci_ok:
-            return 409, {"errore": f"c'e' gia' un ponte '{r['nome']}' nella rete: ricarica la pagina e scegli "
+            return 409, {"errore": f"c'e' gia' un gateway '{r['nome']}' nella rete: ricarica la pagina e scegli "
                                    "'Sostituisci' se questo Raspberry deve prenderne il posto"}
         lavoro = self.accoda("aggiungi", r["nome"], utente, r["chiave"], r["id"], sostituisci=sostituisci,
                              installa=installa)
@@ -3554,7 +3682,7 @@ class Servizio:
             self._salva_installazione(r["nome"], installa, utente)
         r.pop("fermo", None)
         self._scrivi_json(f, r)
-        return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": f"Sto aggiungendo il ponte {r['nome']}." +
+        return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": f"Sto aggiungendo il gateway {r['nome']}." +
                      (" Poi il Raspberry si installa da solo: qui vedi a che punto e'." if installa else "")}
 
     def azione(self, percorso: str, dati, utente: str) -> Tuple[int, dict]:
@@ -3590,11 +3718,11 @@ class Servizio:
                     return 409, {"errore": f"prima aggiorna il server alla {versione}"}
                 nome = str(dati.get("nome") or "tutti")
                 if nome != "tutti" and nome not in self.ponti():
-                    return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+                    return 404, {"errore": "gateway non trovato: ricarica la pagina"}
                 reimposta = dati.get("reimposta") is True     # dalla 1.13.0: anche la radio come all'installazione
                 return 202, {"esito": "in_corso", "lavoro": self.accoda("aggiorna-ponti", nome, utente,
                                                                         versione=versione, reimposta=reimposta),
-                             "messaggio": f"Chiedo ai ponti di aggiornarsi alla {versione}"
+                             "messaggio": f"Chiedo ai gateway di aggiornarsi alla {versione}"
                                           + (" e di rimettere la radio come all'installazione" if reimposta else "")
                                           + ": lo fanno da soli entro qualche minuto."}
         if percorso == "/api/gestisci-ponte":
@@ -3616,7 +3744,7 @@ class Servizio:
                     return 409, {"errore": "sto gia' salvando le impostazioni: aspetta un momento"}
                 lavoro = self.accoda("impostazioni-nuovi", "ponti-nuovi", utente, impostazioni=impostazioni)
             return 202, {"esito": "in_corso", "lavoro": lavoro,
-                         "messaggio": "Controllo e salvo certificato e canale per i ponti nuovi."}
+                         "messaggio": "Controllo e salvo certificato e canale per i gateway nuovi."}
         with self.lock:
             if percorso == "/api/annulla-invito":
                 iid = str(dati.get("id", ""))
@@ -3625,20 +3753,20 @@ class Servizio:
                 if not inv or inv.get("stato") != "attesa":
                     return 404, {"errore": "invito non trovato (gia' usato o scaduto?): ricarica la pagina"}
                 togli(f)
-                print(f"invito del ponte '{inv.get('nome')}' annullato da {utente}", flush=True)
+                print(f"invito del gateway '{inv.get('nome')}' annullato da {utente}", flush=True)
                 return 200, {"esito": "annullato", "messaggio": f"Invito per {inv.get('nome')} annullato: quella "
                                                                 "chiave non vale piu'."}
             if percorso == "/api/riprova-installazione":
                 nome = str(dati.get("nome", ""))
                 if not RE_NOME.match(nome) or nome not in self.ponti():
-                    return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+                    return 404, {"errore": "gateway non trovato: ricarica la pagina"}
                 av = self.avanzamento(nome)
                 if not av or av["fase"] == "fatto":
-                    return 409, {"errore": f"il ponte {nome} non sta installando: niente da riprovare"}
+                    return 409, {"errore": f"il gateway {nome} non sta installando: niente da riprovare"}
                 installa = {}
                 if dati.get("scheda"):
                     if dati["scheda"] not in SCHEDE:
-                        return 400, {"errore": "radio del ponte non prevista"}
+                        return 400, {"errore": "radio del gateway non prevista"}
                     installa["scheda"] = dati["scheda"]
                 if "posizione" in dati:
                     try:
@@ -3669,7 +3797,7 @@ class Servizio:
                 if percorso == "/api/rifiuta":
                     r.update(stato="rifiutata", motivo="rifiutata", ultima=int(time.time()), da=utente)
                     self._scrivi_json(f, r)
-                    print(f"richiesta del ponte '{r.get('nome')}' rifiutata da {utente}", flush=True)
+                    print(f"richiesta del gateway '{r.get('nome')}' rifiutata da {utente}", flush=True)
                     return 200, {"esito": "rifiutata", "messaggio": f"Rifiutata: il Raspberry {r.get('nome')} non "
                                                                     "rientra da solo."}
                 installa = None
@@ -3683,7 +3811,7 @@ class Servizio:
                     except Errore as e:
                         return 400, {"errore": str(e)}
                     if installa["scheda"] not in SCHEDE:
-                        return 400, {"errore": "scegli la radio del ponte"}
+                        return 400, {"errore": "scegli la radio del gateway"}
                     r["nome"] = nome
                 return self._approva(f, r, utente, dati.get("sostituisci") is True, installa)
             if percorso == "/api/aggiungi":
@@ -3693,15 +3821,15 @@ class Servizio:
                 except Errore as e:
                     return 400, {"errore": str(e)}
                 if nome in self.ponti():
-                    return 409, {"errore": f"il nome '{nome}' e' gia' di un ponte della rete"}
+                    return 409, {"errore": f"il nome '{nome}' e' gia' di un gateway della rete"}
                 if self.registrato(impronta):
-                    return 409, {"errore": "questa chiave e' gia' di un ponte della rete"}
+                    return 409, {"errore": "questa chiave e' gia' di un gateway della rete"}
                 togli(P(f"{RICHIESTE_DIR}/{impronta}.json"))   # aggiunto a mano: vale piu' di un rifiuto
                 return 202, {"esito": "in_corso", "lavoro": self.accoda("aggiungi", nome, utente, chiave)}
             if percorso == "/api/rimuovi":
                 nome = str(dati.get("nome", ""))
                 if not RE_NOME.match(nome) or nome not in self.ponti():
-                    return 404, {"errore": "ponte non trovato: ricarica la pagina"}
+                    return 404, {"errore": "gateway non trovato: ricarica la pagina"}
                 lavoro = self.accoda("rimuovi", nome, utente)
                 togli(P(f"{INSTALLAZIONI_DIR}/{nome}.json"))
                 impronta, chiave = self.registrazione_di(nome)
@@ -3712,7 +3840,7 @@ class Servizio:
                         "id": impronta, "nome": nome, "chiave": chiave, "controllo": codice_controllo(impronta),
                         "stato": "rifiutata", "motivo": "tolto", "da": utente, "arrivata": ora, "ultima": ora,
                         "macchina": "", "ip": "", "versione": ""})
-                return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": f"Sto togliendo il ponte {nome}."}
+                return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": f"Sto togliendo il gateway {nome}."}
         return 404, {"errore": "azione sconosciuta"}
 
 
@@ -3817,14 +3945,14 @@ def main(argv=None) -> int:
     s = sotto.add_parser("installa", help="una volta sola: pagina della rete e tutto quello che serve")
     s.add_argument("--ignora-dns", action="store_true", help="vai avanti anche se il DNS non e' ancora giusto")
     s.set_defaults(fn=cmd_installa)
-    s = sotto.add_parser("aggiungi", help="registra o aggiorna un ponte a mano")
-    s.add_argument("nome", help="nome del ponte, es. casa")
+    s = sotto.add_parser("aggiungi", help="registra o aggiorna un gateway a mano")
+    s.add_argument("nome", help="nome del gateway, es. casa")
     s.add_argument("chiave", help="chiave pubblica del Raspberry ('ssh-ed25519 AAAA...'), tra apici")
     s.add_argument("--ignora-dns", action="store_true", help="vai avanti anche se il DNS non e' ancora giusto")
     s.set_defaults(fn=cmd_aggiungi)
-    s = sotto.add_parser("elenco", help="ponti registrati e tunnel collegati")
+    s = sotto.add_parser("elenco", help="gateway registrati e tunnel collegati")
     s.set_defaults(fn=cmd_elenco)
-    s = sotto.add_parser("rimuovi", help="toglie un ponte")
+    s = sotto.add_parser("rimuovi", help="toglie un gateway")
     s.add_argument("nome")
     s.add_argument("--si", action="store_true", help="senza chiedere conferma")
     s.set_defaults(fn=cmd_rimuovi)
@@ -3838,7 +3966,7 @@ def main(argv=None) -> int:
     s.set_defaults(fn=cmd_servi)
     s = sotto.add_parser("lavora", help="(lo usa il servizio dei lavori, non lanciarlo a mano)")
     s.set_defaults(fn=cmd_lavora)
-    s = sotto.add_parser("ponte", help="(lo lancia sshd per i Raspberry dei ponti, non lanciarlo a mano)")
+    s = sotto.add_parser("ponte", help="(lo lancia sshd per i Raspberry dei gateway, non lanciarlo a mano)")
     s.set_defaults(fn=cmd_ponte)
     a = ap.parse_args(argv)
     if not getattr(a, "fn", None):
