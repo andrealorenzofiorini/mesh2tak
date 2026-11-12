@@ -5,3 +5,6 @@ dist/
 node_modules/
 package-lock.json
 package.json
+server/pagina/index.html
+mesh2tak.py
+server/rete_meshtastic.py

@@ -2,7 +2,9 @@
 """Genera i file da consegnare:
   dist/installa-ponte-meshtastic.sh   (Raspberry: incorpora mesh2tak.py, scorta.py e aggiorna.py)
   dist/rete-meshtastic.sh             (server infra-TAK: incorpora server/rete_meshtastic.py e la pagina)
-  dist/mesh2tak-primo-avvio.py        (va nell'immagine per Raspberry Pi Imager: immagine/costruisci.py)"""
+  dist/mesh2tak-primo-avvio.py        (va nell'immagine per Raspberry Pi Imager: immagine/costruisci.py)
+e prima monta dai loro pezzi mesh2tak.py (sorgenti/gateway), server/rete_meshtastic.py (server/sorgenti) e
+server/pagina/index.html (server/pagina/sorgenti)."""
 import base64, hashlib, os, re
 QUI = os.path.dirname(os.path.abspath(__file__))
 
@@ -19,6 +21,32 @@ def salva(nome, testo):
     print(dest, len(testo), "byte, sha256", hashlib.sha256(testo.encode()).hexdigest()[:16])
 
 
+def monta_pagina():
+    """La pagina della rete e' scritta a pezzi (server/pagina/sorgenti: pagina.html, stile.css e js/NN-*.js in ordine)
+    e qui diventa il solo file che il server pubblica, server/pagina/index.html (non sta nel repository)."""
+    d = os.path.join(QUI, "server", "pagina", "sorgenti")
+    pezzo = lambda *p: open(os.path.join(d, *p), encoding="utf-8").read()
+    script = "".join(pezzo("js", n) for n in sorted(os.listdir(os.path.join(d, "js"))) if n.endswith(".js"))
+    pagina = pezzo("pagina.html")
+    assert pagina.count("/*@@STILE@@*/\n") == 1 and pagina.count("//@@SCRIPT@@\n") == 1
+    pagina = pagina.replace("/*@@STILE@@*/\n", pezzo("stile.css")).replace("//@@SCRIPT@@\n", script)
+    dest = os.path.join(QUI, "server", "pagina", "index.html")
+    open(dest, "w", encoding="utf-8", newline="\n").write(pagina)
+    print(dest, len(pagina), "byte, sha256", hashlib.sha256(pagina.encode()).hexdigest()[:16])
+
+
+def monta_python(cartella, *dest):
+    """I due programmi grandi sono scritti a pezzi (NN-nome.py, in ordine, uno per argomento): incollati uno dopo
+    l'altro danno il file solo che si installa. Non sono moduli: un pezzo da solo non si importa."""
+    d = os.path.join(QUI, *cartella)
+    testo = "".join(open(os.path.join(d, n), encoding="utf-8").read() for n in sorted(os.listdir(d)) if n.endswith(".py"))
+    open(os.path.join(QUI, *dest), "w", encoding="utf-8", newline="\n").write(testo)
+    print(os.path.join(QUI, *dest), len(testo), "byte, sha256", hashlib.sha256(testo.encode()).hexdigest()[:16])
+
+
+monta_pagina()
+monta_python(("sorgenti", "gateway"), "mesh2tak.py")
+monta_python(("server", "sorgenti"), "server", "rete_meshtastic.py")
 py = leggi("mesh2tak.py")
 versione = re.search(r'^VERSIONE = "([^"]+)"', py, re.M).group(1)
 scorta = leggi("scorta.py").replace("@@VERSIONE@@", versione)

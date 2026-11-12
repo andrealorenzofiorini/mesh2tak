@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Rete Meshtastic</title>
+<link rel="icon" href="icona.svg" type="image/svg+xml">
+<style>
+/*@@STILE@@*/
+</style>
+</head>
+<body>
+<header class="testata">
+  <svg viewBox="0 0 1200 240" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+    <path d="M1015 150 L1014 154 L1013 157 L1011 161 L1008 164 L1004 167 L1000 170 L995 173 L989 175 L983 176 L976 177 L969 178 L963 178 L957 179 L951 179 L946 179 L941 180 L935 181 L930 182 L924 184 L918 185 L911 186 L903 186 L896 186 L889 186 L882 184 L876 182 L870 180 L866 177 L862 174 L858 171 L855 167 L853 164 L851 161 L850 157 L849 154 L849 150 L851 147 L853 143 L856 140 L859 137 L863 134 L867 132 L872 130 L876 127 L880 125 L884 123 L888 120 L893 118 L898 116 L904 114 L910 113 L917 113 L923 113 L930 113 L936 114 L942 115 L948 117 L953 118 L959 119 L964 120 L970 121 L976 122 L983 124 L989 125 L995 127 L1001 130 L1006 132 L1010 136 L1012 139 L1014 143 L1015 146 L1015 150Z"/>
+    <path d="M1088 150 L1086 157 L1083 164 L1079 170 L1073 176 L1066 182 L1058 187 L1048 191 L1037 195 L1026 198 L1014 200 L1002 201 L990 202 L979 203 L969 204 L960 205 L950 207 L940 210 L930 212 L919 215 L906 218 L893 220 L879 220 L865 220 L851 218 L839 215 L828 211 L818 206 L809 201 L802 195 L796 189 L791 183 L786 176 L783 170 L781 163 L780 157 L781 150 L783 144 L787 137 L793 132 L800 126 L807 121 L814 117 L822 112 L829 108 L836 103 L844 99 L852 94 L861 90 L870 86 L881 83 L893 81 L905 80 L918 80 L930 81 L942 83 L953 85 L964 87 L974 89 L985 91 L996 93 L1007 95 L1019 97 L1031 99 L1044 102 L1055 106 L1065 111 L1074 116 L1081 123 L1085 129 L1088 136 L1089 143 L1088 150Z"/>
+    <path d="M1164 150 L1161 160 L1156 170 L1149 179 L1140 188 L1130 197 L1117 204 L1102 210 L1086 215 L1069 219 L1051 222 L1034 224 L1018 226 L1003 228 L988 230 L975 233 L961 237 L946 241 L930 246 L912 251 L893 255 L873 257 L851 258 L831 257 L811 253 L792 248 L776 242 L762 234 L750 226 L740 217 L731 208 L723 198 L717 189 L712 179 L709 169 L708 160 L710 150 L714 141 L720 132 L729 123 L738 115 L749 108 L759 101 L769 94 L780 87 L790 80 L801 73 L813 66 L826 60 L841 54 L857 50 L875 47 L893 46 L912 46 L930 48 L947 50 L964 53 L980 56 L996 59 L1013 61 L1030 64 L1048 66 L1066 69 L1085 73 L1103 77 L1120 83 L1135 91 L1147 99 L1156 109 L1162 119 L1165 129 L1166 140 L1164 150Z"/>
+    <path d="M1244 150 L1239 164 L1232 177 L1222 189 L1210 201 L1195 212 L1177 221 L1157 230 L1136 236 L1113 242 L1091 246 L1069 249 L1048 252 L1028 255 L1010 260 L992 265 L973 271 L952 278 L930 285 L905 292 L878 297 L850 300 L821 300 L793 297 L766 292 L742 284 L721 275 L702 264 L687 252 L673 240 L661 228 L651 215 L643 202 L637 189 L634 176 L633 163 L636 150 L642 137 L650 125 L661 114 L674 103 L687 93 L700 84 L713 74 L726 64 L739 55 L754 45 L770 35 L788 27 L808 20 L831 14 L855 11 L880 9 L905 10 L930 12 L954 15 L976 19 L999 22 L1021 25 L1044 28 L1068 30 L1093 33 L1119 37 L1145 42 L1170 49 L1192 58 L1212 69 L1227 81 L1238 94 L1245 108 L1248 122 L1247 136 L1244 150Z"/>
+    <path d="M1327 150 L1320 167 L1310 183 L1297 199 L1281 214 L1262 227 L1239 239 L1214 249 L1187 258 L1159 265 L1132 270 L1105 275 L1080 280 L1057 286 L1034 293 L1011 301 L987 310 L960 320 L930 330 L897 338 L861 344 L824 347 L787 346 L751 342 L718 334 L688 323 L662 310 L639 295 L620 280 L603 264 L589 249 L576 232 L566 216 L559 200 L555 183 L555 166 L558 150 L566 134 L577 119 L591 105 L606 91 L621 78 L637 65 L652 53 L668 40 L684 27 L702 14 L723 2 L746 -9 L773 -18 L803 -25 L834 -29 L867 -30 L899 -29 L930 -26 L960 -23 L990 -19 L1019 -16 L1048 -12 L1079 -10 L1111 -7 L1144 -3 L1178 2 L1212 9 L1243 19 L1271 31 L1294 45 L1312 61 L1324 78 L1331 96 L1334 114 L1332 132 L1327 150Z"/>
+    <path d="M1411 150 L1401 171 L1388 190 L1372 209 L1352 227 L1329 243 L1301 257 L1271 269 L1239 280 L1207 288 L1175 296 L1144 303 L1115 310 L1088 319 L1061 329 L1033 341 L1002 354 L968 368 L930 380 L888 390 L843 396 L797 398 L751 396 L708 388 L668 377 L632 363 L601 346 L575 328 L552 309 L532 289 L515 270 L500 250 L488 230 L479 210 L475 190 L475 170 L480 150 L489 131 L503 112 L518 95 L536 78 L553 62 L570 46 L588 30 L605 14 L625 -3 L647 -19 L673 -34 L703 -47 L736 -58 L773 -65 L812 -70 L852 -71 L892 -70 L930 -67 L967 -63 L1004 -59 L1040 -56 L1078 -53 L1117 -50 L1158 -47 L1200 -43 L1242 -36 L1283 -26 L1320 -14 L1353 2 L1380 20 L1399 41 L1412 62 L1419 84 L1420 107 L1417 129 L1411 150Z"/>
+    <path d="M1500 150 L1488 174 L1472 198 L1453 220 L1429 241 L1401 260 L1368 277 L1333 291 L1296 304 L1259 315 L1223 325 L1189 335 L1156 346 L1124 358 L1092 373 L1058 389 L1020 406 L978 423 L930 437 L878 449 L822 455 L766 456 L711 450 L660 440 L613 424 L572 406 L536 385 L506 362 L479 339 L455 316 L435 293 L417 270 L403 246 L393 222 L388 198 L389 174 L395 150 L406 127 L421 105 L439 84 L457 64 L477 44 L495 25 L515 5 L535 -16 L558 -36 L585 -56 L617 -74 L653 -90 L695 -102 L740 -110 L788 -115 L836 -116 L884 -115 L930 -112 L975 -108 L1020 -105 L1065 -102 L1112 -100 L1160 -97 L1211 -93 L1263 -88 L1314 -79 L1363 -66 L1407 -50 L1444 -30 L1473 -7 L1494 18 L1507 45 L1513 72 L1513 99 L1508 125 L1500 150Z"/>
+    <path d="M1594 150 L1580 178 L1561 206 L1538 231 L1510 256 L1478 278 L1441 297 L1401 315 L1359 330 L1318 344 L1278 357 L1240 371 L1203 387 L1167 404 L1129 424 L1088 445 L1042 466 L989 486 L930 503 L866 515 L799 520 L732 519 L668 510 L608 495 L555 475 L508 452 L467 426 L432 399 L401 372 L374 345 L350 318 L329 290 L312 262 L300 234 L295 206 L296 178 L303 150 L315 123 L332 97 L351 72 L371 48 L391 24 L411 0 L432 -24 L456 -49 L483 -74 L515 -97 L554 -119 L599 -137 L649 -151 L704 -160 L761 -165 L818 -167 L875 -165 L930 -162 L984 -159 L1038 -156 L1093 -154 L1150 -152 L1210 -150 L1271 -145 L1333 -138 L1394 -126 L1451 -110 L1501 -89 L1542 -64 L1574 -36 L1595 -5 L1608 27 L1613 59 L1611 90 L1605 120 L1594 150Z"/>
+    <path d="M1693 150 L1676 183 L1655 214 L1629 244 L1598 272 L1561 297 L1519 320 L1475 341 L1429 359 L1384 377 L1340 395 L1299 413 L1258 434 L1217 457 L1172 483 L1123 509 L1066 535 L1001 558 L930 577 L853 588 L774 592 L696 587 L622 574 L553 554 L493 529 L440 500 L395 469 L355 438 L319 406 L288 375 L259 344 L235 312 L215 280 L202 248 L195 215 L196 182 L204 150 L218 119 L235 89 L255 60 L275 31 L296 2 L317 -27 L340 -56 L367 -86 L399 -116 L438 -143 L485 -168 L539 -189 L600 -204 L665 -215 L732 -220 L799 -221 L865 -220 L930 -218 L994 -216 L1058 -214 L1124 -213 L1193 -211 L1265 -209 L1338 -203 L1411 -194 L1481 -179 L1546 -158 L1601 -132 L1646 -101 L1679 -66 L1701 -30 L1713 7 L1717 45 L1713 81 L1705 116 L1693 150Z"/>
+    <path d="M1796 150 L1778 187 L1755 223 L1726 257 L1691 288 L1650 318 L1605 345 L1556 369 L1507 392 L1459 414 L1412 437 L1366 462 L1321 489 L1274 519 L1221 550 L1162 582 L1093 613 L1016 639 L930 658 L839 668 L747 669 L657 659 L573 641 L496 615 L429 584 L370 550 L319 514 L274 478 L234 442 L197 407 L164 371 L135 335 L113 299 L97 262 L89 224 L90 187 L98 150 L112 114 L129 79 L149 45 L170 12 L191 -22 L213 -57 L238 -92 L268 -128 L306 -162 L353 -194 L409 -222 L474 -245 L546 -262 L622 -273 L700 -279 L778 -281 L855 -280 L930 -279 L1005 -278 L1081 -278 L1159 -278 L1241 -277 L1325 -274 L1411 -267 L1496 -254 L1576 -235 L1647 -209 L1708 -176 L1755 -139 L1790 -98 L1811 -55 L1822 -12 L1824 30 L1819 72 L1810 112 L1796 150Z"/>
+  </svg>
+  <div class="dentro">
+    <h1>Rete Meshtastic</h1>
+    <p class="sintesi" id="sintesi" role="status" data-livello="spento"><span class="semaforo" data-livello="spento"></span><span>Carico lo stato della rete...</span></p>
+    <p class="aggiornato" id="aggiornato"></p>
+    <p class="messaggio" id="messaggio" role="status" hidden></p>
+  </div>
+</header>
+
+<main id="ponti">
+  <p class="sessione" id="sessione" hidden>La sessione di Authentik è scaduta. <a href="./">Ricarica la pagina</a> per entrare di nuovo.</p>
+</main>
+
+<footer>
+  <p>Ogni gateway porta al TAK Server le radio della squadra che sente, anche attraverso i ripetitori. Aprire la
+    gestione della radio di un gateway lo mette in pausa: riprende da solo.</p>
+  <p id="versione"></p>
+</footer>
+
+<dialog id="conferma" aria-labelledby="conferma-titolo">
+  <h2 id="conferma-titolo">Gestire la radio del gateway?</h2>
+  <p id="conferma-testo"></p>
+  <ul>
+    <li>Riprende da solo <span id="conferma-chiusura">2 minuti</span> dopo che chiudi la pagina, al massimo dopo
+      <span id="conferma-massimo">30 minuti</span>.</li>
+    <li>Da qui non cambiare le impostazioni di rete o Wi-Fi del nodo: se sbagli lo perdi finché non sei davanti al
+      Raspberry.</li>
+  </ul>
+  <div class="pulsanti">
+    <button class="bottone secondario" type="button" id="annulla">Annulla</button>
+    <a class="bottone" id="apri" href="#" target="_blank" rel="noopener noreferrer">Apri la gestione</a>
+  </div>
+</dialog>
+
+<dialog id="aggiorna" aria-labelledby="aggiorna-titolo">
+  <h2 id="aggiorna-titolo"></h2>
+  <p id="aggiorna-testo"></p>
+  <label class="scelta-reimposta" id="aggiorna-radio" hidden><input type="checkbox" id="aggiorna-reimposta">
+    Rimetti anche la radio del gateway come all'installazione
+    <small>Di solito non serve: l'aggiornamento lascia la radio com'è, con quello che hai scelto dall'app o dalla
+      pagina. Con questa scelta tornano regione, nome, ruolo, solo il canale della squadra e posizione fissa.</small></label>
+  <div class="pulsanti">
+    <button class="bottone secondario" type="button" id="aggiorna-annulla">Annulla</button>
+    <button class="bottone" type="button" id="aggiorna-conferma">Aggiorna</button>
+  </div>
+</dialog>
+
+<dialog id="radio" aria-labelledby="radio-titolo">
+  <div class="gestione-radio" id="radio-dentro"></div>
+</dialog>
+
+<dialog id="raspberry" aria-labelledby="raspberry-titolo">
+  <div class="gestione-radio gestione-raspberry" id="raspberry-dentro"></div>
+</dialog>
+
+<dialog id="icone" aria-labelledby="icone-titolo">
+  <h2 id="icone-titolo">Icona sulla mappa</h2>
+  <p id="icone-spiega"></p>
+  <div id="icone-scelte"></div>
+  <div class="piede-icone">
+    <div>
+      <p class="esito" id="icone-esito" aria-live="polite"></p>
+      <p class="nota" id="icone-ponti"></p>
+    </div>
+    <button class="bottone secondario" type="button" id="icone-chiudi">Chiudi</button>
+  </div>
+</dialog>
+
+<dialog id="riprova" aria-labelledby="riprova-titolo">
+  <h2 id="riprova-titolo">Riprovare l'installazione?</h2>
+  <p id="riprova-testo"></p>
+  <p><label for="riprova-scheda">Radio del gateway</label><select id="riprova-scheda"></select></p>
+  <p><label for="riprova-posizione">Dove sta (coordinate, vuoto se la radio ha il suo GPS)</label><input id="riprova-posizione" autocomplete="off"></p>
+  <div class="pulsanti">
+    <button class="bottone secondario" type="button" id="riprova-annulla">Annulla</button>
+    <button class="bottone" type="button" id="riprova-conferma">Riprova l'installazione</button>
+  </div>
+</dialog>
+
+<dialog id="togli" aria-labelledby="togli-titolo">
+  <h2 id="togli-titolo">Togliere il gateway dalla rete?</h2>
+  <p id="togli-testo"></p>
+  <ul>
+    <li>Il Raspberry continua a portare le radio al TAK Server: si chiude solo l'accesso da internet.</li>
+    <li>Non rientra da solo. Per rimetterlo: in fondo a questa pagina, in "Aggiungere un gateway", sotto "Gateway tolti
+      e richieste rifiutate", premi "Lascia rientrare".</li>
+  </ul>
+  <div class="pulsanti">
+    <button class="bottone secondario" type="button" id="togli-annulla">Annulla</button>
+    <button class="bottone" type="button" id="togli-conferma">Togli dalla rete</button>
+  </div>
+</dialog>
+
+<script>
+//@@SCRIPT@@
+</script>
+</body>
+</html>

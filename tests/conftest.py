@@ -22,6 +22,11 @@ for p in PERCORSI:
 AMBIENTE = dict(os.environ, PYTHONPATH=os.pathsep.join(PERCORSI), TAKSDK=SDK)
 
 
+# Prima delle prove si rifanno i file da consegnare: la pagina della rete e' scritta a pezzi (server/pagina/sorgenti) e
+# le prove del server installano dist/rete-meshtastic.sh, che deve essere quello dei sorgenti di adesso.
+subprocess.run([sys.executable, os.path.join(RADICE, "build.py")], check=True, capture_output=True)
+
+
 def porta_libera():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))

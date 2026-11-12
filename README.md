@@ -157,6 +157,17 @@ frequenza e altezza nell'indirizzo: il calcolo sul rilievo lo fa quel sito, nel 
 su GitHub prima di ogni rilascio (`.github/workflows/rilascio.yml`). `tests/prova_installatore.sh` prova
 l'installatore su un Raspberry simulato e si lancia a mano.
 
+## Com'è fatto il repository
+
+I tre file grandi sono scritti a pezzi, uno per argomento, e `python3 build.py` li monta (le prove lo fanno da sole):
+
+- `sorgenti/gateway/NN-*.py` → `mesh2tak.py`, il programma del Raspberry;
+- `server/sorgenti/NN-*.py` → `server/rete_meshtastic.py`, il programma del server;
+- `server/pagina/sorgenti` (`pagina.html`, `stile.css`, `js/NN-*.js`) → `server/pagina/index.html`, la pagina.
+
+I pezzi si incollano in ordine e non sono moduli: un pezzo da solo non si importa. I file montati non stanno nel
+repository; da loro `build.py` fa i file da consegnare in `dist/`.
+
 ## Licenza
 
 GPL-3.0: vedi [LICENSE](LICENSE). Copyright (C) 2026 gli autori di mesh2tak. Il programma è distribuito senza
