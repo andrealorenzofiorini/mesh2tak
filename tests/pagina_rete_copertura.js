@@ -103,7 +103,7 @@ let p = null;
   r.storico = await p.$$eval('.blocco-storico', x => x.map(b => [b.querySelector('h3').textContent,
     [...b.querySelectorAll('figcaption')].map(f => f.innerText.replace(/\s+/g, ' ').trim())]));
   r.linee = await p.$$eval('.blocco-storico svg path.linea', x => x.length);
-  await scheda(p, 'mappa');
+  await scheda(p, 'rete');
   // azzera: solo scegliendo un gateway, con la conferma
   r.azzeraPrima = await p.isVisible('button:has-text("Azzera")');
   await p.selectOption('.comandi-copertura label:has-text("Mostra") select', 'g:casa');

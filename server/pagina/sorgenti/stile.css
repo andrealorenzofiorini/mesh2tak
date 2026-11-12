@@ -87,6 +87,7 @@ main { flex: 1; width: 100%; max-width: 76rem; margin: 0 auto; padding: 0.4rem 1
 .voce-radio a { font-weight: 700; }
 .voce-radio .riga-voce { display: block; padding-left: 0; color: var(--ardesia); }
 .gruppo-rete, .radio-rete, .gestione-rete, .storico { margin: 1.6rem 0 0; }
+#rete > .gruppo-rete { margin-top: 2.6rem; scroll-margin-top: 1rem; }
 /* dalla 1.16.0 di nuovo a schede: una parte alla volta, lo stato della rete resta sempre in alto */
 .schede { display: flex; gap: 1.6rem; margin: 1.2rem 0 0; border-bottom: 1px solid var(--nebbia); overflow-x: auto; }
 .schede button { font: 600 1.05rem/1 var(--testo); background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px;

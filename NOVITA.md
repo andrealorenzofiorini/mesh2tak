@@ -3,6 +3,10 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.16.1
+
+- Schede ridotte a quattro: Rete, Radio, Storico, Gestione. Mappa, gateway e ripetitori stanno insieme nella scheda Rete, una sotto l'altra; i vecchi indirizzi (#mappa, #gateway, #ripetitori) portano al punto giusto.
+
 ## 1.16.0
 
 - Avvisi per email anche per i ripetitori: quando un ripetitore non si sente più da 12 ore e quando la sua batteria scende al 20% (e quando tornano a posto). Valgono per i nodi fissi che i gateway sentono; se un gateway non risponde, dei ripetitori non si dice niente.

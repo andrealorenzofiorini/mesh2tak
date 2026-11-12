@@ -475,7 +475,7 @@ def test_5c_la_scheda_delle_radio_nel_browser(rete):
     assert "errore" not in r, r
     assert r["errori"] == [] and r["finestre"] == [] and r["immagini"] == 0      # CSP rispettata, niente codice dai nomi
     assert r["visibili"] == [True, False]           # il vecchio indirizzo #radio apre la scheda delle radio
-    assert r["mappa"] == [True, False, True] and r["schede"][:4] == ["Mappa", "Gateway1", "Ripetitori", "Radio2"], r
+    assert r["mappa"] == [True, False, True] and r["schede"][:3] == ["Rete", "Radio2", "Storico"], r
     assert r["ordine"] == ["<img src=x onerror=alert(1)>", "07-BIANCHI"]          # prima chi ha un problema
     assert "batteria quasi scarica" in r["voci"][0] and "casa: passando da 2 radio" in r["voci"][0]
     assert "SenseCAP T1000-E, con ATAK" in r["voci"][1] and "casa: diretta, segnale buono" in r["voci"][1]
@@ -1002,9 +1002,9 @@ def test_6j_la_copertura_nel_browser(rete):
     r = json.loads(p.stdout.strip().splitlines()[-1])
     assert "errore" not in r, r
     assert r["errori"] == [], r["errori"]
-    assert r["prima"] == [True, False], "si apre sulla scheda Mappa"
-    assert r["schede"][:5] == ["Mappa", "Gateway1", "Ripetitori1", "Radio2", "Storico"], r["schede"]
-    assert r["schede"][5] in ("Gestione", "Gestione!"), "il punto esclamativo: c'e' da aggiornare"
+    assert r["prima"] == [True, True], "si apre sulla scheda Rete: mappa, gateway e ripetitori insieme"
+    assert r["schede"][:3] == ["Rete", "Radio2", "Storico"], r["schede"]
+    assert r["schede"][3] in ("Gestione", "Gestione!"), "il punto esclamativo: c'e' da aggiornare"
     assert r["prevista"] == ("https://site.meshtastic.org/?lat=45.8750&lon=8.8050&name=Ripetitore+Velate&tx_freq=869.525"
                              "&tx_power=0.158&tx_height=3&max_range=30&run=1"), r["prevista"]
     assert [x[0] for x in r["storico"]] == ["Gateway casa", "Ripetitore Velate"] and r["linee"] == 4, r["storico"]

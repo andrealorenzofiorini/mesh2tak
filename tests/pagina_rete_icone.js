@@ -33,7 +33,7 @@ const { sfondoFinto, scheda } = require('./pagina_comune');
   r.bottoneDopo = await p.innerText('li.voce:has-text("07-BIANCHI") button.icona-mappa');
   r.figuraNelBottone = await p.$eval('li.voce:has-text("07-BIANCHI") button.icona-mappa img', e => e.src);
   // la scheda del gateway: la sua icona predefinita e' il traliccio
-  await scheda(p, 'gateway');
+  await scheda(p, 'rete');
   await p.click('section.ponte:has(h3:text-is("casa")) button.icona-mappa');
   await p.waitForSelector('#icone[open] .tessera-icona');
   r.titoloPonte = await p.innerText('#icone-titolo');

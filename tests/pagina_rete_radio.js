@@ -28,12 +28,12 @@ const { sfondoFinto, scheda, IMMAGINI } = require('./pagina_comune');
   await p.waitForTimeout(800);
   r.cerca = await p.$$eval('li.voce .nome b', x => x.map(e => e.textContent));
   // dalla scheda Mappa, l'elenco accanto alla mappa porta alle radio
-  await scheda(p, 'mappa');
-  r.mappa = [await p.isVisible('#mappa-copertura'), await p.isVisible('#squadra'), p.url().endsWith('#mappa')];
+  await scheda(p, 'rete');
+  r.mappa = [await p.isVisible('#mappa-copertura'), await p.isVisible('#squadra'), p.url().endsWith('#rete')];
   await p.click('.voce-radio a');
   await p.waitForSelector('#scheda-squadra[aria-selected="true"]');
   r.ponti = [await p.isVisible('#squadra'), p.url().endsWith('#squadra')];
-  await scheda(p, 'ripetitori');
+  await scheda(p, 'rete');
   r.ripetitori = await p.innerText('#ripetitori');
   r.schede = await p.$$eval('.schede button', x => x.map(b => b.textContent));
   console.log(JSON.stringify(r));

@@ -26,16 +26,18 @@ const zonaRipetitori = document.createElement("section");
 const vistaRadio = document.createElement("section");   // radio della squadra
 const vistaStorico = document.createElement("section"); // andamento di gateway e ripetitori (dalla 1.16.0)
 const zonaGestione = document.createElement("section");
+const vistaRete = document.createElement("div");       // scheda Rete: mappa, gateway e ripetitori insieme
 const schede = document.createElement("nav");           // dalla 1.16.0 di nuovo a schede: una cosa alla volta
 avvisoVersione.className = "avviso-versione";
 avvisoVersione.hidden = true;
-zona.append(avvisoVersione, zonaStato, zonaNovita, schede, panorama, zonaPonti, zonaRipetitori, vistaRadio, vistaStorico,
-            zonaGestione);
-// le schede: nome nell'indirizzo (#mappa, #gateway...), titolo, la sua parte di pagina
-const SCHEDE = [["mappa", "Mappa", panorama], ["gateway", "Gateway", zonaPonti], ["ripetitori", "Ripetitori", zonaRipetitori],
-                ["squadra", "Radio", vistaRadio], ["storico", "Storico", vistaStorico], ["gestione", "Gestione", zonaGestione]];
+vistaRete.append(panorama, zonaPonti, zonaRipetitori);
+zona.append(avvisoVersione, zonaStato, zonaNovita, schede, vistaRete, vistaRadio, vistaStorico, zonaGestione);
+// le schede: nome nell'indirizzo (#rete, #squadra...), titolo, la sua parte di pagina. Dalla 1.16.1 mappa, gateway e
+// ripetitori stanno insieme in "Rete"; #mappa, #gateway e #ripetitori portano al punto giusto di quella scheda.
+const SCHEDE = [["rete", "Rete", vistaRete], ["squadra", "Radio", vistaRadio], ["storico", "Storico", vistaStorico],
+                ["gestione", "Gestione", zonaGestione]];
 const bottoniSchede = {};
-let schedaAperta = "mappa";
+let schedaAperta = "rete";
 const SILENZIO_S = 2 * 3600;       // una radio accesa si fa sentire almeno ogni mezz'ora (batteria e canale)
 
 function el(tag, classe, testo) {

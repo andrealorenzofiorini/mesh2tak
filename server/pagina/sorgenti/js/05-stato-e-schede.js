@@ -117,7 +117,7 @@ function disegnaStatoRete() {
 }
 
 function mostraScheda(nome, nellIndirizzo) {
-  if (!SCHEDE.some(x => x[0] === nome)) nome = "mappa";
+  if (!SCHEDE.some(x => x[0] === nome)) nome = "rete";
   schedaAperta = nome;
   for (const [chiave, , parte] of SCHEDE) {
     parte.hidden = chiave !== nome;
@@ -454,7 +454,8 @@ function costruisciPagina() {
     zonaGestione.append(det);
   }
   window.addEventListener("hashchange", () => vaiA(decodeURIComponent(location.hash.slice(1))));
-  mostraScheda("mappa", false);
+  vistaRete.id = "rete";
+  mostraScheda("rete", false);
   if (location.hash.length > 1) vaiA(decodeURIComponent(location.hash.slice(1)));
 }
 
@@ -596,7 +597,7 @@ function disegna() {
   aggiornaAvvisi();
   aggiornaAggiornamenti();
   disegnaRadioRete();
-  const conta = {gateway: elenco.length, ripetitori: ripetitoriDellaRete().length, squadra: radioDellaSquadra().length};
+  const conta = {squadra: radioDellaSquadra().length};
   for (const [chiave, n] of Object.entries(conta)) bottoniSchede[chiave].lastChild.textContent = n ? String(n) : "";
   document.getElementById("aggiornato").textContent = "Aggiornata alle " + new Date().toLocaleTimeString("it-IT") + ", si aggiorna da sola";
   document.getElementById("versione").textContent = versione ? "rete-meshtastic " + versione : "";
