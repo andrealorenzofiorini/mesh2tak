@@ -47,7 +47,19 @@ def leggi_mbr(dev):
 
 
 def x(*cmd, **kw):
-    return subprocess.run(list(cmd), check=True, capture_output=True, text=True, **kw)
+    """Un comando che deve riuscire. Formattare un disco di prova appena creato a volte non riesce al primo colpo
+    (visto su GitHub: la partizione del disco finto di prima non e' ancora stata lasciata dal sistema): si riprova
+    qualche volta e, se proprio non va, l'errore dice che cosa ha risposto il comando."""
+    import time
+    tentativi = 6 if cmd[0].startswith("mkfs") else 1
+    for i in range(tentativi):
+        r = subprocess.run(list(cmd), capture_output=True, text=True, **kw)
+        if r.returncode == 0:
+            return r
+        if i + 1 < tentativi:
+            subprocess.run(["udevadm", "settle", "--timeout=5"], capture_output=True)
+            time.sleep(1 + i)
+    raise AssertionError(f"{' '.join(cmd)}: uscita {r.returncode}\n{r.stderr.strip()}\n{r.stdout.strip()}")
 
 
 class Dischi:
