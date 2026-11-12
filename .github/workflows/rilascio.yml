@@ -49,7 +49,9 @@ jobs:
         run: |
           python3 -m py_compile mesh2tak.py scorta.py aggiorna.py primo_avvio.py server/rete_meshtastic.py
           python3 build.py
-          sudo -E env "PATH=$PATH" python3 -m pytest tests -q -p no:cacheprovider
+          # molte prove vogliono root (utenti, sshd, immagini di dischi): le variabili si passano una per una
+          sudo env "PATH=$PATH" "TAKSDK=$TAKSDK" "PROVA_SSHD=$PROVA_SSHD" \
+            "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" python3 -m pytest tests -q -p no:cacheprovider -rs
 
   rilascio:
     needs: prove
