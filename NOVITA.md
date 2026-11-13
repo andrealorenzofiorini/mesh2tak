@@ -3,6 +3,15 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.17.0
+
+- Copertura prevista calcolata dalla pagina: con «Copertura prevista», sopra la mappa, la pagina calcola dal rilievo del terreno dove una radio portatile si collegherebbe a ogni gateway e a ogni ripetitore, anche dove nessuno è ancora passato. I quadretti previsti stanno sotto a quelli misurati, con gli stessi colori più chiari; un cerchio tratteggiato dice fin dove è arrivato il calcolo (10, 20 o 30 km).
+- Ogni impianto con i suoi dati veri: posizione, potenza e impostazione radio le legge dal gateway; altezza e guadagno dell'antenna, perdite del cavo e potenza si scrivono in «Dati dell'impianto», per ogni gateway, per ogni ripetitore e per le radio portatili. Finché non li scrivi usa valori di fabbrica, e lo dice.
+- Tarata sulle misure: il calcolo di ogni gateway viene corretto con i quadretti dove quel gateway ha sentito davvero le radio, e la pagina dice su quanti quadretti e con che errore tipico. Contano anche i quadretti dove il segnale era troppo forte per essere misurato e quelli arrivati solo tramite altre radio. I ripetitori, che non misurano, usano la correzione media dei gateway; per loro la pagina dice quanti dei quadretti arrivati davvero tramite quel ripetitore cadono nella zona prevista, e con che margine si collega a ogni gateway.
+- «Prova un punto»: tocchi la mappa dove vorresti mettere un ripetitore e la pagina dice quanta zona aggiungerebbe alla rete di oggi e se arriverebbe ai gateway. Il punto resta finché la pagina è aperta.
+- «Scarica per ATAK» porta anche la copertura prevista, in una cartella a parte che in ATAK si accende e si spegne da sola.
+- Il rilievo (quote del terreno, dati pubblici) lo scarica il server una volta sola e lo tiene: chi apre la pagina non parla con siti nuovi. È un calcolo sul solo terreno: alberi e case li recupera la taratura, quindi vale di più dove ci sono già misure vicine. Serve aggiornare sia il server sia i gateway.
+
 ## 1.16.2
 
 - Controllo degli aggiornamenti: se GitHub rifiuta le richieste del server (succede quando altri programmi dello stesso server ne fanno troppe in un'ora), la versione nuova si legge lo stesso da un altro indirizzo di GitHub che non ha quel limite.

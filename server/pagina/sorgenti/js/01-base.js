@@ -410,7 +410,7 @@ function disegnaPonte(p) {
                                    numIt(cr.trasmesso, 2) + "% (limite 10%)", cr.trasmesso >= 8 ? "attenzione" : "");
     }
     fatto(tutti, "Copertura", testoCopertura("g:" + p.nome));
-    fattoPrevista(altri, "g:" + p.nome, 5);
+    fattoPrevista(altri, "g:" + p.nome);
     fatto(tutti, "Canali", canali(d));
     const c = d.conteggi || {};
     const finestra = d.ora - (d.conteggi_dal || d.avviato);

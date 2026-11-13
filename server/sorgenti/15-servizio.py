@@ -20,6 +20,7 @@ class Servizio:
         self.rilasci = rilasci
         self.icone_ponti: Dict[str, str] = {}    # versione delle icone che ogni ponte usa ("vecchio": prima della 1.11.0)
         self.manda_icone = Sorveglianza.manda_icone
+        self.terreno = Terreno()                 # dalla 1.17.0: il rilievo per la copertura prevista
 
     # ---- file ----
 
@@ -246,6 +247,28 @@ class Servizio:
         print(f"icona di {radio}: {icona or 'predefinita'} (da {utente})", flush=True)
         return 200, {"esito": "fatto", "versione": self.icone_per_i_ponti(scelte)[0],
                      "messaggio": "Icona salvata." if icona else "Tornata l'icona predefinita."}
+
+    def imposta_impianto(self, dati: dict, utente: str) -> Tuple[int, dict]:
+        """Dalla 1.17.0: altezza e guadagno dell'antenna, perdite del cavo e potenza di un gateway ("g:nome"), di un
+        ripetitore ("r:!id") o delle radio portatili ("portatile"), per calcolare la copertura prevista."""
+        chi = str(dati.get("chi") or "")
+        if not RE_IMPIANTO.match(chi):
+            return 400, {"errore": "impianto non valido"}
+        valori, errore = valida_impianto(dati)
+        if valori is None:
+            return 400, {"errore": errore}
+        with self.lock:
+            impianti = leggi_impianti()
+            if valori:
+                if chi not in impianti and len(impianti) >= IMPIANTI_MAX:
+                    return 409, {"errore": f"al massimo {IMPIANTI_MAX} impianti"}
+                impianti[chi] = dict(valori, da=utente, quando=int(time.time()))
+            else:
+                impianti.pop(chi, None)
+            self._scrivi_json(P(IMPIANTI), {"formato": 1, "impianti": impianti})
+        print(f"impianto {chi}: {valori or 'valori di fabbrica'} (da {utente})", flush=True)
+        return 200, {"esito": "fatto", "impianti": impianti,
+                     "messaggio": "Dati dell'impianto salvati." if valori else "Tornati i valori di fabbrica."}
 
     def allinea_icone(self, nome: str, porta: int, st: Optional[dict]) -> None:
         """Dopo ogni lettura dello stato di un ponte (una al minuto): se usa icone diverse da quelle scelte,
@@ -511,7 +534,7 @@ class Servizio:
                 "rilasci": self.rilasci.vista() if self.rilasci else None,
                 "ponti_nuovi": self.riassunto_nuovi(), "inviti": [self.vista_invito(i) for i in inviti],
                 "installazioni": installazioni, "imager": f"{GITHUB}/{REPO}/releases/latest/download/imager.json",
-                "icone": self.vista_icone(ponti)}
+                "icone": self.vista_icone(ponti), "impianti": leggi_impianti()}
 
     def _approva(self, f: str, r: dict, utente: str, sostituisci_ok: bool,
                  installa: Optional[dict] = None) -> Tuple[int, dict]:
@@ -590,6 +613,8 @@ class Servizio:
             return self.nuovo_invito(dati, utente)
         if percorso == "/api/icona":
             return self.imposta_icona(dati, utente)
+        if percorso == "/api/impianto":
+            return self.imposta_impianto(dati, utente)
         if percorso == "/api/impostazioni-nuovi":
             try:
                 impostazioni = controlla_impostazioni(dati)
@@ -751,6 +776,22 @@ def gestore_per(servizio: Servizio):
                 if not utente:
                     return self._manda(403, {"errore": "serve l'accesso da Authentik"})
                 return self._manda(200, servizio.stato(utente))
+            riquadro = RE_TERRENO.match(percorso)
+            if riquadro:                      # dalla 1.17.0: il rilievo per la copertura prevista
+                if not self._utente():
+                    return self._manda(403, {"errore": "serve l'accesso da Authentik"})
+                codice, png = servizio.terreno.riquadro(*(int(n) for n in riquadro.groups()))
+                if codice != 200:
+                    return self._manda(codice, {"errore": {404: "riquadro fuori dalla mappa",
+                                                           429: "troppi riquadri chiesti: riprova tra qualche minuto"}
+                                                .get(codice, "il rilievo non arriva: riprova")})
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Cache-Control", "private, max-age=2592000, immutable")
+                self.send_header("Content-Length", str(len(png)))
+                self.end_headers()
+                self.wfile.write(png)
+                return None
             self._manda(404, {"errore": "non trovato"})
 
         def do_POST(self):  # noqa: N802

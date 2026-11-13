@@ -62,6 +62,9 @@ class Rete:
     def __init__(self, cartella, pki):
         self.c = cartella
         self.github = ServerFinto()       # API e download delle release (1.8.0): nessuna release all'inizio
+        # il rilievo per la copertura prevista (1.17.0): una pianura a 300 m, nello stesso formato dei riquadri veri
+        from test_previsione import PIANURA
+        self.rilievo = ServerFinto({"*": lambda percorso: PIANURA if re.match(r"^/\d+/\d+/\d+\.png$", percorso) else None})
         # sshd legge le chiavi autorizzate con i permessi dell'utente del ponte, e (StrictModes) vuole cartelle
         # non scrivibili da altri fino a /: la radice di prova sta in /srv, non sotto /tmp come sul server sta in /etc
         r = self.r = pathlib.Path("/srv/mesh2tak-prova-e2e")
@@ -251,6 +254,7 @@ class Rete:
             ["runuser", "-u", "mesh2tak-rete", "--", "env", f"RETE_PROVA_RADICE={self.r}",
              f"RETE_PROVA_PORTA_WEB={self.porta_web}", "RETE_PROVA_AVVISI_OGNI=1", "RETE_PROVA_AVVISI_ATTESA=4",
              f"RETE_PROVA_GITHUB_API={self.github.url}", "RETE_PROVA_RILASCI_CONTROLLO=1", "RETE_PROVA_RILASCI_PRIMO=86400",
+             f"RETE_PROVA_TERRENO={self.rilievo.url}",
              sys.executable, "-I", script, "servi"],
             stdout=open(self.c / "servizio.log", "a"), stderr=subprocess.STDOUT, env=amb)
         aspetta_porta(self.porta_web)
@@ -323,6 +327,7 @@ class Rete:
             pass
         self.ak.ferma()
         self.github.ferma()
+        self.rilievo.ferma()
         pulisci_utenti()
 
 
@@ -1049,6 +1054,88 @@ def test_6j_la_copertura_nel_browser(rete):
     assert len(r["finestre"]) == 1 and r["finestre"][0].startswith("Cancello la copertura raccolta dal gateway casa?")
     assert r["statoAzzera"] == "Copertura del gateway casa azzerata: ricomincia da adesso."
     assert r["riassuntoDopo"].startswith("Nessun quadretto") and rete.ponte.copertura.dati()["celle"] == []
+
+
+def test_6k_rilievo_e_impianti_dalla_pagina(rete):
+    """1.17.0: il rilievo per la copertura prevista lo prende il servizio della pagina e lo da' solo agli
+    amministratori; il browser lo puo' tenere. I dati degli impianti si scrivono dalla pagina."""
+    prepara_copertura(rete)
+    stato, corpo, intestazioni = rete.chiedi(f"{RETE}/copertura/casa.json")
+    assert json.loads(corpo)["radio"] == {"potenza_dbm": None, "regione": ""}, "il gateway dice la sua radio (qui finta)"
+    stato, corpo, intestazioni = rete.chiedi(f"{RETE}/api/terreno/11/1074/730.png")
+    assert stato == 200 and corpo.startswith(b"\x89PNG") and intestazioni["Content-Type"] == "image/png"
+    assert intestazioni["Cache-Control"] == "private, max-age=2592000, immutable", intestazioni
+    assert rete.rilievo.richieste == ["/11/1074/730.png"]
+    assert rete.chiedi(f"{RETE}/api/terreno/11/1074/730.png")[0] == 200 and len(rete.rilievo.richieste) == 1, "tenuto"
+    assert rete.chiedi(f"{RETE}/api/terreno/11/1074/730.png", cookie=None)[0] == 302, "senza Authentik: al login"
+    assert rete.chiedi(f"{RETE}/api/terreno/3/1/1.png")[0] == 404
+    tenuti = rete.r / "var/lib/mesh2tak-rete/servizio/terreno"
+    assert os.listdir(tenuti) == ["11-1074-730.png"] and oct((tenuti / "11-1074-730.png").stat().st_mode)[-3:] == "600"
+    assert rete.api("POST", "/api/impianto", {"chi": "r:!3333cccc", "altezza_m": 4}, intestazioni={"X-Mesh2tak": ""})[0] == 403
+    codice, r = rete.api("POST", "/api/impianto", {"chi": "r:!3333cccc", "altezza_m": 4})
+    assert codice == 200 and r["impianti"]["r:!3333cccc"]["altezza_m"] == 4.0, r
+    assert rete.api("GET", "/api/stato")[1]["impianti"]["r:!3333cccc"]["da"] == "andrea"
+    assert rete.api("POST", "/api/impianto", {"chi": "r:!3333cccc"})[0] == 200
+    assert rete.api("GET", "/api/stato")[1]["impianti"] == {}
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
+def test_6l_la_copertura_prevista_nel_browser(rete):
+    oggi = prepara_copertura(rete)
+    foto = os.environ.get("RETE_FOTO", "")
+    senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+    p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_prevista.js"), f"{RETE}/",
+                        foto.replace(".png", "-prevista.png") if foto else ""], capture_output=True, text=True,
+                       timeout=300, env=senza_proxy)
+    r = json.loads(p.stdout.strip().splitlines()[-1])
+    assert "errore" not in r, r
+    assert r["errori"] == [], r["errori"]
+    # spenta: niente di nuovo sulla mappa, nessun riquadro chiesto
+    assert r["prima"] == {"previste": "0", "legenda": False, "elenco": 0, "rilievo": 0}, r["prima"]
+    # accesa: il rilievo arriva dal nostro server (e il browser lo puo' tenere), i quadretti previsti sono sulla mappa
+    assert re.match(r"Copertura prevista entro 20 km: \d+ km² \(buono \d+", r["stato"]), r["stato"]
+    assert r["previste"] > 500 and r["disegnati"] > 0 and r["legenda"] is True, r
+    assert r["rilievo"] and all(x[0] == 200 and x[1] == "private, max-age=2592000, immutable" for x in r["rilievo"]), r["rilievo"]
+    assert all(re.match(RETE + r"/api/terreno/11/\d+/\d+\.png$", x[2]) for x in r["rilievo"]), r["rilievo"]
+    assert "Rilievo" not in r["creditiPrima"] and "Rilievo: Mapzen, Copernicus EU-DEM, USGS SRTM." in r["crediti"], \
+        "da dove viene il rilievo: scritto sulla mappa quando lo si usa"
+    assert [x[0] for x in r["elenco"]] == ["g:casa", "r:!3333cccc", "portatile"], r["elenco"]
+    casa, velate, portatile = (x[1] for x in r["elenco"])
+    assert "Antenna a 5 m da terra, 2 dBi, cavo 1 dB, 22 dBm (valori di fabbrica)." in casa, casa
+    assert "Ancora poche misure di questo gateway (4 utili, ne servono 5)" in casa and "stima prudente" in casa, casa
+    assert re.search(r"Da solo copre \d+ km² previsti entro 20 km\.", casa), casa
+    assert "Antenna a 3 m da terra, 2 dBi, cavo 0 dB, 22 dBm (valori di fabbrica)." in velate, velate
+    assert "Non ha misure sue (solo i gateway misurano il segnale)" in velate, velate
+    assert re.search(r"[01] su 1 quadretto arrivato davvero tramite questo ripetitore cade nella zona prevista\.", velate), velate
+    assert re.search(r"Collegamento con Gateway casa \(6,[0-9] km\): ", velate), velate
+    assert "A 1,5 m da terra, antenna 0 dBi, 22 dBm (valori di fabbrica)." in portatile, portatile
+    # passando sulla mappa: dove non c'e' misura il previsto, dove c'e' la misura e accanto il previsto
+    assert re.match(r"Previsto: (buono|discreto|debole|al limite)", r["previsto"]), r["previsto"]
+    assert "È un calcolo, non una misura" in r["previsto"] and "da Gateway casa" in r["previsto"], r["previsto"]
+    assert r["misurato"].startswith("Buono: i messaggi arrivano sicuri") and "Previsto qui: " in r["misurato"], r["misurato"]
+    # i dati dell'impianto: un valore impossibile si dice, quelli buoni si salvano e il calcolo si rifa'
+    assert r["impiantoTitolo"] == "Impianto di Gateway casa" and r["segnaposto"] == ["5 (di fabbrica)", "22 (di fabbrica)"]
+    assert r["impiantoSbagliato"] == "Altezza dell'antenna da terra: serve un numero tra 0,5 e 120.", r["impiantoSbagliato"]
+    assert "Antenna a 25 m da terra, 6,5 dBi, cavo 1 dB, 22 dBm (in parte di fabbrica)." in r["casaDopo"], r["casaDopo"]
+    assert r["previsteDopo"] > r["previste"], "antenna piu' alta e migliore: piu' quadretti previsti"
+    salvato = rete.api("GET", "/api/stato")[1]["impianti"]["g:casa"]
+    assert (salvato["altezza_m"], salvato["guadagno_dbi"], salvato["da"]) == (25.0, 6.5, "andrea") and "perdite_db" not in salvato
+    assert "antenna a 25 m da terra" in r["schedaGateway"].lower() and "Dati dell'impianto" in r["schedaGateway"], r["schedaGateway"]
+    # un solo impianto; il punto di prova (un ripetitore che non c'e' ancora) e che cosa aggiungerebbe
+    assert r["soloRipetitore"] == ["r:!3333cccc", "portatile"] and 0 < r["previsteRipetitore"] < r["previsteDopo"]
+    assert r["provaInvito"].startswith("Tocca sulla mappa il punto da provare"), r["provaInvito"]
+    assert re.search(r"Rispetto alla rete di oggi aggiunge \d+ km² previsti\.", r["prova"]), r["prova"]
+    assert "Collegamento con Gateway casa (" in r["prova"] and r["provaMostra"] == ["p:prova", "Punto di prova"], r["prova"]
+    assert r["provaSegno"].startswith("Punto di prova: un impianto che non c'è ancora"), r["provaSegno"]
+    assert r["provaTolta"] == [False, ""], r["provaTolta"]
+    # il file per ATAK porta anche la prevista, in una cartella a parte
+    assert r["kmlNome"] == f"copertura-rete-{oggi}.kml" and "con la copertura prevista in una cartella a parte" in r["statoKml"]
+    assert "<Folder><name>Copertura misurata</name>" in r["kml"] and r["kml"].count("</Folder>") == 2
+    assert "<Folder><name>Copertura prevista (calcolata, entro 10 km)</name>" in r["kml"], "il raggio scelto"
+    assert '<Style id="prevista-buono">' in r["kml"] and "<styleUrl>#prevista-buono</styleUrl>" in r["kml"]
+    assert 6 < r["kml"].count("<Placemark>") < r["previsteDieci"], "a strisce: molte meno figure dei quadretti"
+    # dalla scheda del ripetitore: la sua prevista sulla mappa; spenta, tutto torna com'era
+    assert r["dallaScheda"] == ["r:!3333cccc", True] and r["dopo"] == {"previste": "0", "legenda": False, "elenco": 0}, r
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")

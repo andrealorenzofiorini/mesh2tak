@@ -1,21 +1,39 @@
-// ---- Copertura prevista (dalla 1.16.0): la pagina non la calcola, apre chi lo fa bene. Il Site Planner di Meshtastic
-// (site.meshtastic.org) accetta posizione, nome, frequenza e altezza nell'indirizzo e fa il calcolo sul rilievo.
-function indirizzoPrevista(punto, altezza) {
+// ---- Copertura prevista nelle schede di gateway e ripetitori. Dalla 1.17.0 la calcola la pagina, con i dati veri
+// dell'impianto; resta, per un secondo parere, il Site Planner di Meshtastic (site.meshtastic.org), che accetta
+// posizione, nome, frequenza, potenza e altezza nell'indirizzo.
+function indirizzoPrevista(punto, impianto) {
   const q = new URLSearchParams({lat: punto.lat.toFixed(4), lon: punto.lon.toFixed(4), name: punto.nome.slice(0, 40),
-                                 tx_freq: "869.525", tx_power: "0.158", tx_height: String(altezza), max_range: "30", run: "1"});
+                                 tx_freq: "869.525", tx_power: (10 ** (impianto.potenza_dbm / 10) / 1000).toFixed(3),
+                                 tx_height: String(impianto.altezza_m), max_range: "30", run: "1"});
   return "https://site.meshtastic.org/?" + q.toString();
 }
 
-function fattoPrevista(dl, chiave, altezza) {
+function fattoPrevista(dl, chiave) {
   const punto = puntiDellaRete().find(x => x.chiave === chiave);
   const d = el("div"), dd = el("dd");
+  d.dataset.prevista = chiave;
   if (punto) {
-    const a = el("a", null, "Calcola con Meshtastic Site Planner");
-    a.href = indirizzoPrevista(punto, altezza);
+    const p = previsioni.get(chiave);
+    dd.append(maiuscola(testoImpianto(chiave)) + ".");
+    if (sceltaCopertura.prevista && p && p.stato === "fatta") dd.append(el("small", "suggerimento-batteria", rigaTaratura(chiave, correzioniPrevista())));
+    const azioni = el("div", "azioni-prevista");
+    const mostra = el("button", "bottone secondario piccolo", "Calcola sulla mappa");
+    mostra.type = "button";
+    mostra.addEventListener("click", () => accendiPrevista(chiave));
+    azioni.append(mostra);
+    if (gestione) {
+      const dati = el("button", "bottone secondario piccolo", "Dati dell'impianto");
+      dati.type = "button";
+      dati.addEventListener("click", () => apriImpianto(chiave, (punto.tipo === "gateway" ? "Gateway " : "") + punto.nome));
+      azioni.append(dati);
+    }
+    const a = el("a", null, "Confronta con Site Planner");
+    a.href = indirizzoPrevista(punto, impiantoDi(chiave).valori);
     a.target = "_blank";
     a.rel = "noopener noreferrer";
-    dd.append(a, el("small", "suggerimento-batteria", "Si apre un sito esterno, che riceve posizione e nome. Stima dal " +
-                                                      "rilievo, antenna a " + altezza + " m: da correggere lì."));
+    a.title = "Sito esterno: riceve posizione e nome dell'impianto";
+    azioni.append(a);
+    dd.append(azioni);
   } else {
     dd.append("serve la posizione: non è ancora sulla mappa");
   }

@@ -1,5 +1,6 @@
 """Server HTTP(S) di prova per GitHub finto, pagina della rete finta e simili: risposte per percorso (bytes, un
-oggetto da mandare in JSON, None = 404, una coppia (codice, intestazioni) senza corpo, oppure una funzione che restituisce una di queste)."""
+oggetto da mandare in JSON, None = 404, una coppia (codice, intestazioni) senza corpo, oppure una funzione che restituisce una di queste;
+risposte["*"] e' una funzione del percorso per tutti i percorsi non elencati)."""
 import http.server
 import json
 import ssl
@@ -22,7 +23,9 @@ class ServerFinto:
             def do_GET(self):  # noqa: N802
                 srv.richieste.append(self.path)
                 r = srv.risposte.get(self.path)
-                if callable(r):
+                if r is None and "*" in srv.risposte:     # una funzione del percorso, per tutto il resto
+                    r = srv.risposte["*"](self.path)
+                elif callable(r):
                     r = r()
                 if r is None:
                     self.send_response(404)

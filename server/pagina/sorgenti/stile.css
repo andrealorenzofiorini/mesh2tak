@@ -273,6 +273,27 @@ dialog ul { padding-left: 1.2rem; }
 .stato-copertura:empty { display: none; }
 .gruppo-mappa { margin-top: 0.6rem; }
 .gruppo-mappa p { margin: 0.5rem 0 0; max-width: 52rem; color: var(--ardesia); font-size: 0.92rem; }
+/* Copertura prevista (1.17.0): calcolata, non misurata; sulla mappa gli stessi colori piu' chiari */
+.comandi-copertura label.spunta { cursor: pointer; }
+.comandi-copertura label.spunta input { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: var(--lago); }
+.legenda i.segno-prevista { width: 1.9rem; background: linear-gradient(90deg, rgba(12, 163, 12, 0.4) 0 25%, rgba(250, 178, 25, 0.4) 25% 50%, rgba(229, 98, 47, 0.4) 50% 75%, rgba(168, 37, 51, 0.4) 75%); }
+.stato-prevista { color: var(--granito); }
+.elenco-previste { list-style: none; padding: 0; margin: 0.6rem 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: 0.9rem 1.5rem; }
+.elenco-previste:empty { display: none; }
+.elenco-previste li { border-top: 2px solid var(--nebbia); padding-top: 0.5rem; }
+.testa-prevista { display: flex; flex-wrap: wrap; gap: 0.4rem 0.6rem; align-items: center; }
+.testa-prevista b { flex: 1 1 auto; }
+.elenco-previste p { margin: 0.35rem 0 0; max-width: 44rem; color: var(--ardesia); font-size: 0.92rem; }
+.elenco-previste p.impianto { color: var(--granito); }
+.azioni-prevista { display: flex; flex-wrap: wrap; gap: 0.4rem 0.7rem; align-items: center; margin-top: 0.45rem; font-size: 0.9rem; }
+.mappa.sceglie, .mappa.sceglie canvas { cursor: crosshair; }
+.mappa .crediti .rilievo { display: none; }
+.mappa.con-prevista .crediti .rilievo { display: inline; }
+@media (min-width: 700px) { .fatti div[data-prevista] { grid-column: span 2; } }
+#impianto label { display: block; margin: 0.75rem 0 0.25rem; font-weight: 600; font-size: 0.95rem; }
+#impianto label small { display: block; font-weight: 400; color: var(--ardesia); font-size: 0.85rem; }
+#impianto .esito { font-weight: 600; }
+#impianto .esito:empty { display: none; }
 .mappa { position: relative; height: min(64vh, 600px); min-height: 22rem; overflow: hidden; border: 1px solid var(--nebbia); border-radius: 8px; background: #e4e9e6; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
 .mappa:active { cursor: grabbing; }
 .mappa .tessere { position: absolute; inset: 0; }
@@ -331,7 +352,7 @@ dialog ul { padding-left: 1.2rem; }
 .aggiungi h3 { font: 700 1.3rem/1.15 var(--titoli); margin: 2rem 0 0.4rem; }
 .aggiungi h4, .gestione-radio h4 { font: 700 1.1rem/1.2 var(--titoli); margin: 1.4rem 0 0; }
 .aggiungi label small, .gestione-radio label small { display: block; font-weight: 400; color: var(--ardesia); font-size: 0.85rem; }
-.aggiungi select, .gestione-radio select, .gestione-radio input, .gestione-radio textarea, #riprova select, #riprova input { width: 100%; font: 400 1rem/1.4 var(--testo); padding: 0.6rem 0.7rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); }
+.aggiungi select, .gestione-radio select, .gestione-radio input, .gestione-radio textarea, #riprova select, #riprova input, #impianto input { width: 100%; font: 400 1rem/1.4 var(--testo); padding: 0.6rem 0.7rem; border: 1px solid var(--ardesia); border-radius: 6px; background: var(--carta); color: var(--granito); }
 .aggiungi input[type="file"] { padding: 0.45rem; }
 .aggiungi .nota, .gestione-radio .nota { color: var(--ardesia); font-size: 0.9rem; max-width: 44rem; }
 .aggiungi .nuovi > .spiega { background: var(--lago-tenue); margin-top: 0.8rem; }
@@ -402,6 +423,7 @@ dialog ul { padding-left: 1.2rem; }
   .riga .batteria { grid-area: batteria; text-align: left; color: var(--ardesia); } .riga .salti { grid-area: salti; color: var(--ardesia); }
   .comandi-copertura label { flex: 1 1 9rem; flex-direction: column; align-items: stretch; gap: 0.2rem; }
   .comandi-copertura select { width: 100%; max-width: none; }
+  .comandi-copertura label.spunta { flex: 1 1 100%; flex-direction: row; align-items: center; gap: 0.45rem; }
   .mappa { height: 56vh; min-height: 18rem; }
   .ponte h3, .ripetitore h3 { font-size: 1.35rem; }
   .schede { gap: 1.2rem; }

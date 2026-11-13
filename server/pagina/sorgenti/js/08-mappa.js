@@ -205,6 +205,10 @@ class MappaCopertura {
     this.evidenza = null;           // il punto scelto dall'elenco, cerchiato per qualche secondo
     this.vive = new Map();          // immagini della mappa di sfondo in pagina
     this.ultimoZoom = 0;
+    this.prev = new Map();          // dalla 1.17.0 i quadretti previsti (calcolati), sotto a quelli misurati
+    this.prevLivelli = new Map();
+    this.cerchi = [];               // fin dove e' stato fatto il calcolo, impianto per impianto
+    this.alTocco = null;            // chi vuole il prossimo tocco sulla mappa (il punto di prova)
     this.sfondo("topo");
     this.eventi();
     new ResizeObserver(() => this.misura()).observe(e);
@@ -229,6 +233,14 @@ class MappaCopertura {
       a.rel = "noopener";
       this.crediti.append(a);
     }
+    // dalla 1.17.0, quando c'e' la copertura prevista: da dove viene il rilievo (lo chiedono i suoi autori)
+    const rilievo = el("span", "rilievo", " Rilievo: ");
+    const fonte = el("a", null, "Mapzen");
+    fonte.href = "https://github.com/tilezen/joerd/blob/master/docs/attribution.md";
+    fonte.target = "_blank";
+    fonte.rel = "noopener";
+    rilievo.append(fonte, ", Copernicus EU-DEM, USGS SRTM.");
+    this.crediti.append(rilievo);
     if (this.z > this.s.max) this.zoom(this.s.max - this.z);
     else this.ridisegna();
   }
@@ -240,6 +252,57 @@ class MappaCopertura {
     this.e.dataset.punti = String(punti.length);
     if (!this.adattata) this.adatta();
     else this.ridisegna();
+  }
+
+  previste(celle, cerchi) {
+    this.prev = celle;
+    this.prevLivelli = new Map();
+    this.cerchi = cerchi;
+    this.e.dataset.previste = String(celle.size);
+    this.e.classList.toggle("con-prevista", cerchi.length > 0);
+    this.ridisegna();
+  }
+
+  previsteAl(livello) {
+    // da lontano anche i quadretti previsti si uniscono: margine medio, e quanta parte del gruppo e' coperta
+    let gruppi = this.prevLivelli.get(livello);
+    if (!gruppi) {
+      const s = 17 - livello;
+      gruppi = new Map();
+      for (const c of this.prev.values()) {
+        const k = (c.x >> s) * 262144 + (c.y >> s);
+        let g = gruppi.get(k);
+        if (!g) gruppi.set(k, g = {quanti: 0, somma: 0, meglio: c});
+        g.quanti++;
+        g.somma += c.margine;
+        if (c.margine > g.meglio.margine) g.meglio = c;
+      }
+      for (const g of gruppi.values()) {
+        g.margine = g.somma / g.quanti;
+        g.classe = classeCopertura(g.margine);
+        g.parte = g.quanti / 4 ** s;
+      }
+      this.prevLivelli.set(livello, gruppi);
+    }
+    return gruppi;
+  }
+
+  inquadra(cerchi) {
+    // tutta la zona calcolata in vista
+    if (!this.w || !this.h || !cerchi.length) return;
+    let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+    for (const c of cerchi) {
+      const r = c.km / (40075.017 * Math.cos(c.lat * Math.PI / 180)), x = mondoX(c.lon, 0) / 256, y = mondoY(c.lat, 0) / 256;
+      minx = Math.min(minx, x - r); maxx = Math.max(maxx, x + r); miny = Math.min(miny, y - r); maxy = Math.max(maxy, y + r);
+    }
+    let z = 15;
+    while (z > 3 && ((maxx - minx) * 256 * 2 ** z > this.w * 0.96 || (maxy - miny) * 256 * 2 ** z > this.h * 0.96)) z--;
+    this.z = Math.min(z, this.s.max);
+    this.cx = (minx + maxx) / 2 * 256 * 2 ** this.z;
+    this.cy = (miny + maxy) / 2 * 256 * 2 ** this.z;
+    this.adattata = true;
+    this.nascondi();
+    this.ridisegna();
   }
 
   misura() {
@@ -372,7 +435,40 @@ class MappaCopertura {
       this.trama = ctx.createPattern(r, "repeat");
     }
     const lato = this.lato, spazio = lato >= 8 ? 1 : 0;     // un pixel tra un quadretto e l'altro
-    let disegnati = 0;
+    let disegnati = 0, previsti = 0;
+    if (this.prev.size) {
+      // i previsti: sotto, piu' chiari e senza bordo ne' spazi (una superficie, non misure); solo quelli in vista
+      // (a pezzi piu' fini dei quadretti misurati, larghi almeno 8 pixel: da lontano si vede la forma della zona)
+      this.livelloPrev = Math.max(9, Math.min(17, this.z + 5));
+      const latoP = this.latoPrev = 256 * 2 ** this.z / 2 ** this.livelloPrev;
+      const gruppi = this.previsteAl(this.livelloPrev), n = 2 ** this.livelloPrev;
+      const lx0 = Math.max(0, Math.floor(sx / latoP)), lx1 = Math.min(n - 1, Math.floor((sx + this.w) / latoP));
+      const ly0 = Math.max(0, Math.floor(sy / latoP)), ly1 = Math.min(n - 1, Math.floor((sy + this.h) / latoP));
+      for (let ly = ly0; ly <= ly1; ly++) {
+        const y = Math.round(ly * latoP - sy), alto = Math.round((ly + 1) * latoP - sy) - y;
+        for (let lx = lx0; lx <= lx1; lx++) {
+          const g = gruppi.get(lx * 262144 + ly);
+          if (!g) continue;
+          const x = Math.round(lx * latoP - sx);
+          ctx.globalAlpha = 0.14 + 0.28 * g.parte;
+          ctx.fillStyle = g.classe.colore;
+          ctx.fillRect(x, y, Math.round((lx + 1) * latoP - sx) - x, alto);
+          previsti++;
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.setLineDash([6, 5]);        // fin dove arriva il calcolo: dentro al cerchio, senza colore vuol dire non coperto
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(31, 45, 52, 0.6)";
+    for (const c of this.cerchi) {
+      const r = c.km / (40075.017 * Math.cos(c.lat * Math.PI / 180)) * 256 * 2 ** this.z;
+      ctx.beginPath();
+      ctx.arc(mondoX(c.lon, this.z) - sx, mondoY(c.lat, this.z) - sy, r, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    this.e.dataset.previstiDisegnati = String(previsti);
     for (const q of this.mostrati) {
       const x = q.lx * lato - sx, y = q.ly * lato - sy;
       if (x > this.w || y > this.h || x + lato < 0 || y + lato < 0) continue;
@@ -414,8 +510,10 @@ class MappaCopertura {
         ctx.strokeStyle = "#0d4757";
         ctx.stroke();
       }
+      const rombo = r => { ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); };
       ctx.beginPath();
       if (p.tipo === "gateway") ctx.rect(x - 7, y - 7, 14, 14);
+      else if (p.tipo === "prova") rombo(9);
       else ctx.arc(x, y, 7, 0, 2 * Math.PI);
       ctx.fillStyle = p.spento ? "#ffffff" : COLORI_PUNTI[NOMI_LIVELLI[p.livello]];
       ctx.fill();
@@ -427,6 +525,7 @@ class MappaCopertura {
         ctx.strokeStyle = "rgba(31, 45, 52, 0.55)";
         ctx.beginPath();
         if (p.tipo === "gateway") ctx.rect(x - 8.75, y - 8.75, 17.5, 17.5);
+        else if (p.tipo === "prova") rombo(11.25);
         else ctx.arc(x, y, 8.75, 0, 2 * Math.PI);
         ctx.stroke();
       }
@@ -455,12 +554,21 @@ class MappaCopertura {
       const [primo, ...altre] = vicino.p.righe;
       s.replaceChildren(el("b", null, primo), ...altre.map(t => el("span", null, t)));
     } else {
-      const q = this.lato ? this.dove.get(Math.floor((px + sx) / this.lato) + "," + Math.floor((py + sy) / this.lato)) : null;
-      if (!q) {
+      const lx = this.lato ? Math.floor((px + sx) / this.lato) : 0, ly = this.lato ? Math.floor((py + sy) / this.lato) : 0;
+      const q = this.lato ? this.dove.get(lx + "," + ly) : null;
+      const previsto = this.latoPrev && this.prev.size ? this.previsteAl(this.livelloPrev)
+        .get(Math.floor((px + sx) / this.latoPrev) * 262144 + Math.floor((py + sy) / this.latoPrev)) : null;
+      if (!q && !previsto) {
         if (fisso || !this.fisso) this.nascondi();
         return;
       }
-      s.replaceChildren(el("b", null, q.classe.nome + ": " + q.classe.spiega), ...righeQuadretto(q).map(t => el("span", null, t)));
+      if (q) {
+        s.replaceChildren(el("b", null, q.classe.nome + ": " + q.classe.spiega),
+                          ...righeQuadretto(q).concat(previsto ? righePrevista(previsto, true) : []).map(t => el("span", null, t)));
+      } else {
+        const [primo, ...altre] = righePrevista(previsto, false);
+        s.replaceChildren(el("b", null, primo), ...altre.map(t => el("span", null, t)));
+      }
     }
     s.hidden = false;
     const x = px + 16 + s.offsetWidth > this.w ? px - 16 - s.offsetWidth : px + 16;
@@ -512,7 +620,11 @@ class MappaCopertura {
       puntatori.delete(ev.pointerId);
       if (puntatori.size < 2) pizzico = null;
       if (!puntatori.size) trascina = null;
-      if (t && !t.mosso && ev.type === "pointerup") this.indica(ev, true);
+      if (t && !t.mosso && ev.type === "pointerup") {
+        const r = e.getBoundingClientRect(), wx = this.cx - this.w / 2 + ev.clientX - r.left, wy = this.cy - this.h / 2 + ev.clientY - r.top;
+        if (this.alTocco && this.alTocco(latitudineDaY(wy, this.z), wx / (256 * 2 ** this.z) * 360 - 180)) return;
+        this.indica(ev, true);
+      }
     };
     e.addEventListener("pointerup", fine);
     e.addEventListener("pointercancel", fine);
@@ -544,22 +656,6 @@ class MappaCopertura {
   }
 }
 
-function dovePrevista() {
-  // la copertura che ci si aspetta, prima di andarci: la calcolano dal rilievo due servizi esterni
-  const p = el("p", null, "Dove non siete ancora passati la mappa è vuota. Per stimare prima la copertura, o scegliere dove " +
-                          "mettere un ripetitore: «Copertura prevista» nella scheda di ogni gateway e ripetitore apre il ");
-  const collegamento = (testo, url) => {
-    const a = el("a", null, testo);
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    return a;
-  };
-  p.append(collegamento("Site Planner di Meshtastic", "https://site.meshtastic.org/"), " già impostato; per cercare le cime " +
-           "migliori c'è ", collegamento("MeshPeaks", "https://meshpeaks.com/"), ". Sono siti esterni.");
-  return p;
-}
-
 function costruisciCopertura() {
   const sez = vistaCopertura;
   const comandi = el("div", "comandi-copertura");
@@ -579,11 +675,13 @@ function costruisciCopertura() {
   };
   selMostra = scelta("Mostra", [["", "Tutta la rete"]], "mostra", () => {
     mappaCopertura.adattata = false;
+    daInquadrare = sceltaCopertura.prevista;
     disegnaCopertura();
   });
   scelta("Periodo", [["0", "Tutto"], ["30", "Ultimi 30 giorni"], ["7", "Ultimi 7 giorni"], ["1", "Oggi"]], "periodo",
          () => disegnaCopertura());
   mappaCopertura = new MappaCopertura();
+  const prevista = costruisciPrevista(comandi, scelta);       // dalla 1.17.0
   const legenda = el("ul", "legenda");
   legenda.setAttribute("aria-label", "Legenda della mappa");
   for (const c of [...CLASSI_COPERTURA, VIA_RIPETITORE, RIPETUTA]) {
@@ -623,9 +721,9 @@ function costruisciCopertura() {
                   "radio della squadra."),
     el("p", null, "Ogni gateway tiene solo quadretto, segnale e giorno: non quale radio né a che ora. Dopo aver " +
                   "spostato l'antenna di un gateway, sceglilo in «Mostra» e premi Azzera."),
-    dovePrevista());
+    ...spiegaPrevista());
   come.classList.add("gruppo-mappa");
-  sez.append(comandi, mappaCopertura.e, legenda, piede, statoCopertura, come);
+  sez.append(comandi, mappaCopertura.e, legenda, piede, statoCopertura, ...prevista, come);
 }
 
 async function caricaCopertura(forza) {
@@ -662,7 +760,8 @@ function disegnaCopertura() {
   // le scelte di "Mostra": tutta la rete, ogni gateway, ogni ripetitore; quella fatta resta
   const nomi = nomiDeiRipetitori();
   const scelte = [["", "Tutta la rete"], ...elenco.map(p => ["g:" + p.nome, "Gateway " + p.nome]),
-                  ...[...nomi].sort((a, b) => a[1].localeCompare(b[1], "it")).map(([id, nome]) => ["r:" + id, nome])];
+                  ...[...nomi].sort((a, b) => a[1].localeCompare(b[1], "it")).map(([id, nome]) => ["r:" + id, nome]),
+                  ...(puntoDiProva ? [["p:prova", "Punto di prova"]] : [])];
   const attuali = [...selMostra.options].map(o => o.value + "\t" + o.textContent);
   if (scelte.map(x => x.join("\t")).join("\n") !== attuali.join("\n")) {
     selMostra.replaceChildren(...scelte.map(([v, t]) => {
@@ -671,13 +770,19 @@ function disegnaCopertura() {
       return o;
     }));
     if (!scelte.some(x => x[0] === sceltaCopertura.mostra)) sceltaCopertura.mostra = "";
-    selMostra.value = sceltaCopertura.mostra;
   }
+  if (selMostra.value !== sceltaCopertura.mostra) selMostra.value = sceltaCopertura.mostra;
   const gateway = sceltaCopertura.mostra.startsWith("g:") ? sceltaCopertura.mostra.slice(2) : "";
   bottoneAzzera.hidden = !gateway;
   bottoneAzzera.textContent = "Azzera la copertura di " + (gateway || "un gateway");
   const celle = quadrettiCopertura();
-  mappaCopertura.dati(celle, puntiDellaRete());
+  const punti = puntiDellaRete();
+  if (puntoDiProva) {
+    punti.push({tipo: "prova", chiave: "p:prova", nome: "Punto di prova", lat: puntoDiProva.lat, lon: puntoDiProva.lon, livello: 0,
+                spento: false, righe: ["Punto di prova: un impianto che non c'è ancora", "Sotto la mappa: quanta zona aggiungerebbe."]});
+  }
+  mappaCopertura.dati(celle, punti);
+  aggiornaPrevista();
   const conDati = [...copertura.values()].filter(c => c.dati).length;
   if (!elenco.length) riassuntoCopertura.textContent = "";
   else if (!copertura.size) riassuntoCopertura.textContent = "Carico la copertura dei gateway...";
@@ -694,7 +799,8 @@ function disegnaCopertura() {
 
 function scaricaCoperturaKml() {
   const celle = quadrettiCopertura();
-  if (!celle.length) {
+  const previste = sceltaCopertura.prevista ? mostrate : new Map();     // dalla 1.17.0 anche la copertura prevista
+  if (!celle.length && !previste.size) {
     statoCopertura.textContent = "Niente da scaricare: nessun quadretto con le scelte di adesso.";
     return;
   }
@@ -715,8 +821,37 @@ function scaricaCoperturaKml() {
   }).join("\n");
   const scelta = selMostra.options[selMostra.selectedIndex];
   const titolo = "Copertura Meshtastic, " + (sceltaCopertura.mostra ? scelta.textContent : "tutta la rete");
+  let corpo = stili + "\n" + posti;
+  if (previste.size) {
+    // la prevista a strisce: i quadretti vicini della stessa riga e dello stesso colore diventano una figura sola,
+    // senno' il file peserebbe troppo per ATAK. In una cartella a parte, cosi' in ATAK si accende e si spegne da sola.
+    const righe = new Map();
+    for (const q of previste.values()) {
+      if (!righe.has(q.y)) righe.set(q.y, []);
+      righe.get(q.y).push(q);
+    }
+    const strisce = [];
+    for (const [y, riga] of righe) {
+      riga.sort((a, b) => a.x - b.x);
+      let da = 0;
+      for (let i = 1; i <= riga.length; i++) {
+        const classe = classeCopertura(riga[da].margine);
+        if (i < riga.length && riga[i].x === riga[i - 1].x + 1 && classeCopertura(riga[i].margine) === classe) continue;
+        const o = lon(riga[da].x), e = lon(riga[i - 1].x + 1), no = lat(y), su = lat(y + 1);
+        strisce.push("<Placemark><name>Previsto: " + esc(classe.breve) + "</name><styleUrl>#prevista-" + classe.chiave +
+                     "</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>" +
+                     [[o, su], [e, su], [e, no], [o, no], [o, su]].map(p => p.join(",")).join(" ") +
+                     "</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>");
+        da = i;
+      }
+    }
+    const stiliPrevista = CLASSI_COPERTURA.map(c => "<Style id=\"prevista-" + c.chiave + "\"><LineStyle><width>0</width></LineStyle>" +
+      "<PolyStyle><color>" + colore(c.colore, "59") + "</color><outline>0</outline></PolyStyle></Style>").join("\n");
+    corpo = stili + "\n" + stiliPrevista + "\n<Folder><name>Copertura misurata</name>\n" + posti + "\n</Folder>\n" +
+            "<Folder><name>Copertura prevista (calcolata, entro " + sceltaCopertura.raggio + " km)</name>\n" + strisce.join("\n") + "\n</Folder>";
+  }
   const kml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document><name>" +
-    esc(titolo) + "</name>\n" + stili + "\n" + posti + "\n</Document></kml>\n";
+    esc(titolo) + "</name>\n" + corpo + "\n</Document></kml>\n";
   const url = URL.createObjectURL(new Blob([kml], {type: "application/vnd.google-earth.kml+xml"}));
   const a = el("a");
   a.href = url;
@@ -726,7 +861,8 @@ function scaricaCoperturaKml() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
-  statoCopertura.textContent = "Scaricato " + a.download + ": in ATAK si apre con Importa (anche in Google Earth).";
+  statoCopertura.textContent = "Scaricato " + a.download + (previste.size ? ", con la copertura prevista in una cartella a parte" : "") +
+                               ": in ATAK si apre con Importa (anche in Google Earth).";
 }
 
 async function azzeraCopertura() {

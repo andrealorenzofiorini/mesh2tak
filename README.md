@@ -148,8 +148,36 @@ Il server, dallo stato dei gateway, avvisa per email quando un ripetitore fisso 
 messaggi che ripete) e quando la sua batteria è al 20% o meno; e quando passa. Se un gateway non risponde, dei
 ripetitori non si valuta niente.
 
-"Copertura prevista" apre il [Site Planner di Meshtastic](https://site.meshtastic.org) con posizione, nome,
-frequenza e altezza nell'indirizzo: il calcolo sul rilievo lo fa quel sito, nel browser.
+## Copertura prevista (dalla 1.17.0)
+
+La pagina calcola, per ogni gateway e ripetitore con una posizione, dove una radio portatile si collegherebbe: per
+ogni quadretto della mappa (gli stessi della copertura misurata) entro 10, 20 o 30 km fa il bilancio del
+collegamento nei due versi e tiene il peggiore.
+
+- **Modello**: attenuazione nello spazio libero più diffrazione sul profilo del terreno (ostacoli a lama di
+  coltello in cascata, ITU-R P.526, metodo di Deygout con tre ostacoli e la sua correzione empirica), Terra con
+  raggio 4/3. Rumore da larghezza di banda del preset e cifra di rumore di 6 dB; minimo decifrabile quello che il
+  gateway già dichiara (`limite_snr`).
+- **Dati veri di ogni impianto**: posizione, preset, regione e potenza impostata li dice il gateway
+  (`copertura.json`, campo `radio`); altezza e guadagno dell'antenna, perdite del cavo e potenza li scrivono gli
+  amministratori (`POST /api/impianto`, tenuti in `servizio/impianti.json`), per `g:NOME`, `r:!id` e `portatile`.
+- **Taratura**: per ogni gateway la correzione `a + 10·b·log10(km)` (quello che il rilievo non vede: alberi, case,
+  radio addosso) si ricava dai suoi quadretti misurati con una massima verosimiglianza per dati censurati: i
+  quadretti con segnale saturo dicono solo "almeno così", quelli arrivati solo tramite altre radio "meno del
+  minimo"; una piccola quota di casi a parte rende il risultato robusto. Senza almeno 5 quadretti utili si usa la
+  media dei gateway tarati o, se non ce ne sono, 10 dB a 1 km con `b = 1`.
+- **Rilievo**: riquadri "terrarium" (PNG, quota nei tre colori) dei [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/)
+  pubblici su AWS, livello 11 (circa 53 m per punto). Li scarica il servizio della pagina
+  (`GET /api/terreno/{z}/{x}/{y}.png`, dietro Authentik), al massimo 400 nuovi ogni 10 minuti, e ne tiene fino a
+  600 in `servizio/terreno/`. Il browser legge il PNG byte per byte (non da un disegno: alcuni browser alterano
+  apposta i colori riletti da un canvas). Il calcolo gira nel browser, a pezzi, senza librerie.
+
+I conti stanno in `server/pagina/sorgenti/js/08b-previsione-calcolo.js` e si provano da soli con
+`node tests/prova_previsione.js`. Limiti: è un calcolo sul solo terreno, a 53 m di passo; non conosce alberi, case
+e riflessioni, che entrano solo attraverso la taratura. Il rilievo è di Mapzen (Terrain Tiles): in Europa prodotto con
+dati e informazioni Copernicus finanziati dall'Unione Europea (EU-DEM) e con dati SRTM per gentile concessione
+dell'U.S. Geological Survey ([tutte le fonti](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)); la pagina lo scrive sulla mappa. Per un secondo parere resta il collegamento al
+[Site Planner di Meshtastic](https://site.meshtastic.org), sito esterno.
 
 ## Prove
 

@@ -308,7 +308,7 @@ function disegnaRipetitore(v) {
   fatto(dl, "Col gateway", v.ponti.map(x => x.ponte + ": " + (x.salti === 0 ? "diretto" + (qualita(x.snr, x.rssi) ? ", segnale " + qualita(x.snr, x.rssi) : "")
                                                                   : (x.salti > 0 ? "tramite " + (x.salti === 1 ? "1 radio" : x.salti + " radio") : "sentito"))).join("; "));
   fatto(dl, "Copertura", testoCopertura("r:" + v.id));
-  fattoPrevista(dl, "r:" + v.id, 3);
+  fattoPrevista(dl, "r:" + v.id);
   if (v.acceso !== null && v.acceso !== undefined && v.etaMetriche < 24 * 3600) fatto(dl, "Acceso da", durata(v.acceso));
   if (v.occupato !== null && v.occupato !== undefined && v.etaMetriche < 24 * 3600) {
     fatto(dl, "Canale radio", "occupato il " + numIt(v.occupato) + "%" + (v.trasmesso !== null && v.trasmesso !== undefined ?

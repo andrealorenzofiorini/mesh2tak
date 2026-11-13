@@ -40,6 +40,8 @@ class Ponte:
             self.tz = None
         # radio <-> server
         self.preset = "LONG_FAST"
+        self.potenza_dbm: Optional[int] = None      # potenza impostata sul nodo (None: il massimo della regione)
+        self.regione = ""
         self.hop_limit = 3
         self._inoltrati_al_server = Memoria(600)    # gia' portati dalla radio al server
         self._visti_dal_server = Memoria(900)       # arrivati dal server (o portati la' da un altro ponte)
@@ -82,19 +84,24 @@ class Ponte:
         # dalla 1.13.0 il ponte non tocca le impostazioni del suo nodo: vale quello che si sceglie dall'app o dalla
         # pagina (anche un canale secondario acceso). Le rimette come all'installazione solo "Reimposta la radio".
         canali, ok = leggi_canali(iface, self.cfg)
-        preset, salti = "LONG_FAST", 3
+        preset, salti, potenza, regione = "LONG_FAST", 3, None, ""
         try:
             from meshtastic.protobuf import config_pb2
             lora = iface.localNode.localConfig.lora
             if lora.use_preset:
                 preset = config_pb2.Config.LoRaConfig.ModemPreset.Name(lora.modem_preset)
             salti = int(lora.hop_limit) or 3
+            # dalla 1.17.0, per la copertura prevista: la potenza impostata (0 = il massimo della regione, che la
+            # radio poi limita al suo) e la regione, da cui la frequenza
+            potenza = int(lora.tx_power) if 0 < int(lora.tx_power) <= 30 else None
+            regione = config_pb2.Config.LoRaConfig.RegionCode.Name(lora.region)
         except Exception:  # noqa
             pass
         with self._lock:
             self.canali, self.canali_ok = canali, ok
             self.mio_num = iface.myInfo.my_node_num if getattr(iface, "myInfo", None) else None
             self.preset, self.hop_limit = preset, salti
+            self.potenza_dbm, self.regione = potenza, regione
             self.persa.clear()
             self.iface = iface
             utente = self._info(self.mio_num).get("user", {}) if self.mio_num else {}
@@ -388,6 +395,8 @@ class Ponte:
         d["ponte"] = ({"lat": round(lat_i * 1e-7, 4), "lon": round(lon_i * 1e-7, 4)}
                       if isinstance(lat_i, int) and isinstance(lon_i, int) and (lat_i or lon_i) else None)
         d["preset"], d["limite_snr"] = self.preset, limite_snr(self.preset)
+        # dalla 1.17.0: i valori veri della radio del gateway, per calcolare la copertura prevista
+        d["radio"] = {"potenza_dbm": self.potenza_dbm, "regione": self.regione}
         with self._lock:      # dalla 1.15.0 i ripetitori fissi, con la loro posizione (solo qui, dietro Authentik)
             d["ripetitori"] = [{"id": f"!{v.num:08x}", "nome": v.nome or self._nome(v.num), "nome_breve": v.nome_breve,
                                 "lat": round(v.lat, 4), "lon": round(v.lon, 4)}
