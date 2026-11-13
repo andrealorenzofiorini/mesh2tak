@@ -1,17 +1,15 @@
 // Mappa della rete nel browser: copertura (1.14.0) e, dalla 1.15.0, in cima alla pagina con gateway e ripetitori. Sei
 // quadretti del gateway casa (uno per colore, uno tramite altre radio, uno tramite il ripetitore fisso), legenda,
-// elenco accanto alla mappa, dettagli al passaggio del mouse, zoom, file KML per ATAK, scelta di cosa mostrare e
+// elenco accanto alla mappa, dettagli al passaggio del mouse, zoom, scelta di cosa mostrare e
 // "Azzera". Le immagini della mappa di sfondo le da' la prova stessa (niente internet): cosi' si controlla anche che la
 // pagina le possa caricare (CSP) e con che intestazioni. Stampa in JSON.
 const { chromium } = require('playwright');
 const { sfondoFinto, scheda } = require('./pagina_comune');
-const fs = require('fs');
 let p = null;
 (async () => {
   const [url, foto] = process.argv.slice(2);
   const b = await chromium.launch({args: ['--host-resolver-rules=MAP *.prova.lan 127.0.0.1', '--no-proxy-server']});
-  const ctx = await b.newContext({ignoreHTTPSErrors: true, viewport: {width: 1280, height: 1000}, deviceScaleFactor: 1,
-                                  acceptDownloads: true});
+  const ctx = await b.newContext({ignoreHTTPSErrors: true, viewport: {width: 1280, height: 1000}, deviceScaleFactor: 1});
   await ctx.addCookies([{name: 'ak_finto', value: 'andrea', domain: 'meshtastic.prova.lan', path: '/'}]);
   const sfondo = [];
   await sfondoFinto(ctx, sfondo);
@@ -81,11 +79,7 @@ let p = null;
   await p.focus('#mappa-copertura');
   await p.keyboard.press('+');
   r.zoomTastiera = Number(await p.getAttribute('#mappa-copertura', 'data-zoom'));
-  // il file per ATAK
-  const [scaricato] = await Promise.all([p.waitForEvent('download'), p.click('button:has-text("Scarica per ATAK")')]);
-  r.kmlNome = scaricato.suggestedFilename();
-  r.kml = fs.readFileSync(await scaricato.path(), 'utf8');
-  r.statoKml = await p.innerText('.stato-copertura');
+  r.scarica = await p.$$eval('button', x => x.filter(b => /ATAK/.test(b.textContent)).length);    // tolto dalla 1.17.1
   // solo oggi: gli stessi quadretti; mappa stradale
   await p.selectOption('.comandi-copertura label:has-text("Periodo") select', '1');
   r.oggi = await p.getAttribute('#mappa-copertura', 'data-quadretti');

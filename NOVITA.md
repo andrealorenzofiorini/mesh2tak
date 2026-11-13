@@ -3,6 +3,10 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.17.1
+
+- Tolto «Scarica per ATAK» dalla mappa della rete: la copertura, misurata e prevista, si guarda sulla pagina.
+
 ## 1.17.0
 
 - Copertura prevista calcolata dalla pagina: con «Copertura prevista», sopra la mappa, la pagina calcola dal rilievo del terreno dove una radio portatile si collegherebbe a ogni gateway e a ogni ripetitore, anche dove nessuno è ancora passato. I quadretti previsti stanno sotto a quelli misurati, con gli stessi colori più chiari; un cerchio tratteggiato dice fin dove è arrivato il calcolo (10, 20 o 30 km).

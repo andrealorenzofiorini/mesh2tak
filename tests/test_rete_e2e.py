@@ -998,7 +998,7 @@ def test_6i_la_copertura_dalla_pagina(rete):
 
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
 def test_6j_la_copertura_nel_browser(rete):
-    oggi = prepara_copertura(rete)
+    prepara_copertura(rete)
     foto = os.environ.get("RETE_FOTO", "")
     senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
     p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_copertura.js"), f"{RETE}/",
@@ -1042,11 +1042,7 @@ def test_6j_la_copertura_nel_browser(rete):
     assert r["centrato"]["zoom"] >= 13 and abs(r["centrato"]["dx"]) <= 2 and abs(r["centrato"]["dy"]) <= 2, r["centrato"]
     assert r["zoomLontano"] == r["zoomAdattata"] - 3 and 1 <= r["disegnatiLontano"] <= 6
     assert r["zoomTastiera"] == r["zoomAdattata"] - 2
-    assert r["kmlNome"] == f"copertura-rete-{oggi}.kml" and r["statoKml"].startswith("Scaricato copertura-rete-")
-    assert r["kml"].count("<Placemark>") == 6 and "<name>Copertura Meshtastic, tutta la rete</name>" in r["kml"]
-    assert '<Style id="buono">' in r["kml"] and "<color>990ca30c</color>" in r["kml"]
-    assert '<Style id="ripetitore">' in r["kml"] and "<styleUrl>#ripetitore</styleUrl>" in r["kml"]
-    assert re.search(r"<coordinates>8\.82\d+,45\.82\d+ ", r["kml"]), "longitudine, latitudine"
+    assert r["scarica"] == 0, "dalla 1.17.1 niente \"Scarica per ATAK\""
     assert r["oggi"] == "6" and "OpenStreetMap" in r["creditiStrade"] and "OpenTopoMap" not in r["creditiStrade"]
     assert r["sfondoScelto"] == ["false", "true"]
     assert r["soloRipetitore"] == ["1", "1 quadretto: tramite ripetitore 1.", False], r["soloRipetitore"]
@@ -1081,7 +1077,7 @@ def test_6k_rilievo_e_impianti_dalla_pagina(rete):
 
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
 def test_6l_la_copertura_prevista_nel_browser(rete):
-    oggi = prepara_copertura(rete)
+    prepara_copertura(rete)
     foto = os.environ.get("RETE_FOTO", "")
     senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
     p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_prevista.js"), f"{RETE}/",
@@ -1128,12 +1124,7 @@ def test_6l_la_copertura_prevista_nel_browser(rete):
     assert "Collegamento con Gateway casa (" in r["prova"] and r["provaMostra"] == ["p:prova", "Punto di prova"], r["prova"]
     assert r["provaSegno"].startswith("Punto di prova: un impianto che non c'è ancora"), r["provaSegno"]
     assert r["provaTolta"] == [False, ""], r["provaTolta"]
-    # il file per ATAK porta anche la prevista, in una cartella a parte
-    assert r["kmlNome"] == f"copertura-rete-{oggi}.kml" and "con la copertura prevista in una cartella a parte" in r["statoKml"]
-    assert "<Folder><name>Copertura misurata</name>" in r["kml"] and r["kml"].count("</Folder>") == 2
-    assert "<Folder><name>Copertura prevista (calcolata, entro 10 km)</name>" in r["kml"], "il raggio scelto"
-    assert '<Style id="prevista-buono">' in r["kml"] and "<styleUrl>#prevista-buono</styleUrl>" in r["kml"]
-    assert 6 < r["kml"].count("<Placemark>") < r["previsteDieci"], "a strisce: molte meno figure dei quadretti"
+    assert 0 < r["previsteDieci"] < r["previsteDopo"], "raggio piu' corto: meno quadretti"
     # dalla scheda del ripetitore: la sua prevista sulla mappa; spenta, tutto torna com'era
     assert r["dallaScheda"] == ["r:!3333cccc", True] and r["dopo"] == {"previste": "0", "legenda": False, "elenco": 0}, r
 

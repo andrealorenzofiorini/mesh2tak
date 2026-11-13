@@ -1,16 +1,14 @@
 // Copertura prevista nel browser (1.17.0): la pagina prende il rilievo dal nostro server, calcola dove arrivano il
 // gateway casa e il ripetitore con i dati dei loro impianti, mostra i quadretti previsti sotto a quelli misurati, fa
-// scrivere i dati di un impianto, prova un punto che non c'e' ancora e mette la prevista nel file per ATAK. Il
+// scrivere i dati di un impianto e prova un punto che non c'e' ancora. Il
 // rilievo di prova e' una pianura (lo da' la prova stessa, al posto del sito vero). Stampa in JSON.
 const { chromium } = require('playwright');
 const { sfondoFinto } = require('./pagina_comune');
-const fs = require('fs');
 let p = null;
 (async () => {
   const [url, foto] = process.argv.slice(2);
   const b = await chromium.launch({args: ['--host-resolver-rules=MAP *.prova.lan 127.0.0.1', '--no-proxy-server']});
-  const ctx = await b.newContext({ignoreHTTPSErrors: true, viewport: {width: 1280, height: 1000}, deviceScaleFactor: 1,
-                                  acceptDownloads: true});
+  const ctx = await b.newContext({ignoreHTTPSErrors: true, viewport: {width: 1280, height: 1000}, deviceScaleFactor: 1});
   await ctx.addCookies([{name: 'ak_finto', value: 'andrea', domain: 'meshtastic.prova.lan', path: '/'}]);
   await sfondoFinto(ctx, null);
   p = await ctx.newPage();
@@ -104,14 +102,10 @@ let p = null;
   r.provaSegno = await p.innerText(mappa + ' .suggerimento');
   await p.click('.elenco-previste button:has-text("Togli il punto")');
   r.provaTolta = [await p.$$eval(mostra + ' option', x => x.some(o => o.value === 'p:prova')), await p.inputValue(mostra)];
-  // il file per ATAK, con la prevista entro 10 km
+  // un raggio piu' corto: il calcolo si rifa' entro 10 km
   await p.selectOption('.comandi-copertura label:has-text("Fino a") select', '10');
   await p.waitForFunction(() => /entro 10 km/.test(document.querySelector('.stato-prevista').textContent), null, {timeout: 120000});
   r.previsteDieci = Number(await p.getAttribute(mappa, 'data-previste'));
-  const [scaricato] = await Promise.all([p.waitForEvent('download'), p.click('button:has-text("Scarica per ATAK")')]);
-  r.kmlNome = scaricato.suggestedFilename();
-  r.kml = fs.readFileSync(await scaricato.path(), 'utf8');
-  r.statoKml = await p.innerText('.stato-copertura:not(.stato-prevista)');
   // spenta, e riaccesa dalla scheda del ripetitore
   await p.uncheck(spunta);
   r.dopo = await com();

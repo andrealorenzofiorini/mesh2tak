@@ -94,8 +94,8 @@ radio della squadra che erano lì: ricezioni dirette (rapporto segnale/rumore me
 altre radio. Solo quadretto, segnale e giorno, in `/var/lib/mesh2tak/copertura.json`; li dà alla pagina della rete
 da `GET /mesh2tak/copertura.json` (solo dal tunnel, con l'utente di Authentik). La mappa della pagina li unisce,
 li colora in base al margine sopra il minimo decifrabile del preset e li disegna su una mappa fatta nella pagina
-stessa (senza librerie esterne; da fuori arrivano solo le immagini di OpenTopoMap o OpenStreetMap). Esporta il KML
-per ATAK; "Azzera" (`POST` con `{"azzera": true}`, solo dalla pagina) ricomincia la mappa di un gateway.
+stessa (senza librerie esterne; da fuori arrivano solo le immagini di OpenTopoMap o OpenStreetMap). "Azzera"
+(`POST` con `{"azzera": true}`, solo dalla pagina) ricomincia la mappa di un gateway.
 
 ## Pagina della rete, gateway e ripetitori (dalla 1.15.0)
 

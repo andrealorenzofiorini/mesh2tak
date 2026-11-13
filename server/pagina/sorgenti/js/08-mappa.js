@@ -698,14 +698,11 @@ function costruisciCopertura() {
   }
   riassuntoCopertura = el("p", "riassunto");
   riassuntoCopertura.setAttribute("aria-live", "polite");
-  const kml = el("button", "bottone secondario piccolo", "Scarica per ATAK");
-  kml.type = "button";
-  kml.addEventListener("click", scaricaCoperturaKml);
   bottoneAzzera = el("button", "bottone secondario piccolo", "Azzera");
   bottoneAzzera.type = "button";
   bottoneAzzera.addEventListener("click", azzeraCopertura);
   const azioni = el("div", "azioni-copertura");
-  azioni.append(kml, bottoneAzzera);
+  azioni.append(bottoneAzzera);
   const piede = el("div", "piede-mappa");
   piede.append(riassuntoCopertura, azioni);
   statoCopertura = el("p", "stato-copertura");
@@ -795,74 +792,6 @@ function disegnaCopertura() {
     riassuntoCopertura.textContent = celle.length + (celle.length === 1 ? " quadretto" : " quadretti") + ": " +
       [...CLASSI_COPERTURA, VIA_RIPETITORE, RIPETUTA].filter(k => conta.get(k)).map(k => k.breve + " " + conta.get(k)).join(", ") + ".";
   }
-}
-
-function scaricaCoperturaKml() {
-  const celle = quadrettiCopertura();
-  const previste = sceltaCopertura.prevista ? mostrate : new Map();     // dalla 1.17.0 anche la copertura prevista
-  if (!celle.length && !previste.size) {
-    statoCopertura.textContent = "Niente da scaricare: nessun quadretto con le scelte di adesso.";
-    return;
-  }
-  const esc = s => String(s).replace(/[<>&'"]/g, c => ({"<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", "\"": "&quot;"}[c]));
-  const colore = (hex, alfa) => alfa + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);   // KML: aabbggrr
-  const n = 2 ** 17, lon = x => (x / n * 360 - 180).toFixed(6);
-  const lat = y => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI).toFixed(6);
-  const stili = [...CLASSI_COPERTURA, VIA_RIPETITORE, RIPETUTA].map(c => "<Style id=\"" + c.chiave + "\"><LineStyle><color>" +
-    colore(c.colore, "cc") + "</color><width>1</width></LineStyle><PolyStyle><color>" +
-    colore(c.colore, c === RIPETUTA ? "55" : "99") + "</color></PolyStyle></Style>").join("\n");
-  const posti = celle.map(c => {
-    const o = lon(c.x), e = lon(c.x + 1), no = lat(c.y), s = lat(c.y + 1);
-    const q = Object.assign({quanti: 1}, c);
-    return "<Placemark><name>" + esc(c.classe.nome) + "</name><description>" + esc(righeQuadretto(q).join("\n")) +
-      "</description><styleUrl>#" + c.classe.chiave + "</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>" +
-      [[o, s], [e, s], [e, no], [o, no], [o, s]].map(p => p.join(",")).join(" ") +
-      "</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>";
-  }).join("\n");
-  const scelta = selMostra.options[selMostra.selectedIndex];
-  const titolo = "Copertura Meshtastic, " + (sceltaCopertura.mostra ? scelta.textContent : "tutta la rete");
-  let corpo = stili + "\n" + posti;
-  if (previste.size) {
-    // la prevista a strisce: i quadretti vicini della stessa riga e dello stesso colore diventano una figura sola,
-    // senno' il file peserebbe troppo per ATAK. In una cartella a parte, cosi' in ATAK si accende e si spegne da sola.
-    const righe = new Map();
-    for (const q of previste.values()) {
-      if (!righe.has(q.y)) righe.set(q.y, []);
-      righe.get(q.y).push(q);
-    }
-    const strisce = [];
-    for (const [y, riga] of righe) {
-      riga.sort((a, b) => a.x - b.x);
-      let da = 0;
-      for (let i = 1; i <= riga.length; i++) {
-        const classe = classeCopertura(riga[da].margine);
-        if (i < riga.length && riga[i].x === riga[i - 1].x + 1 && classeCopertura(riga[i].margine) === classe) continue;
-        const o = lon(riga[da].x), e = lon(riga[i - 1].x + 1), no = lat(y), su = lat(y + 1);
-        strisce.push("<Placemark><name>Previsto: " + esc(classe.breve) + "</name><styleUrl>#prevista-" + classe.chiave +
-                     "</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>" +
-                     [[o, su], [e, su], [e, no], [o, no], [o, su]].map(p => p.join(",")).join(" ") +
-                     "</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>");
-        da = i;
-      }
-    }
-    const stiliPrevista = CLASSI_COPERTURA.map(c => "<Style id=\"prevista-" + c.chiave + "\"><LineStyle><width>0</width></LineStyle>" +
-      "<PolyStyle><color>" + colore(c.colore, "59") + "</color><outline>0</outline></PolyStyle></Style>").join("\n");
-    corpo = stili + "\n" + stiliPrevista + "\n<Folder><name>Copertura misurata</name>\n" + posti + "\n</Folder>\n" +
-            "<Folder><name>Copertura prevista (calcolata, entro " + sceltaCopertura.raggio + " km)</name>\n" + strisce.join("\n") + "\n</Folder>";
-  }
-  const kml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document><name>" +
-    esc(titolo) + "</name>\n" + corpo + "\n</Document></kml>\n";
-  const url = URL.createObjectURL(new Blob([kml], {type: "application/vnd.google-earth.kml+xml"}));
-  const a = el("a");
-  a.href = url;
-  const chi = sceltaCopertura.mostra ? sceltaCopertura.mostra.slice(2).replace(/^!/, "").replace(/[^A-Za-z0-9_-]+/g, "-") : "rete";
-  a.download = "copertura-" + chi + "-" + giornoNumero(new Date()) + ".kml";
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
-  statoCopertura.textContent = "Scaricato " + a.download + (previste.size ? ", con la copertura prevista in una cartella a parte" : "") +
-                               ": in ATAK si apre con Importa (anche in Google Earth).";
 }
 
 async function azzeraCopertura() {
