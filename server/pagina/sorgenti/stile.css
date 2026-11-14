@@ -287,6 +287,29 @@ dialog ul { padding-left: 1.2rem; }
 .elenco-previste p.impianto { color: var(--granito); }
 .azioni-prevista { display: flex; flex-wrap: wrap; gap: 0.4rem 0.7rem; align-items: center; margin-top: 0.45rem; font-size: 0.9rem; }
 .mappa.sceglie, .mappa.sceglie canvas { cursor: crosshair; }
+/* Dove mettere un ripetitore (1.18.0): strumenti, proposte, profilo */
+.strumenti-prevista { display: flex; flex-wrap: wrap; gap: 0.5rem 0.6rem; align-items: center; margin: 0.7rem 0 0; font-size: 0.95rem; }
+.strumenti-prevista[hidden] { display: none; }
+.strumenti-prevista span { font-weight: 600; }
+.strumenti-prevista button[aria-pressed="true"] { background: var(--lago-tenue); border-color: var(--lago); }
+.esito-siti:empty { display: none; }
+.proposte { margin: 0.9rem 0 0; padding: 0.8rem 0.9rem; background: var(--lago-tenue); border-radius: 8px; }
+.proposte > p { margin: 0.35rem 0 0; max-width: 60rem; font-size: 0.92rem; }
+.proposte .elenco-previste li { border-top-color: var(--curve); }
+#profilo { width: calc(100vw - 2rem); max-width: 46rem; }
+.grafico.profilo { margin: 0.9rem 0 0; }
+.grafico .terreno { fill: var(--nebbia); stroke: var(--ardesia); stroke-width: 1.5; stroke-linejoin: round; }
+.grafico .libero { fill: var(--lago); fill-opacity: 0.16; }
+.grafico .palo { stroke: var(--granito); stroke-width: 2; }
+.grafico .ostacolo { fill: var(--soccorso); stroke: var(--carta); stroke-width: 2; }
+.grafico .filo { stroke: var(--ardesia); stroke-width: 1; stroke-dasharray: 3 3; }
+.grafico .capo { fill: var(--granito); font-weight: 600; }
+.legenda-profilo { list-style: none; display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; padding: 0; margin: 0.5rem 0 0; color: var(--ardesia); font-size: 0.88rem; }
+.legenda-profilo li { display: flex; align-items: center; gap: 0.4rem; margin: 0; }
+.legenda-profilo i { display: inline-block; width: 1.4rem; height: 0.7rem; }
+.legenda-profilo .segno-terreno { background: var(--nebbia); border-top: 2px solid var(--ardesia); }
+.legenda-profilo .segno-linea { height: 0; border-top: 2px solid var(--lago); }
+.legenda-profilo .segno-libero { background: var(--lago); opacity: 0.2; }
 .mappa .crediti .rilievo { display: none; }
 .mappa.con-prevista .crediti .rilievo { display: inline; }
 @media (min-width: 700px) { .fatti div[data-prevista] { grid-column: span 2; } }

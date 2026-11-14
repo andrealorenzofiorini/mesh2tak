@@ -209,6 +209,7 @@ class MappaCopertura {
     this.prevLivelli = new Map();
     this.cerchi = [];               // fin dove e' stato fatto il calcolo, impianto per impianto
     this.alTocco = null;            // chi vuole il prossimo tocco sulla mappa (il punto di prova)
+    this.altri = [];                // dalla 1.18.0 i segni delle proposte (numeri e lettere) e del punto da coprire
     this.sfondo("topo");
     this.eventi();
     new ResizeObserver(() => this.misura()).observe(e);
@@ -252,6 +253,18 @@ class MappaCopertura {
     this.e.dataset.punti = String(punti.length);
     if (!this.adattata) this.adatta();
     else this.ridisegna();
+  }
+
+  segni(lista) {
+    this.altri = lista;
+    this.e.dataset.segni = String(lista.length);
+    this.ridisegna();
+  }
+
+  vista() {
+    // la zona che la mappa mostra adesso, in gradi
+    const n = 256 * 2 ** this.z, sx = this.cx - this.w / 2, sy = this.cy - this.h / 2;
+    return {ovest: sx / n * 360 - 180, est: (sx + this.w) / n * 360 - 180, nord: latitudineDaY(sy, this.z), sud: latitudineDaY(sy + this.h, this.z)};
   }
 
   previste(celle, cerchi) {
@@ -536,6 +549,35 @@ class MappaCopertura {
       ctx.fillStyle = "#1f2d34";
       ctx.fillText(nome, x + 13, y + 4.5);
     }
+    // le proposte (un tondo bianco con il numero o la lettera) e il punto da coprire (un mirino rosso)
+    ctx.textAlign = "center";
+    for (const p of this.altri) {
+      const x = mondoX(p.lon, this.z) - sx, y = mondoY(p.lat, this.z) - sy;
+      if (x < -20 || y < -20 || x > this.w + 20 || y > this.h + 20) continue;
+      this.posti.push({p, x, y});
+      if (p.tipo === "bersaglio") {
+        for (const [largo, colore] of [[6, "#ffffff"], [2.5, "#b0261e"]]) {
+          ctx.lineWidth = largo;
+          ctx.strokeStyle = colore;
+          ctx.beginPath();
+          ctx.arc(x, y, 9, 0, 2 * Math.PI);
+          ctx.moveTo(x - 15, y); ctx.lineTo(x - 4, y); ctx.moveTo(x + 4, y); ctx.lineTo(x + 15, y);
+          ctx.moveTo(x, y - 15); ctx.lineTo(x, y - 4); ctx.moveTo(x, y + 4); ctx.lineTo(x, y + 15);
+          ctx.stroke();
+        }
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, 10.5, 0, 2 * Math.PI);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#1f2d34";
+        ctx.stroke();
+        ctx.fillStyle = "#1f2d34";
+        ctx.fillText(p.sigla, x, y + 4.5);
+      }
+    }
+    ctx.textAlign = "start";
   }
 
   nascondi() {

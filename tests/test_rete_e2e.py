@@ -62,9 +62,11 @@ class Rete:
     def __init__(self, cartella, pki):
         self.c = cartella
         self.github = ServerFinto()       # API e download delle release (1.8.0): nessuna release all'inizio
-        # il rilievo per la copertura prevista (1.17.0): una pianura a 300 m, nello stesso formato dei riquadri veri
-        from test_previsione import PIANURA
-        self.rilievo = ServerFinto({"*": lambda percorso: PIANURA if re.match(r"^/\d+/\d+/\d+\.png$", percorso) else None})
+        # il rilievo per la copertura prevista (1.17.0): una pianura a 300 m con un colle, nello stesso formato dei
+        # riquadri veri; e chi fa la parte di OpenStreetMap per cime, tralicci e rifugi (1.18.0)
+        from test_previsione import osm_di_prova, rilievo_di_prova
+        self.rilievo = ServerFinto({"*": rilievo_di_prova})
+        self.osm = ServerFinto({"*": osm_di_prova})
         # sshd legge le chiavi autorizzate con i permessi dell'utente del ponte, e (StrictModes) vuole cartelle
         # non scrivibili da altri fino a /: la radice di prova sta in /srv, non sotto /tmp come sul server sta in /etc
         r = self.r = pathlib.Path("/srv/mesh2tak-prova-e2e")
@@ -254,7 +256,7 @@ class Rete:
             ["runuser", "-u", "mesh2tak-rete", "--", "env", f"RETE_PROVA_RADICE={self.r}",
              f"RETE_PROVA_PORTA_WEB={self.porta_web}", "RETE_PROVA_AVVISI_OGNI=1", "RETE_PROVA_AVVISI_ATTESA=4",
              f"RETE_PROVA_GITHUB_API={self.github.url}", "RETE_PROVA_RILASCI_CONTROLLO=1", "RETE_PROVA_RILASCI_PRIMO=86400",
-             f"RETE_PROVA_TERRENO={self.rilievo.url}",
+             f"RETE_PROVA_TERRENO={self.rilievo.url}", f"RETE_PROVA_LUOGHI={self.osm.url}",
              sys.executable, "-I", script, "servi"],
             stdout=open(self.c / "servizio.log", "a"), stderr=subprocess.STDOUT, env=amb)
         aspetta_porta(self.porta_web)
@@ -328,6 +330,7 @@ class Rete:
         self.ak.ferma()
         self.github.ferma()
         self.rilievo.ferma()
+        self.osm.ferma()
         pulisci_utenti()
 
 
@@ -1127,6 +1130,72 @@ def test_6l_la_copertura_prevista_nel_browser(rete):
     assert 0 < r["previsteDieci"] < r["previsteDopo"], "raggio piu' corto: meno quadretti"
     # dalla scheda del ripetitore: la sua prevista sulla mappa; spenta, tutto torna com'era
     assert r["dallaScheda"] == ["r:!3333cccc", True] and r["dopo"] == {"previste": "0", "legenda": False, "elenco": 0}, r
+
+
+def test_6m_cime_e_sostegni_dalla_pagina(rete):
+    """1.18.0: nomi delle cime, tralicci e rifugi li chiede a OpenStreetMap il servizio della pagina, e li da' solo
+    agli amministratori."""
+    stato, corpo, intestazioni = rete.chiedi(f"{RETE}/api/luoghi/183/35.json")
+    d = json.loads(corpo)
+    assert stato == 200 and d["cime"] == [[45.8001, 8.8702, "Monte Prova", 652]], d
+    assert d["sostegni"] == [[45.8004, 8.8706, "traliccio", ""], [45.83, 8.9, "rifugio", "Rifugio Piano"]]
+    assert intestazioni["Cache-Control"] == "private, max-age=86400" and len(rete.osm.richieste) == 1
+    assert rete.chiedi(f"{RETE}/api/luoghi/183/35.json")[0] == 200 and len(rete.osm.richieste) == 1, "tenuti"
+    assert rete.chiedi(f"{RETE}/api/luoghi/183/35.json", cookie=None)[0] == 302, "senza Authentik: al login"
+    assert rete.chiedi(f"{RETE}/api/luoghi/400/35.json")[0] == 404
+    tenuti = rete.r / "var/lib/mesh2tak-rete/servizio/luoghi"
+    assert os.listdir(tenuti) == ["183_35.json"] and oct((tenuti / "183_35.json").stat().st_mode)[-3:] == "600"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")
+def test_6n_dove_mettere_un_ripetitore_nel_browser(rete):
+    prepara_copertura(rete)
+    foto = os.environ.get("RETE_FOTO", "")
+    senza_proxy = {k: v for k, v in os.environ.items() if "proxy" not in k.lower()}
+    p = subprocess.run(["node", os.path.join(os.path.dirname(__file__), "pagina_rete_siti.js"), f"{RETE}/",
+                        foto.replace(".png", "-siti.png") if foto else ""], capture_output=True, text=True,
+                       timeout=400, env=senza_proxy)
+    r = json.loads(p.stdout.strip().splitlines()[-1])
+    assert "errore" not in r, r
+    assert r["errori"] == [], r["errori"]
+    # gli strumenti compaiono con la copertura prevista
+    assert r["strumentiPrima"] is False and r["strumenti"] == ["Trova i punti migliori", "Copri un punto", "Prova un punto"]
+    # se si spegne: un solo gateway; il ripetitore copre poco di suo
+    casa, velate = r["elenco"][0][1], r["elenco"][1][1]
+    assert "Se si spegne niente arriva più a TAK: è l'unico gateway." in casa, casa
+    assert re.search(r"Se si spegne (si perdono \d+ km² previsti|non si perde zona prevista: resta coperta dagli altri impianti)\.", velate), velate
+    assert re.search(r"Collegamento con Gateway casa \(6,[0-9] km\): .*? Profilo", velate), velate
+    # il profilo tra il ripetitore e il gateway: in pianura le antenne si vedono
+    assert r["profiloTitolo"] == "Profilo: da Ripetitore Velate a Gateway casa", r["profiloTitolo"]
+    assert re.match(r"Distanza 6,[0-9] km\. .* Collegamento previsto: .*\(solo distanza e rilievo: antenne ferme\)\.$", r["profiloEsito"]), r["profiloEsito"]
+    assert r["profiloDisegno"] == {"terreno": 1, "linea": 1, "libero": 1, "capi": ["Ripetitore Velate", "Gateway casa"],
+                                   "legenda": ["Terreno", "Linea tra le antenne", "Spazio che deve restare libero"]}, r["profiloDisegno"]
+    assert re.match(r"A \d+(,\d)? km: terreno a 300 m; la linea tra le antenne passa \d+ m sopra\.", r["profiloLettura"]), r["profiloLettura"]
+    # trova i punti migliori: il colle, con il nome e il traliccio che OpenStreetMap conosce
+    assert re.match(r"Tra \d+ cime e sostegni, quelli che aggiungerebbero più zona alla rete di oggi, ognuno da solo, entro 20 km, "
+                    r"con un impianto così: antenna a 3 m da terra, 2 dBi, cavo 0 dB, 22 dBm \(valori di fabbrica\)\. "
+                    r"Nomi e sostegni: © collaboratori di OpenStreetMap\.", r["trovaTesta"]), r["trovaTesta"]
+    primo = r["trova"][0]
+    assert primo.startswith("1. Monte Prova, 6") and re.search(r"Aggiungerebbe \d+ km² previsti \(in tutto ne coprirebbe \d+\)\.", primo), primo
+    assert re.search(r"A \d+ m c'è un traliccio\.", primo), primo
+    assert re.search(r"Collegamento con (Gateway casa|Ripetitore Velate) \(\d+,\d km\): (buono|discreto), ", primo), primo
+    assert len(r["trova"]) <= 5 and r["segniTrova"] == len(r["trova"]) and r["luoghi"] and all(x == 200 for x in r["luoghi"])
+    assert r["segnoUno"].startswith("Punto 1: Monte Prova, 6") and "Aggiungerebbe" in r["segnoUno"], r["segnoUno"]
+    assert re.match(r"Profilo: da Monte Prova a (Gateway casa|Ripetitore Velate)$", r["trovaProfilo"]), r["trovaProfilo"]
+    assert re.match(r"Distanza \d+,\d km\. ", r["trovaProfiloEsito"]), r["trovaProfiloEsito"]
+    # prova qui: il colle diventa il punto di prova, calcolato per intero
+    assert r["provaQui"][0] == "p:prova" and re.search(r"Rispetto alla rete di oggi aggiunge \d+ km² previsti\.", r["provaQui"][1]), r["provaQui"]
+    # copri un punto, dietro al colle: com'e' messo oggi e da dove lo si raggiungerebbe
+    assert r["copriInvito"].startswith("Tocca sulla mappa il punto da coprire"), r["copriInvito"]
+    assert r["copriTesta"].startswith("Punto da coprire, 300 m"), r["copriTesta"]
+    assert re.search(r"Oggi (è già previsto coperto da (Gateway casa|Ripetitore Velate): |non è previsto coperto: il più vicino a farcela è )", r["copriOggi"]), r["copriOggi"]
+    assert r["copri"][0].startswith("A. Monte Prova, 6") and re.search(r"Arriverebbe al punto: buono, \d+ dB sopra il minimo \(2,[0-9] km\)\.", r["copri"][0]), r["copri"]
+    assert r["segniCopri"] == len(r["trova"]) + 1 + len(r["copri"]) and r["segnoBersaglio"].startswith("Punto da coprire"), r
+    assert r["copriProfilo"] == "Profilo: da Monte Prova a Punto da coprire" and "(contando alberi, case e radio addosso)." in r["copriProfiloEsito"]
+    # tolte le proposte e spenta la prevista, la mappa torna com'era
+    assert r["dopo"] == {"proposte": 0, "segni": "0", "strumenti": False}, r["dopo"]
+    # OpenStreetMap che non risponde: si cerca lo stesso, con le sole cime del rilievo, e si dice
+    assert r["senzaOsm"].startswith("1. Cima senza nome, 6") and "OpenStreetMap non ha risposto" in r["senzaOsmTesta"], r["senzaOsmTesta"]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="serve node con playwright")

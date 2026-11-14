@@ -21,6 +21,7 @@ class Servizio:
         self.icone_ponti: Dict[str, str] = {}    # versione delle icone che ogni ponte usa ("vecchio": prima della 1.11.0)
         self.manda_icone = Sorveglianza.manda_icone
         self.terreno = Terreno()                 # dalla 1.17.0: il rilievo per la copertura prevista
+        self.luoghi = Luoghi()                   # dalla 1.18.0: cime e sostegni per i siti dei ripetitori
 
     # ---- file ----
 
@@ -791,6 +792,23 @@ def gestore_per(servizio: Servizio):
                 self.send_header("Content-Length", str(len(png)))
                 self.end_headers()
                 self.wfile.write(png)
+                return None
+            quadrato = RE_LUOGHI.match(percorso)
+            if quadrato:                      # dalla 1.18.0: cime, tralicci e rifugi per i siti dei ripetitori
+                if not self._utente():
+                    return self._manda(403, {"errore": "serve l'accesso da Authentik"})
+                codice, luoghi = servizio.luoghi.quadrato(*(int(n) for n in quadrato.groups()))
+                if codice != 200:
+                    return self._manda(codice, {"errore": {404: "quadrato fuori dalla mappa",
+                                                           429: "troppe richieste a OpenStreetMap: riprova tra qualche minuto"}
+                                                .get(codice, "OpenStreetMap non risponde: riprova")})
+                corpo = json.dumps(luoghi, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Cache-Control", "private, max-age=86400")
+                self.send_header("Content-Length", str(len(corpo)))
+                self.end_headers()
+                self.wfile.write(corpo)
                 return None
             self._manda(404, {"errore": "non trovato"})
 

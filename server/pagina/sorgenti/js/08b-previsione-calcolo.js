@@ -96,11 +96,14 @@ function riquadriDelRilievo(lat, lon, raggioKm) {
   return lista;
 }
 
-function* prevediCopertura(nodo, radio, portatile, quota, raggioKm, correzioneDb) {
+function* prevediCopertura(nodo, radio, portatile, quota, raggioKm, correzioneDb, salto) {
   // Generatore: lavora a pezzi (yield con la frazione fatta) per non bloccare la pagina; alla fine rende il risultato.
   // nodo e portatile: {altezza_m, guadagno_dbi, perdite_db, potenza_dbm}; nodo anche {lat, lon}.
   // quota(px, py): metri sul mare nel punto (px, py) del rilievo al livello ZOOM_RILIEVO, NaN se non si sa.
   // Per ogni quadretto nel raggio: margine (dB sopra il minimo decifrabile) nel verso peggiore dei due.
+  // salto (dalla 1.18.0): 2 calcola un quadretto ogni due per lato (un quarto del lavoro), per confrontare in fretta
+  // tanti siti possibili; i quadretti calcolati sono gli stessi di sempre, solo piu' radi.
+  salto = salto || 1;
   const z = ZOOM_RILIEVO, scala = 2 ** (ZOOM_QUADRETTI - z), passo = 256 / scala;     // un quadretto in punti del rilievo
   const tx = mercatoreX(nodo.lon, z), ty = mercatoreY(nodo.lat, z);
   const metriPerPunto = Math.cos(nodo.lat * Math.PI / 180) * 2 * Math.PI * RAGGIO_TERRA_M / (256 * 2 ** z);
@@ -118,8 +121,8 @@ function* prevediCopertura(nodo, radio, portatile, quota, raggioKm, correzioneDb
   const celle = new Map();
   let fatte = 0, ultimaPausa = 0;
   const righe = y1 - y0 + 1;
-  for (let cy = y0; cy <= y1; cy++) {
-    for (let cx = x0; cx <= x1; cx++) {
+  for (let cy = Math.ceil(y0 / salto) * salto; cy <= y1; cy += salto) {
+    for (let cx = Math.ceil(x0 / salto) * salto; cx <= x1; cx += salto) {
       const px = (cx + 0.5) * passo, py = (cy + 0.5) * passo;
       const distPunti = Math.hypot(px - tx, py - ty);
       if (distPunti > raggioPunti) continue;
@@ -149,29 +152,138 @@ function* prevediCopertura(nodo, radio, portatile, quota, raggioKm, correzioneDb
       yield (cy - y0 + 1) / righe;
     }
   }
-  return {celle, suolo: suoloNodo, correzione: correzioneDb, raggioKm};
+  return {celle, suolo: suoloNodo, correzione: correzioneDb, raggioKm, salto};
 }
 
-function margineTraImpianti(a, b, radio, quota) {
-  // tra due impianti fissi (per esempio un ripetitore e un gateway): margine nel verso peggiore, senza correzione
-  // (antenne ferme e in alto: contano solo distanza e rilievo). Rende null se manca il rilievo.
+function profiloTra(a, b, quota) {
+  // il terreno lungo la linea tra due punti (a e b: {lat, lon, altezza_m}), un punto ogni 53 m circa:
+  // d = distanza dal primo (m), suolo = quota del terreno, h = come suolo ma con le antenne ai due capi.
+  // Rende null se manca il rilievo.
   const z = ZOOM_RILIEVO;
   const ax = mercatoreX(a.lon, z), ay = mercatoreY(a.lat, z), bx = mercatoreX(b.lon, z), by = mercatoreY(b.lat, z);
   const metriPerPunto = Math.cos((a.lat + b.lat) / 2 * Math.PI / 180) * 2 * Math.PI * RAGGIO_TERRA_M / (256 * 2 ** z);
   const punti = Math.hypot(bx - ax, by - ay), n = Math.max(2, Math.ceil(punti) + 1);
   const distanza = Math.max(punti * metriPerPunto, 30);
-  const d = new Float64Array(n), h = new Float64Array(n);
+  const d = new Float64Array(n), h = new Float64Array(n), suolo = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const f = i / (n - 1), q = quota(ax + (bx - ax) * f, ay + (by - ay) * f);
     if (!Number.isFinite(q)) return null;
     d[i] = distanza * f;
+    suolo[i] = q;
     h[i] = q + (i === 0 ? a.altezza_m : (i === n - 1 ? b.altezza_m : 0));
   }
-  const ostacoli = n > 2 ? diffrazioneDb(d, h, n, radio.lambda) : 0;
-  const perdita = spazioLiberoDb(distanza, radio.frequenza) + ostacoli;
+  return {d, h, suolo, n, distanza};
+}
+
+function margineTraImpianti(a, b, radio, quota) {
+  // tra due impianti (per esempio un ripetitore e un gateway, o un sito e una radio portatile): margine nel verso
+  // peggiore, senza correzione (contano solo distanza e rilievo). Rende null se manca il rilievo.
+  const p = profiloTra(a, b, quota);
+  if (!p) return null;
+  const ostacoli = p.n > 2 ? diffrazioneDb(p.d, p.h, p.n, radio.lambda) : 0;
+  const perdita = spazioLiberoDb(p.distanza, radio.frequenza) + ostacoli;
   const guadagni = a.guadagno_dbi - a.perdite_db + b.guadagno_dbi - b.perdite_db;
   const margine = Math.min(a.potenza_dbm, b.potenza_dbm) + guadagni - perdita - radio.rumore - radio.limite;
-  return {margine, km: distanza / 1000, ostacoli};
+  return {margine, km: p.distanza / 1000, ostacoli};
+}
+
+function profiloCollegamento(a, b, radio, quota) {
+  // il profilo da disegnare (dalla 1.18.0): per ogni punto la distanza (km), il terreno come lo "vede" l'onda (quota
+  // piu' la curvatura della Terra), la linea dritta tra le due antenne e fin dove deve restare libero perche' il
+  // terreno non disturbi (il 60% della prima zona di Fresnel). "ostacolo" e' il punto che sporge di piu'.
+  const p = profiloTra(a, b, quota);
+  if (!p) return null;
+  const D = p.distanza, ha = p.h[0], hb = p.h[p.n - 1], punti = [];
+  let stretto = null;
+  for (let i = 0; i < p.n; i++) {
+    const d1 = p.d[i], d2 = D - d1;
+    const terreno = p.suolo[i] + d1 * d2 / (2 * RAGGIO_EFFICACE_M), linea = ha + (hb - ha) * d1 / D;
+    const libero = linea - 0.6 * Math.sqrt(radio.lambda * d1 * d2 / D);
+    punti.push({km: d1 / 1000, terreno, quota: p.suolo[i], linea, libero});
+    if (i > 0 && i < p.n - 1 && (!stretto || terreno - libero > stretto.sopra)) stretto = {km: d1 / 1000, sopra: terreno - libero, sporge: terreno - linea};
+  }
+  const peggiore = p.n > 2 ? ostacoloPeggiore(p.d, p.h, 0, p.n - 1, radio.lambda) : null;
+  return {km: D / 1000, punti, antenne: [ha, hb], ostacoli: p.n > 2 ? diffrazioneDb(p.d, p.h, p.n, radio.lambda) : 0,
+          ostacolo: peggiore && peggiore[1] > -0.78 ? {km: p.d[peggiore[0]] / 1000, sporge: punti[peggiore[0]].terreno - punti[peggiore[0]].linea} : null,
+          stretto};
+}
+
+function cimeDelRilievo(quota, x0, y0, x1, y1, quante) {
+  // Le cime dentro un rettangolo del rilievo (x0..x1, y0..y1 in punti al livello ZOOM_RILIEVO): i punti piu' alti di
+  // tutto quello che hanno intorno per 600 m, ordinati per quanto spiccano sul terreno entro 2 km (un cocuzzolo in
+  // mezzo alla pianura vale piu' di una gobba su un altopiano). Rende al massimo "quante" cime, lontane tra loro
+  // almeno 600 m: [{px, py, lat, lon, quota, spicca}].
+  const lat = latitudineDaY((y0 + y1) / 2, ZOOM_RILIEVO);
+  const metriPerPunto = Math.cos(lat * Math.PI / 180) * 2 * Math.PI * RAGGIO_TERRA_M / (256 * 2 ** ZOOM_RILIEVO);
+  const passo = Math.max(1, Math.ceil(Math.max(x1 - x0, y1 - y0) / 700));          // al massimo 700 punti per lato
+  const vicino = Math.max(2, Math.round(600 / (metriPerPunto * passo))), largo = Math.max(vicino + 1, Math.round(2000 / (metriPerPunto * passo)));
+  const W = Math.ceil((x1 - x0) / passo) + 2 * largo, H = Math.ceil((y1 - y0) / passo) + 2 * largo;
+  if (W < 3 || H < 3 || W * H > 4e6) return [];
+  const g = new Float32Array(W * H);
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) g[j * W + i] = quota(x0 + (i - largo + 0.5) * passo, y0 + (j - largo + 0.5) * passo);
+  }
+  // il massimo intorno a ogni punto: prima lungo le righe, poi lungo le colonne
+  const perRiga = new Float32Array(W * H), massimo = new Float32Array(W * H);
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      let m = -Infinity;
+      for (let k = Math.max(0, i - vicino); k <= Math.min(W - 1, i + vicino); k++) { const v = g[j * W + k]; if (v > m) m = v; }
+      perRiga[j * W + i] = m;
+    }
+  }
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      let m = -Infinity;
+      for (let k = Math.max(0, j - vicino); k <= Math.min(H - 1, j + vicino); k++) { const v = perRiga[k * W + i]; if (v > m) m = v; }
+      massimo[j * W + i] = m;
+    }
+  }
+  // la media del terreno intorno, con le somme progressive (un conto solo per punto)
+  const somma = new Float64Array((W + 1) * (H + 1)), conta = new Float64Array((W + 1) * (H + 1));
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const v = g[j * W + i], c = Number.isFinite(v), k = (j + 1) * (W + 1) + i + 1;
+      somma[k] = (c ? v : 0) + somma[k - 1] + somma[k - W - 1] - somma[k - W - 2];
+      conta[k] = (c ? 1 : 0) + conta[k - 1] + conta[k - W - 1] - conta[k - W - 2];
+    }
+  }
+  const dentro = (t, i0, j0, i1, j1) => t[(j1 + 1) * (W + 1) + i1 + 1] - t[j0 * (W + 1) + i1 + 1] - t[(j1 + 1) * (W + 1) + i0] + t[j0 * (W + 1) + i0];
+  const trovate = [];
+  for (let j = largo; j < H - largo; j++) {
+    for (let i = largo; i < W - largo; i++) {
+      const v = g[j * W + i];
+      if (!Number.isFinite(v) || v < massimo[j * W + i]) continue;
+      const n = dentro(conta, i - largo, j - largo, i + largo, j + largo);
+      const spicca = v - dentro(somma, i - largo, j - largo, i + largo, j + largo) / Math.max(1, n);
+      if (spicca >= 15) trovate.push({i, j, quota: v, spicca});
+    }
+  }
+  trovate.sort((a, b) => b.spicca - a.spicca || b.quota - a.quota);
+  const scelte = [];
+  for (const t of trovate) {
+    if (scelte.length >= quante) break;
+    if (scelte.some(s => Math.hypot(s.i - t.i, s.j - t.j) <= vicino)) continue;         // la stessa cima, o un pianoro
+    scelte.push(t);
+  }
+  return scelte.map(t => {
+    // il punto piu' alto vero: dal punto trovato si sale, un punto del rilievo alla volta, finche' si puo' (la
+    // ricerca guarda il rilievo a maglie che non cadono per forza sui suoi punti; un'antenna "in cima" sta in cima)
+    let px = Math.floor(x0 + (t.i - largo + 0.5) * passo) + 0.5, py = Math.floor(y0 + (t.j - largo + 0.5) * passo) + 0.5, q = quota(px, py);
+    for (let giro = 0; giro < 30; giro++) {
+      let meglio = null;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const v = quota(px + dx, py + dy);
+          if (v > q && (!meglio || v > meglio[2])) meglio = [px + dx, py + dy, v];
+        }
+      }
+      if (!meglio) break;
+      [px, py, q] = meglio;
+    }
+    if (!Number.isFinite(q)) q = t.quota;
+    return {px, py, lat: latitudineDaY(py, ZOOM_RILIEVO), lon: px / (256 * 2 ** ZOOM_RILIEVO) * 360 - 180, quota: q, spicca: t.spicca + q - t.quota};
+  });
 }
 
 function probabilitaSotto(z) {

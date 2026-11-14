@@ -3,7 +3,7 @@
 const fs = require('fs'), path = require('path'), vm = require('vm'), zlib = require('zlib');
 const sorgente = fs.readFileSync(path.join(__dirname, '..', 'server', 'pagina', 'sorgenti', 'js', '08b-previsione-calcolo.js'), 'utf8');
 const nomi = ['rumoreDbm', 'spazioLiberoDb', 'perditaLamaDb', 'diffrazioneDb', 'parametriRadio', 'riquadriDelRilievo',
-              'prevediCopertura', 'taraPrevisione', 'correzioneDb', 'SENZA_TARATURA', 'margineTraImpianti', 'leggiPng', 'quoteDelRiquadro', 'unisciRilievo',
+              'prevediCopertura', 'taraPrevisione', 'correzioneDb', 'SENZA_TARATURA', 'margineTraImpianti', 'profiloCollegamento', 'cimeDelRilievo', 'latitudineDaY', 'leggiPng', 'quoteDelRiquadro', 'unisciRilievo',
               'mercatoreX', 'mercatoreY', 'IMPIANTO_FABBRICA', 'ZOOM_RILIEVO', 'SNR_SATURO_DB'];
 const m = vm.runInNewContext(sorgente + '\n;({' + nomi.join(', ') + '})',
                              {Blob, Response, DecompressionStream, Uint8Array, DataView, Float32Array, Float64Array, Math, Map});
@@ -177,5 +177,34 @@ const arrotonda = (x, n) => Math.round(x * 10 ** (n || 2)) / 10 ** (n || 2);
   // poche misure: nessuna taratura
   const poche = m.taraPrevisione(esito.celle, misurate.filter(q => q.n > 0 && q.media < 8).slice(0, 4), -17.5);
   r.pochi = [poche.a, poche.quadretti];
+  // ---- dalla 1.18.0: confrontare tanti siti in fretta, le cime, il profilo
+  // un quadretto ogni due per lato: un quarto dei quadretti, e gli stessi valori di prima dove ci sono
+  const rado = tutto(m.prevediCopertura(nodo, radio, portatile, suolo, 6, 0, 2))[0];
+  r.rado = [rado.salto, Math.abs(rado.celle.size * 4 / esito.celle.size - 1) < 0.05,
+            [...rado.celle.values()].every(c => c.x % 2 === 0 && c.y % 2 === 0 && esito.celle.get(c.x + ',' + c.y).margine === c.margine)];
+  // le cime: due cocuzzoli (350 m e 200 m sopra la pianura) e un pianoro largo; il crinale di prima e' fuori dal rettangolo
+  const cocuzzoli = [[tx + 30, ty + 20, 350, 12], [tx - 25, ty + 28, 200, 10]];
+  const conCime = (px, py) => {
+    let q = 300;
+    for (const [cx, cy, alto, largo] of cocuzzoli) q += alto * Math.max(0, 1 - Math.hypot(px - cx, py - cy) / largo);
+    if (Math.abs(px - (tx + 5)) < 6 && Math.abs(py - (ty - 30)) < 6) q += 100;        // pianoro: tutti i punti alla stessa quota
+    return q;
+  };
+  const cime = m.cimeDelRilievo(conCime, tx - 60, ty - 50, tx + 60, ty + 50, 10);
+  r.cime = cime.map(c => [Math.round(c.px - tx), Math.round(c.py - ty), Math.round(c.quota), Math.round(c.spicca)]);
+  r.cimeLatLon = [Math.abs(cime[0].lat - m.latitudineDaY(ty + 20, z)) < 0.001, cime[0].lon > lon];
+  r.unaSola = m.cimeDelRilievo(conCime, tx - 60, ty - 50, tx + 60, ty + 50, 1).length;
+  r.pianura2 = m.cimeDelRilievo(() => 300, tx - 60, ty - 50, tx + 60, ty + 50, 10).length;
+  r.fuori = m.cimeDelRilievo(conCime, tx + 200, ty + 200, tx + 260, ty + 260, 10).length;
+  // il profilo dal gateway a un ripetitore oltre il crinale: il punto che sporge e' il crinale, a 3 km
+  const prof = m.profiloCollegamento(nodo, Object.assign({lat: lat + 0.045, lon}, m.IMPIANTO_FABBRICA.ripetitore), radio, suolo);
+  const mezzo = prof.punti[prof.punti.length >> 1];
+  r.profilo = {km: arrotonda(prof.km, 1), punti: prof.punti.length, antenne: prof.antenne.map(v => arrotonda(v, 1)),
+               ostacolo: [arrotonda(prof.ostacolo.km, 1), prof.ostacolo.sporge > 400], ostacoli: arrotonda(prof.ostacoli, 1) === arrotonda(oltre.ostacoli, 1),
+               primo: [prof.punti[0].km, arrotonda(prof.punti[0].linea - prof.punti[0].quota, 1)],
+               curvatura: arrotonda(mezzo.terreno - mezzo.quota, 2), libero: mezzo.libero < mezzo.linea};
+  const libera = m.profiloCollegamento(Object.assign({}, nodo, {altezza_m: 60}), Object.assign({lat: lat - 0.02, lon}, m.IMPIANTO_FABBRICA.ripetitore, {altezza_m: 40}), radio, suolo);
+  r.profiloLibero = [libera.ostacolo, libera.ostacoli, libera.stretto.sopra < 0];
+  r.profiloSenzaRilievo = m.profiloCollegamento(nodo, Object.assign({lat: 47, lon}, m.IMPIANTO_FABBRICA.ripetitore), radio, suolo);
   console.log(JSON.stringify(r));
 })().catch(e => { console.log(JSON.stringify({errore: String(e.stack || e).slice(0, 800)})); process.exit(1); });

@@ -3,6 +3,14 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.18.0
+
+- «Trova i punti migliori»: con la copertura prevista accesa, sotto la mappa, la pagina cerca nella zona che la mappa mostra le cime e i sostegni che ci sono già (tralicci, torri, serbatoi dell'acqua, rifugi) e propone i cinque posti che aggiungerebbero più zona alla rete di oggi, dicendo per ognuno quanti km² aggiunge e con che margine si collegherebbe a un gateway o a un ripetitore. I punti compaiono numerati sulla mappa; «Prova qui» ne calcola uno per intero.
+- «Copri un punto»: tocchi sulla mappa la valle, il rifugio o il sentiero che ti interessa e la pagina dice com'è messo oggi e da quali cime o sostegni lo si raggiungerebbe.
+- «Profilo»: il disegno del terreno tra due impianti, o tra un posto proposto e il punto da coprire, con la linea tra le antenne e lo spazio che deve restare libero: si vede quale crinale ferma il segnale e di quanto.
+- Per ogni impianto la pagina dice che cosa si perderebbe se si spegnesse: la zona che copre solo lui e, per un gateway, i ripetitori che resterebbero senza strada verso TAK.
+- I nomi delle cime, i tralicci, i serbatoi e i rifugi li chiede a OpenStreetMap il server, un quadrato alla volta, e li tiene tre mesi: chi apre la pagina non parla con siti nuovi. Se OpenStreetMap non risponde la ricerca funziona lo stesso, con le sole cime del rilievo. Serve aggiornare il server; i gateway non cambiano.
+
 ## 1.17.1
 
 - Tolto «Scarica per ATAK» dalla mappa della rete: la copertura, misurata e prevista, si guarda sulla pagina.

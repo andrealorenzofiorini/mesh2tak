@@ -17,9 +17,10 @@ const AIUTI_IMPIANTO = {
                portatile: "Di solito 0: l'antenna è avvitata alla radio."},
   potenza_dbm: {fisso: "Quella impostata sulla radio. Le radio Meshtastic arrivano a 22; di più solo con un amplificatore.",
                 portatile: "Quella impostata sulle radio della squadra: di solito 22."}};
-let puntoDiProva = null, impiantoDiProva = {}, sceglieProva = false;
+let puntoDiProva = null, impiantoDiProva = {}, modoTocco = "";     // modoTocco: che cosa fa il prossimo tocco sulla mappa ("prova", "copri")
 let giroPrevisione = 0, previsioneInCorso = false, daInquadrare = false;
 let spuntaPrevista = null, statoPrevista = null, elencoPreviste = null, vocePrevista = null, bottoneProva = null;
+let bottoneTrova = null, bottoneCopri = null, statoSiti = null, esitoSiti = null;
 let partiPrevista = [], firmaMostrate = "", firmaElenco = "", mostrate = new Map(), impiantoAperto = null;
 sceltaCopertura.prevista = false;
 sceltaCopertura.raggio = "20";
@@ -64,9 +65,9 @@ function impiantiSullaMappa() {
 }
 
 function impiantiScelti() {
-  // quelli di «Mostra»; per il punto di prova servono anche gli altri, per dire che cosa aggiunge
-  const scelta = sceltaCopertura.mostra, tutti = impiantiSullaMappa();
-  return !scelta || scelta === "p:prova" ? tutti : tutti.filter(n => n.chiave === scelta);
+  // dalla 1.18.0 si calcolano sempre tutti, anche se «Mostra» ne fa vedere uno: servono per dire che cosa si perde
+  // se un impianto si spegne e che cosa aggiunge un punto nuovo
+  return impiantiSullaMappa();
 }
 
 function radioPerLaPrevisione(chiave) {
@@ -153,7 +154,7 @@ async function calcolaPrevisione(nodo, giro) {
     if (nodo.tipo !== "gateway") {          // un ripetitore serve se arriva a un gateway
       for (const g of impiantiSullaMappa().filter(n => n.tipo === "gateway")) {
         const c = margineTraImpianti(impianto, Object.assign({lat: g.lat, lon: g.lon}, impiantoDi(g.chiave).valori), radio, quota);
-        if (c) p.collegamenti.push(Object.assign(c, {nome: g.nome}));
+        if (c) p.collegamenti.push(Object.assign(c, {nome: g.nome, chiave: g.chiave}));
       }
     }
     p.stato = "fatta";
@@ -218,7 +219,7 @@ function correzioniPrevista() {
   }
   const media = campo => [...tarate.values()].reduce((s, t) => s + t[campo], 0) / tarate.size;
   const comune = tarate.size ? {a: media("a"), b: media("b"), come: "media"} : Object.assign({come: "stima"}, SENZA_TARATURA);
-  const corr = new Map();
+  const corr = new Map([["nuovi", comune]]);           // "nuovi": per un sito che non c'e' ancora
   for (const chiave of previsioni.keys()) {
     const t = tarate.get(chiave);
     corr.set(chiave, t ? {a: t.a, b: t.b, come: "tarata", taratura: t} : comune);
@@ -267,7 +268,8 @@ function mostraStatoPrevista() {
   if (sceltaCopertura.prevista) {
     const scelti = impiantiScelti(), stati = scelti.map(n => previsioni.get(n.chiave));
     const corso = stati.find(p => p && p.stato === "calcolo");
-    if (sceglieProva) testo = "Tocca sulla mappa il punto da provare (per esempio dove vorresti mettere un ripetitore).";
+    if (modoTocco === "prova") testo = "Tocca sulla mappa il punto da provare (per esempio dove vorresti mettere un ripetitore).";
+    else if (modoTocco === "copri") testo = "Tocca sulla mappa il punto da coprire (una valle, un rifugio, un sentiero).";
     else if (!gestione) testo = "La copertura prevista si calcola con il servizio della pagina, che adesso non risponde.";
     else if (!scelti.length) testo = "Nessun gateway o ripetitore ha ancora una posizione: la copertura prevista parte da lì.";
     else if (corso) {
@@ -348,11 +350,9 @@ function vociPrevista(chiave, p, corr) {
     righe.push("Rispetto alla rete di oggi aggiunge " + numIt(kmqDi(nuovi, puntoDiProva.lat), 0) + " km² previsti.");
   }
   for (const l of p.collegamenti || []) {
-    righe.push("Collegamento con " + l.nome + " (" + numIt(l.km) + " km): " +
-               (l.margine >= 0 ? classeCopertura(l.margine).breve + ", " + numIt(l.margine, 0) + " dB sopra il minimo"
-                               : "non arriva, mancano " + numIt(-l.margine, 0) + " dB") +
-               (l.ostacoli >= 1 ? "; il rilievo toglie " + numIt(l.ostacoli, 0) + " dB." : "; percorso libero dal rilievo."));
+    righe.push({testo: testoCollegamento(l), profilo: [chiave, l.chiave]});
   }
+  if (chiave !== "p:prova") righe.push(seSiSpegne(chiave, corr));
   if (chiave !== "p:prova" && p.collegamenti && !p.collegamenti.length && chiave.startsWith("r:")) {
     righe.push("Nessun gateway entro " + p.raggio + " km: il collegamento non si calcola.");
   }
@@ -380,7 +380,14 @@ function disegnaElencoPreviste(corr) {
       togli.addEventListener("click", togliProva);
       testa.append(togli);
     }
-    li.append(testa, el("p", "impianto", maiuscola(impianto) + "."), ...righe.map(r => el("p", null, r)));
+    li.append(testa, el("p", "impianto", maiuscola(impianto) + "."), ...righe.map(r => {
+      if (typeof r === "string") return el("p", null, r);
+      const riga = el("p", null, r.testo + " "), profilo = el("button", "bottone secondario piccolo", "Profilo");
+      profilo.type = "button";
+      profilo.addEventListener("click", () => apriProfilo(capoImpianto(r.profilo[0]), capoImpianto(r.profilo[1]), null));
+      riga.append(profilo);
+      return riga;
+    }));
     return li;
   }));
 }
@@ -392,7 +399,8 @@ function aggiornaPrevista() {
   for (const e of partiPrevista) e.hidden = !accesa;
   if (spuntaPrevista.checked !== accesa) spuntaPrevista.checked = accesa;
   if (bottoneProva) bottoneProva.textContent = puntoDiProva ? "Sposta il punto di prova" : "Prova un punto";
-  mappaCopertura.e.classList.toggle("sceglie", accesa && sceglieProva);
+  for (const [b, modo] of [[bottoneProva, "prova"], [bottoneCopri, "copri"]]) b.setAttribute("aria-pressed", String(modoTocco === modo));
+  mappaCopertura.e.classList.toggle("sceglie", accesa && modoTocco !== "");
   if (accesa && !vocePrevista.isConnected) document.querySelector(".legenda").append(vocePrevista);
   if (!accesa) vocePrevista.remove();
   if (!accesa) {
@@ -401,6 +409,7 @@ function aggiornaPrevista() {
     mappaCopertura.previste(mostrate, []);
     mostraStatoPrevista();
     disegnaElencoPreviste(new Map());
+    disegnaSiti();
     return;
   }
   if (gestione && !previsioneInCorso && previsioneDaFare()) avviaPrevisione();
@@ -418,6 +427,7 @@ function aggiornaPrevista() {
   }
   mostraStatoPrevista();
   disegnaElencoPreviste(corr);
+  disegnaSiti();
 }
 
 function accendiPrevista(chiave) {
@@ -445,7 +455,7 @@ function costruisciPrevista(comandi, scelta) {
   spuntaPrevista.type = "checkbox";
   spuntaPrevista.addEventListener("change", () => {
     sceltaCopertura.prevista = spuntaPrevista.checked;
-    sceglieProva = false;
+    modoTocco = "";
     daInquadrare = spuntaPrevista.checked;
     giroPrevisione++;
     previsioneInCorso = false;
@@ -458,20 +468,37 @@ function costruisciPrevista(comandi, scelta) {
     daInquadrare = true;
     disegnaCopertura();
   });
-  bottoneProva = el("button", "bottone secondario piccolo", "Prova un punto");
-  bottoneProva.type = "button";
-  bottoneProva.addEventListener("click", () => {
-    sceglieProva = !sceglieProva;
+  // dalla 1.18.0 gli strumenti per decidere dove mettere un impianto nuovo, sotto la mappa
+  const strumento = (testo, azione) => {
+    const b = el("button", "bottone secondario piccolo", testo);
+    b.type = "button";
+    b.addEventListener("click", azione);
+    return b;
+  };
+  const tocco = modo => () => {
+    modoTocco = modoTocco === modo ? "" : modo;
     aggiornaPrevista();
-  });
-  comandi.append(bottoneProva);
-  partiPrevista = [raggio.parentNode, bottoneProva];
+  };
+  bottoneTrova = strumento("Trova i punti migliori", trovaPunti);
+  bottoneCopri = strumento("Copri un punto", tocco("copri"));
+  bottoneProva = strumento("Prova un punto", tocco("prova"));
+  const strumenti = el("div", "strumenti-prevista");
+  strumenti.append(el("span", null, "Dove mettere un ripetitore:"), bottoneTrova, bottoneCopri, bottoneProva);
+  statoSiti = el("p", "stato-copertura stato-siti");
+  statoSiti.setAttribute("role", "status");
+  esitoSiti = el("div", "esito-siti");
+  partiPrevista = [raggio.parentNode, strumenti, statoSiti, esitoSiti];
   mappaCopertura.alTocco = (lat, lon) => {
-    if (!sceglieProva || !sceltaCopertura.prevista) return false;
-    sceglieProva = false;
-    puntoDiProva = {lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5};
-    sceltaCopertura.mostra = "p:prova";
-    disegnaCopertura();
+    if (!modoTocco || !sceltaCopertura.prevista) return false;
+    const modo = modoTocco, punto = {lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5};
+    modoTocco = "";
+    if (modo === "copri") {
+      copriPunto(punto);
+    } else {
+      puntoDiProva = punto;
+      sceltaCopertura.mostra = "p:prova";
+      disegnaCopertura();
+    }
     return true;
   };
   statoPrevista = el("p", "stato-copertura stato-prevista");
@@ -480,7 +507,7 @@ function costruisciPrevista(comandi, scelta) {
   elencoPreviste.setAttribute("aria-label", "Impianti della copertura prevista");
   vocePrevista = el("li", "voce-prevista");
   vocePrevista.append(el("i", "segno-prevista"), el("span", null, "Prevista: gli stessi colori, più chiari e senza bordo"));
-  return [statoPrevista, elencoPreviste];
+  return [statoPrevista, strumenti, statoSiti, esitoSiti, elencoPreviste];
 }
 
 function spiegaPrevista() {
@@ -498,7 +525,9 @@ function spiegaPrevista() {
   const rilievo = el("p", null, "Il rilievo viene dai Terrain Tiles di Mapzen, dati pubblici (un punto ogni 53 metri circa): il nostro " +
                                 "server li scarica una volta e li tiene. In Europa sono prodotti con dati e informazioni Copernicus " +
                                 "finanziati dall'Unione Europea (EU-DEM) e con dati SRTM, per gentile concessione dell'U.S. Geological Survey (");
-  rilievo.append(collegamento("tutte le fonti", "https://github.com/tilezen/joerd/blob/master/docs/attribution.md"), ").");
+  rilievo.append(collegamento("tutte le fonti", "https://github.com/tilezen/joerd/blob/master/docs/attribution.md"),
+                 "). Nomi delle cime, tralicci, serbatoi e rifugi: © collaboratori di ",
+                 collegamento("OpenStreetMap", "https://www.openstreetmap.org/copyright"), ", chiesti dal nostro server.");
   return [
     el("p", null, "«Copertura prevista» colora anche dove nessuna radio è ancora passata: per ogni gateway e ripetitore la " +
                   "pagina calcola, dal rilievo del terreno, dove una radio portatile si collegherebbe. Usa i dati veri di " +
@@ -509,9 +538,15 @@ function spiegaPrevista() {
                   "corregge tutta la sua mappa, e l'errore tipico dice di quanto può sbagliare in un punto. I ripetitori " +
                   "non misurano il segnale: usano la correzione media dei gateway. Più quadretti misurati, più la " +
                   "previsione è affidabile; dove c'è una misura, vale la misura."),
-    el("p", null, "«Prova un punto» calcola la copertura di un impianto che non c'è ancora, per esempio un ripetitore su " +
-                  "una cima: dice quanta zona aggiungerebbe e se arriverebbe ai gateway. Il punto resta solo finché la " +
-                  "pagina è aperta."),
+    el("p", null, "Sotto la mappa, «Dove mettere un ripetitore». «Trova i punti migliori» cerca nella zona che la mappa " +
+                  "mostra in quel momento le cime e i sostegni che ci sono già (tralicci, torri, serbatoi dell'acqua, " +
+                  "rifugi) e propone i cinque che aggiungerebbero più zona alla rete di oggi, dicendo per ognuno se " +
+                  "arriverebbe a un gateway o a un ripetitore. «Copri un punto» parte dal contrario: tocchi la valle o " +
+                  "il rifugio che ti interessa e propone da dove lo si raggiungerebbe. «Prova un punto» calcola per " +
+                  "intero un posto scelto da te. «Profilo» disegna il terreno tra due impianti: si vede quale " +
+                  "crinale ferma il segnale. Proposte e punti restano solo finché la pagina è aperta."),
+    el("p", null, "Per ogni impianto la pagina dice anche che cosa si perderebbe se si spegnesse: la zona che copre " +
+                  "solo lui e, per un gateway, i ripetitori che resterebbero senza strada verso TAK."),
     confronto, rilievo];
 }
 

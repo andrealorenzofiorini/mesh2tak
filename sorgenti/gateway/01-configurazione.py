@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-VERSIONE = "1.17.1"
+VERSIONE = "1.18.0"
 CONFIG_PREDEFINITA = "/etc/mesh2tak/mesh2tak.conf"
 
 log = logging.getLogger("mesh2tak")

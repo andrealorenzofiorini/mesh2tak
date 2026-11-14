@@ -3,13 +3,16 @@ suo impianto, e la corregge con le misure. Qui: i conti da soli (in node, senza 
 servizio della pagina, i dati degli impianti scritti dagli amministratori, e quello che il gateway dice della sua
 radio."""
 import json
+import math
 import os
+import re
 import shutil
 import struct
 import subprocess
 import sys
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 import zlib
 
@@ -40,6 +43,51 @@ def terrarium(quota=lambda colonna, riga: 300.0):
 
 
 PIANURA = terrarium()
+# per le prove con il browser: in mezzo alla pianura un colle (il "Monte Prova", 350 m sopra, largo 1,2 km) a 4 km dal
+# gateway di prova, con il suo nome e un traliccio su OpenStreetMap, e un rifugio in piano
+COLLE = (45.80, 8.87, 350.0, 1200.0)
+_riquadri_di_prova = {}
+
+
+def rilievo_di_prova(percorso):
+    m = re.match(r"^/(\d+)/(\d+)/(\d+)\.png$", percorso)
+    if not m:
+        return None
+    z, x, y = (int(v) for v in m.groups())
+    if z != 11:
+        return PIANURA
+    if (x, y) not in _riquadri_di_prova:
+        lat, lon, alto, largo = COLLE
+        n = 256 * 2 ** z
+        cx = (lon + 180) / 360 * n
+        cy = (0.5 - math.log(math.tan(math.pi / 4 + math.radians(lat) / 2)) / (2 * math.pi)) * n
+        r = largo / (math.cos(math.radians(lat)) * 40075017 / n)
+        if cx + r < x * 256 or cx - r > x * 256 + 256 or cy + r < y * 256 or cy - r > y * 256 + 256:
+            _riquadri_di_prova[(x, y)] = PIANURA
+        else:
+            _riquadri_di_prova[(x, y)] = terrarium(lambda c, g: 300 + alto * max(
+                0.0, 1 - math.hypot(x * 256 + c + 0.5 - cx, y * 256 + g + 0.5 - cy) / r))
+    return _riquadri_di_prova[(x, y)]
+
+
+LUOGHI_DI_PROVA = [
+    {"type": "node", "id": 1, "lat": 45.8001, "lon": 8.8702, "tags": {"natural": "peak", "name": "Monte Prova", "ele": "652"}},
+    {"type": "way", "id": 2, "center": {"lat": 45.8004, "lon": 8.8706}, "tags": {"man_made": "mast"}},
+    {"type": "node", "id": 3, "lat": 45.83, "lon": 8.9, "tags": {"tourism": "alpine_hut", "name": "Rifugio Piano"}},
+    {"type": "node", "id": 4, "lat": 45.81, "lon": 8.81, "tags": {"man_made": "tower"}},          # una torre qualsiasi: no
+]
+
+
+def osm_di_prova(percorso):
+    """Fa la parte di Overpass: risponde con i luoghi di prova che cadono nel quadrato chiesto."""
+    domanda = urllib.parse.parse_qs(urllib.parse.urlsplit(percorso).query).get("data", [""])[0]
+    m = re.search(r'node\["natural"="peak"\]\(([-0-9.]+),([-0-9.]+),([-0-9.]+),([-0-9.]+)\)', domanda)
+    if not m:
+        return None
+    s, o, n, e = (float(v) for v in m.groups())
+    dentro = [x for x in LUOGHI_DI_PROVA
+              if s <= (x.get("center") or x)["lat"] < n and o <= (x.get("center") or x)["lon"] < e]
+    return json.dumps({"version": 0.6, "elements": dentro}).encode()
 
 
 # ---- i conti, da soli ----
@@ -82,6 +130,16 @@ def test_il_calcolo_da_solo():
     assert r["taraturaConStrani"] == [t["a"], t["b"]], "sei quadretti strani non la spostano"
     assert r["fascia"][0] > 50 and abs(r["fascia"][2] - r["fascia"][3]) <= 1.5 and 0.5 <= r["fascia"][1] <= 1.75, r["fascia"]
     assert r["pochi"] == [None, 4]
+    # dalla 1.18.0: un quadretto ogni due per confrontare tanti siti, le cime, il profilo
+    assert r["rado"] == [2, True, True], "un quarto dei quadretti, con gli stessi valori"
+    assert r["cime"][0] == [30, 20, 645, 336] and r["cime"][1][:2] == [-25, 28], "i due cocuzzoli, il piu' alto per primo"
+    assert all(abs(x - 5) <= 6 and abs(y + 30) <= 6 and q == 400 for x, y, q, _ in r["cime"][2:]) and len(r["cime"]) <= 5, \
+        "il pianoro: pochi punti, non uno per ogni punto del pianoro"
+    assert r["cimeLatLon"] == [True, True] and r["unaSola"] == 1 and r["pianura2"] == 0 and r["fuori"] == 0
+    p = r["profilo"]
+    assert p["km"] == 5 and p["antenne"] == [305, 303] and p["primo"] == [0, 5] and p["ostacolo"] == [3, True], p
+    assert p["ostacoli"] is True and 0.3 < p["curvatura"] < 0.45 and p["libero"] is True, "a meta' di 5 km la Terra sale 37 cm"
+    assert r["profiloLibero"] == [None, 0, True] and r["profiloSenzaRilievo"] is None
 
 
 # ---- il rilievo: lo prende il server, una volta, e lo tiene ----
@@ -191,6 +249,115 @@ def test_il_rilievo_dalla_pagina_solo_per_gli_amministratori(http_, sv, sorgente
                    "/api/terreno/11/-1/730.png", "/api/terreno/11/1074.5/730.png"):
         assert chiedi(strano, **{"X-Authentik-Username": "maria"})[0] == 404, strano
     assert os.listdir(rete.P(rete.TERRENO_DIR)) == ["11-1074-730.png"]
+
+
+# ---- cime, tralicci e rifugi da OpenStreetMap (1.18.0) ----
+
+@pytest.fixture
+def osm(monkeypatch):
+    s = ServerFinto({"*": osm_di_prova})
+    monkeypatch.setattr(rete, "LUOGHI_SORGENTI", [s.url])
+    yield s
+    if not getattr(s, "fermato", False):
+        s.ferma()
+
+
+def test_luoghi_chiesti_una_volta_e_tenuti_tre_mesi(tmp_path, osm):
+    ora = [1_000_000.0]
+    luoghi = rete.Luoghi(str(tmp_path / "luoghi"), ora=lambda: ora[0])
+    codice, d = luoghi.quadrato(183, 35)          # da 45,75 a 46 nord, da 8,75 a 9 est
+    assert codice == 200 and d["cime"] == [[45.8001, 8.8702, "Monte Prova", 652]]
+    assert d["sostegni"] == [[45.8004, 8.8706, "traliccio", ""], [45.83, 8.9, "rifugio", "Rifugio Piano"]], "la torre qualsiasi no"
+    assert d["quando"] == 1_000_000 and len(osm.richieste) == 1
+    domanda = urllib.parse.parse_qs(urllib.parse.urlsplit(osm.richieste[0]).query)["data"][0]
+    assert domanda.startswith('[out:json][timeout:60];(node["natural"="peak"](45.75,8.75,46,9);') and \
+        'nwr["tourism"="alpine_hut"](45.75,8.75,46,9);' in domanda and domanda.endswith(");out center tags;")
+    f = tmp_path / "luoghi" / "183_35.json"
+    assert oct(f.stat().st_mode)[-3:] == "600" and oct((tmp_path / "luoghi").stat().st_mode)[-3:] == "700"
+    ora[0] += 89 * 86400
+    assert luoghi.quadrato(183, 35)[0] == 200 and len(osm.richieste) == 1, "per tre mesi non si richiede"
+    assert rete.Luoghi(str(tmp_path / "luoghi"), ora=lambda: ora[0]).quadrato(183, 35)[1] == d and len(osm.richieste) == 1
+    ora[0] += 2 * 86400
+    assert luoghi.quadrato(183, 35)[1]["quando"] == int(ora[0]) and len(osm.richieste) == 2, "dopo si rinfresca"
+    # un quadrato vuoto e' una risposta buona (e si tiene); fuori dal mondo non si chiede niente
+    assert luoghi.quadrato(100, 100) == (200, {"formato": 1, "quando": int(ora[0]), "cime": [], "sostegni": []})
+    for la, lo in ((360, 0), (-361, 0), (0, 720), (0, -721)):
+        assert luoghi.quadrato(la, lo) == (404, {})
+    assert len(osm.richieste) == 3
+
+
+def test_luoghi_quando_openstreetmap_non_risponde(tmp_path, osm, monkeypatch):
+    ora = [1_000_000.0]
+    luoghi = rete.Luoghi(str(tmp_path / "luoghi"), ora=lambda: ora[0])
+    assert luoghi.quadrato(183, 35)[0] == 200
+    osm.risposte["*"] = lambda percorso: b"<html>servizio occupato</html>"
+    assert luoghi.quadrato(184, 35) == (502, {}), "risposta che non e' quella attesa, e niente di tenuto"
+    ora[0] += 100 * 86400
+    codice, d = luoghi.quadrato(183, 35)
+    assert codice == 200 and d["quando"] == 1_000_000, "scaduti, ma OpenStreetMap non risponde: meglio vecchi che niente"
+    osm.risposte["*"] = lambda percorso: json.dumps({"elements": "tanti"}).encode()
+    assert luoghi.quadrato(185, 35) == (502, {})
+    # la seconda sorgente, se la prima non va
+    spenta = ServerFinto({})
+    spenta.ferma()
+    osm.risposte["*"] = osm_di_prova
+    monkeypatch.setattr(rete, "LUOGHI_SORGENTI", [spenta.url, osm.url])
+    assert luoghi.quadrato(183, 36)[0] == 200
+
+
+def test_luoghi_limite_e_pulizia(tmp_path, osm):
+    ora = [1000.0]
+    luoghi = rete.Luoghi(str(tmp_path / "luoghi"), ora=lambda: ora[0])
+    luoghi.NUOVI_OGNI_10_MIN = 3
+    assert [luoghi.quadrato(la, 35)[0] for la in range(180, 185)] == [200, 200, 200, 429, 429]
+    assert luoghi.quadrato(180, 35)[0] == 200 and len(osm.richieste) == 3, "quelli tenuti non contano"
+    ora[0] += 601
+    assert luoghi.quadrato(184, 35)[0] == 200
+    luoghi.QUADRATI_MAX = 60
+    for i in range(70):
+        f = tmp_path / "luoghi" / f"{i}_0.json"
+        f.write_text('{"quando": 1, "cime": [], "sostegni": []}')
+        os.utime(f, (500 + i, 500 + i))
+    ora[0] += 601
+    assert luoghi.quadrato(185, 35)[0] == 200
+    rimasti = os.listdir(tmp_path / "luoghi")
+    assert len(rimasti) < 60 and "185_35.json" in rimasti and "0_0.json" not in rimasti
+
+
+def test_quello_che_arriva_da_openstreetmap_si_controlla():
+    cime, sostegni = rete.luoghi_da_osm({"elements": [
+        {"type": "node", "lat": 45.8, "lon": 8.87, "tags": {"natural": "peak", "name": " Monte\x07  <b>Prova</b> " + "x" * 80, "ele": "1 226"}},
+        {"type": "node", "lat": 45.8, "lon": 8.87, "tags": {"natural": "peak", "ele": "1226.4 m"}},
+        {"type": "node", "lat": "45.8", "lon": 8.87, "tags": {"natural": "peak"}},
+        {"type": "node", "lat": 95, "lon": 8.87, "tags": {"natural": "peak"}},
+        {"type": "node", "lat": True, "lon": 8.87, "tags": {"natural": "peak"}},
+        {"type": "node", "lat": float("nan"), "lon": 8.87, "tags": {"natural": "peak"}},
+        {"type": "way", "tags": {"man_made": "mast"}}, {"type": "way", "center": [45, 8], "tags": {"man_made": "mast"}},
+        {"type": "relation", "center": {"lat": 45.9, "lon": 8.9}, "tags": {"man_made": "water_tower", "name": 7}},
+        {"type": "node", "lat": 45.9, "lon": 8.9, "tags": {"man_made": "tower", "tower:type": "communication"}},
+        {"type": "node", "lat": 45.9, "lon": 8.9, "tags": {"man_made": "communications_tower"}},
+        {"type": "node", "lat": 45.9, "lon": 8.9, "tags": "x"}, "x", None]})
+    assert cime == [[45.8, 8.87, ("Monte <b>Prova</b> " + "x" * 80)[:60], None], [45.8, 8.87, "", 1226]], cime
+    assert sostegni == [[45.9, 8.9, "acqua", ""], [45.9, 8.9, "torre", ""], [45.9, 8.9, "torre", ""]]
+    assert rete.luoghi_da_osm({}) == ([], []) and rete.luoghi_da_osm({"elements": 3}) == ([], [])
+
+
+def test_i_luoghi_dalla_pagina_solo_per_gli_amministratori(http_, sv, osm):
+    def chiedi(percorso, **intestazioni):
+        rq = urllib.request.Request(f"http://127.0.0.1:{http_.porta}{percorso}", headers=intestazioni)
+        try:
+            with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(rq, timeout=10) as r:
+                return r.status, r.read(), dict(r.headers)
+        except urllib.error.HTTPError as e:
+            return e.code, e.read(), dict(e.headers)
+    assert chiedi("/api/luoghi/183/35.json")[0] == 403 and osm.richieste == []
+    codice, corpo, intestazioni = chiedi("/api/luoghi/183/35.json", **{"X-Authentik-Username": "maria"})
+    d = json.loads(corpo)
+    assert codice == 200 and d["cime"][0][2] == "Monte Prova" and len(d["sostegni"]) == 2
+    assert intestazioni["Content-Type"] == "application/json; charset=utf-8" and intestazioni["Cache-Control"] == "private, max-age=86400"
+    assert chiedi("/api/luoghi/999/35.json", **{"X-Authentik-Username": "maria"})[0] == 404
+    for strano in ("/api/luoghi/183/35.txt", "/api/luoghi/183.5/35.json", "/api/luoghi/183/35.json/x", "/api/luoghi/../35.json"):
+        assert chiedi(strano, **{"X-Authentik-Username": "maria"})[0] == 404, strano
 
 
 # ---- i dati degli impianti ----

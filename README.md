@@ -172,6 +172,28 @@ collegamento nei due versi e tiene il peggiore.
   600 in `servizio/terreno/`. Il browser legge il PNG byte per byte (non da un disegno: alcuni browser alterano
   apposta i colori riletti da un canvas). Il calcolo gira nel browser, a pezzi, senza librerie.
 
+### Dove mettere un ripetitore (dalla 1.18.0)
+
+Con la copertura prevista accesa, sotto la mappa:
+
+- **Trova i punti migliori**: nella zona che la mappa mostra (al massimo 70 km, e non oltre "Fino a" dagli impianti
+  di oggi) prende le cime del rilievo (massimi entro 600 m, ordinati per quanto spiccano sul terreno entro 2 km) e i
+  sostegni noti a OpenStreetMap, calcola per ognuno la copertura a un quadretto ogni due per lato e propone i cinque
+  che aggiungono più quadretti non previsti dalla rete di oggi, lontani tra loro almeno 2,5 km; prima quelli che si
+  collegano a un impianto esistente con almeno 5 dB di margine.
+- **Copri un punto**: per un punto toccato sulla mappa, il margine dell'impianto di oggi che ci arriva meglio e i tre
+  siti (cime o sostegni entro "Fino a") da cui lo si raggiungerebbe.
+- **Profilo**: terreno (con la curvatura della Terra), linea tra le antenne e 60% della prima zona di Fresnel tra due
+  capi, con l'ostacolo che pesa di più.
+- **Se si spegne**: per ogni impianto i km² previsti che copre solo lui; per un gateway contano anche i ripetitori
+  che arrivano solo a lui (dal calcolo o perché solo lui li sente).
+
+Nomi delle cime, tralicci, torri, serbatoi e rifugi vengono da OpenStreetMap attraverso
+[Overpass](https://overpass-api.de): li chiede il servizio della pagina (`GET /api/luoghi/{lat*4}/{lon*4}.json`,
+dietro Authentik), un quadrato di un quarto di grado alla volta, al massimo 12 nuovi ogni 10 minuti, e li tiene 90
+giorni in `servizio/luoghi/`. Dati © collaboratori di OpenStreetMap (ODbL). Senza Overpass la ricerca usa le sole
+cime del rilievo.
+
 I conti stanno in `server/pagina/sorgenti/js/08b-previsione-calcolo.js` e si provano da soli con
 `node tests/prova_previsione.js`. Limiti: è un calcolo sul solo terreno, a 53 m di passo; non conosce alberi, case
 e riflessioni, che entrano solo attraverso la taratura. Il rilievo è di Mapzen (Terrain Tiles): in Europa prodotto con
