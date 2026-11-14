@@ -185,6 +185,10 @@ Con la copertura prevista accesa, sotto la mappa:
   siti (cime o sostegni entro "Fino a") da cui lo si raggiungerebbe.
 - **Profilo**: terreno (con la curvatura della Terra), linea tra le antenne e 60% della prima zona di Fresnel tra due
   capi, con l'ostacolo che pesa di più.
+- **Prova un punto** (dalla 1.19.0 fino a otto insieme): ogni punto toccato sulla mappa si calcola per intero, con
+  i suoi dati o con quelli dei "posti nuovi"; per ognuno i km² aggiunti alla rete di oggi, i collegamenti con tutti
+  gli altri impianti e punti di prova e la strada verso un gateway (prima cercata tra i collegamenti con almeno
+  5 dB, poi tra tutti quelli che arrivano); per tutti insieme i km² aggiunti, contando una volta le zone in comune.
 - **Se si spegne**: per ogni impianto i km² previsti che copre solo lui; per un gateway contano anche i ripetitori
   che arrivano solo a lui (dal calcolo o perché solo lui li sente).
 

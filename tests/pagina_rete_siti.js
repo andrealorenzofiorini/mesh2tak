@@ -66,10 +66,10 @@ let p = null;
   [r.trovaProfilo, r.trovaProfiloEsito] = await profilo();
   await p.click('#profilo-chiudi');
   await p.click('.proposte[data-proposte="trova"] li[data-sito="1"] button:has-text("Prova qui")');
-  await p.waitForFunction(() => { const li = document.querySelector('.elenco-previste li[data-impianto="p:prova"]');
+  await p.waitForFunction(() => { const li = document.querySelector('.elenco-previste li[data-impianto="p:1"]');
                                   return li && /aggiunge/.test(li.textContent); }, null, {timeout: 120000});
-  r.provaQui = [await p.inputValue('.comandi-copertura label:has-text("Mostra") select'),
-                await p.$eval('.elenco-previste li[data-impianto="p:prova"]', e => e.innerText.replace(/\s+/g, ' '))];
+  r.provaQui = [await p.$$eval('.comandi-copertura label:has-text("Mostra") option', x => x.filter(o => o.value.startsWith('p:')).map(o => o.textContent)),
+                await p.$eval('.elenco-previste li[data-impianto="p:1"]', e => e.innerText.replace(/\s+/g, ' '))];
   await p.click('.elenco-previste button:has-text("Togli il punto")');
   // copri un punto: 2,3 km a est del colle
   await p.click('button:has-text("Copri un punto")');

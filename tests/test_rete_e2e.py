@@ -1098,8 +1098,10 @@ def test_6l_la_copertura_prevista_nel_browser(rete):
     assert all(re.match(RETE + r"/api/terreno/11/\d+/\d+\.png$", x[2]) for x in r["rilievo"]), r["rilievo"]
     assert "Rilievo" not in r["creditiPrima"] and "Rilievo: Mapzen, Copernicus EU-DEM, USGS SRTM." in r["crediti"], \
         "da dove viene il rilievo: scritto sulla mappa quando lo si usa"
-    assert [x[0] for x in r["elenco"]] == ["g:casa", "r:!3333cccc", "portatile"], r["elenco"]
-    casa, velate, portatile = (x[1] for x in r["elenco"])
+    assert [x[0] for x in r["elenco"]] == ["g:casa", "r:!3333cccc", "portatile", "p:"], r["elenco"]
+    casa, velate, portatile, nuovi = (x[1] for x in r["elenco"])
+    assert nuovi.startswith("Posti nuovi (ricerche e punti di prova) Dati dell'impianto Antenna a 3 m da terra, 2 dBi, cavo 0 dB, 22 dBm "
+                            "(valori di fabbrica). Un posto nuovo non ha misure: "), nuovi
     assert "Antenna a 5 m da terra, 2 dBi, cavo 1 dB, 22 dBm (valori di fabbrica)." in casa, casa
     assert "Ancora poche misure di questo gateway (4 utili, ne servono 5)" in casa and "stima prudente" in casa, casa
     assert re.search(r"Da solo copre \d+ km² previsti entro 20 km\.", casa), casa
@@ -1121,12 +1123,26 @@ def test_6l_la_copertura_prevista_nel_browser(rete):
     assert (salvato["altezza_m"], salvato["guadagno_dbi"], salvato["da"]) == (25.0, 6.5, "andrea") and "perdite_db" not in salvato
     assert "antenna a 25 m da terra" in r["schedaGateway"].lower() and "Dati dell'impianto" in r["schedaGateway"], r["schedaGateway"]
     # un solo impianto; il punto di prova (un ripetitore che non c'e' ancora) e che cosa aggiungerebbe
-    assert r["soloRipetitore"] == ["r:!3333cccc", "portatile"] and 0 < r["previsteRipetitore"] < r["previsteDopo"]
-    assert r["provaInvito"].startswith("Tocca sulla mappa il punto da provare"), r["provaInvito"]
-    assert re.search(r"Rispetto alla rete di oggi aggiunge \d+ km² previsti\.", r["prova"]), r["prova"]
-    assert "Collegamento con Gateway casa (" in r["prova"] and r["provaMostra"] == ["p:prova", "Punto di prova"], r["prova"]
-    assert r["provaSegno"].startswith("Punto di prova: un impianto che non c'è ancora"), r["provaSegno"]
-    assert r["provaTolta"] == [False, ""], r["provaTolta"]
+    assert r["soloRipetitore"] == ["r:!3333cccc", "portatile", "p:"] and 0 < r["previsteRipetitore"] < r["previsteDopo"]
+    assert r["provaInvito"].startswith("Tocca sulla mappa i punti da provare, uno dopo l'altro"), r["provaInvito"]
+    assert r["provaBottone"] == ["Fine", "true"], "si resta a scegliere finche' non si preme Fine"
+    for testo, nome, altro in ((r["prova"], "Punto di prova 1", "Punto di prova 2"), (r["prova2"], "Punto di prova 2", "Punto di prova 1")):
+        assert testo.startswith(nome + " Dati dell'impianto Togli il punto Antenna a 3 m da terra, 2 dBi, cavo 0 dB, 22 dBm"), testo
+        assert re.search(r"Rispetto alla rete di oggi aggiunge \d+ km² previsti\.", testo), testo
+        assert re.search(r"Strada verso TAK: (diretta a Gateway casa|passando da .* fino a Gateway casa)", testo), testo
+        assert "Collegamento con Gateway casa (" in testo and "Collegamento con Ripetitore Velate (" in testo, testo
+        assert f"Collegamento con {altro} (" in testo and "Non ha misure sue" not in testo, testo
+    assert re.match(r"I 2 punti di prova insieme Togli tutti i punti Rispetto alla rete di oggi aggiungono \d+ km² previsti ", r["insieme"]), r["insieme"]
+    assert r["provaChiavi"] == ["g:casa", "r:!3333cccc", "p:1", "p:2", "p:*", "portatile", "p:"], r["provaChiavi"]
+    assert r["provaMostra"] == [["p:", "Solo i punti di prova"], ["p:1", "Punto di prova 1"], ["p:2", "Punto di prova 2"]], r["provaMostra"]
+    assert r["provaPunti"] == 4 and r["provaSegno"].startswith("Punto di prova 1: un impianto che non c'è ancora"), r["provaSegno"]
+    assert r["provaSoli"] == [["p:1", "p:2", "p:*", "portatile", "p:"], True], r["provaSoli"]
+    assert r["nuoviFinestra"] == ["Impianto dei posti nuovi", "3 (di fabbrica)"], r["nuoviFinestra"]
+    assert r["provaFinestra"] == ["Impianto di Punto di prova 2", "12 (dei posti nuovi)"], r["provaFinestra"]
+    assert "Antenna a 12 m da terra, 2 dBi, cavo 0 dB, 22 dBm (in parte di fabbrica)." in r["nuoviDopo"][0] and r["nuoviDopo"][1:] == [True, True]
+    assert r["provaTroppi"] == [8, "Al massimo 8 punti di prova insieme: togline uno per aggiungerne un altro."], r["provaTroppi"]
+    assert r["provaUnoTolto"] == ["p:2 p:3 p:4 p:5 p:6 p:7 p:8", ""], r["provaUnoTolto"]
+    assert r["provaTolta"] == [False, "", 0, 2], r["provaTolta"]
     assert 0 < r["previsteDieci"] < r["previsteDopo"], "raggio piu' corto: meno quadretti"
     # dalla scheda del ripetitore: la sua prevista sulla mappa; spenta, tutto torna com'era
     assert r["dallaScheda"] == ["r:!3333cccc", True] and r["dopo"] == {"previste": "0", "legenda": False, "elenco": 0}, r
@@ -1184,7 +1200,8 @@ def test_6n_dove_mettere_un_ripetitore_nel_browser(rete):
     assert re.match(r"Profilo: da Monte Prova a (Gateway casa|Ripetitore Velate)$", r["trovaProfilo"]), r["trovaProfilo"]
     assert re.match(r"Distanza \d+,\d km\. ", r["trovaProfiloEsito"]), r["trovaProfiloEsito"]
     # prova qui: il colle diventa il punto di prova, calcolato per intero
-    assert r["provaQui"][0] == "p:prova" and re.search(r"Rispetto alla rete di oggi aggiunge \d+ km² previsti\.", r["provaQui"][1]), r["provaQui"]
+    assert r["provaQui"][0] == ["Monte Prova"] and r["provaQui"][1].startswith("Monte Prova Dati dell'impianto Togli il punto"), r["provaQui"]
+    assert re.search(r"Rispetto alla rete di oggi aggiunge \d+ km² previsti\.", r["provaQui"][1]), r["provaQui"]
     # copri un punto, dietro al colle: com'e' messo oggi e da dove lo si raggiungerebbe
     assert r["copriInvito"].startswith("Tocca sulla mappa il punto da coprire"), r["copriInvito"]
     assert r["copriTesta"].startswith("Punto da coprire, 300 m"), r["copriTesta"]

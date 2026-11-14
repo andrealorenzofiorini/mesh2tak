@@ -20,8 +20,8 @@ function capoImpianto(chiave) {
 }
 
 function sitoNuovo(nome, lat, lon) {
-  // un impianto che non c'e' ancora: con i dati del punto di prova (di fabbrica quelli di un ripetitore)
-  return Object.assign({nome, lat, lon}, impiantoDi("p:prova").valori);
+  // un impianto che non c'e' ancora: con i dati dei posti nuovi (di fabbrica quelli di un ripetitore)
+  return Object.assign({nome, lat, lon}, impiantoDi("p:").valori);
 }
 
 function testoCollegamento(l) {
@@ -231,7 +231,7 @@ async function trovaPunti() {
     const corr = correzioniPrevista(), comune = corr.get("nuovi"), radio = radioPerLaPrevisione(""), portatile = impiantoDi("portatile").valori;
     const oggi = new Set();        // i quadretti gia' previsti dalla rete di oggi (uno ogni due per lato, come il confronto)
     for (const [chiave, p] of previsioni) {
-      if (chiave === "p:prova" || p.stato !== "fatta") continue;
+      if (chiave.startsWith("p:") || p.stato !== "fatta") continue;
       const c = corr.get(chiave);
       for (const q of p.celle.values()) if (q.x % 2 === 0 && q.y % 2 === 0 && q.margine - correzioneDb(c, q.km) >= 0) oggi.add(q.x * 262144 + q.y);
     }
@@ -262,7 +262,7 @@ async function trovaPunti() {
     }
     valutati.sort((a, b) => arrivaAllaRete(b) - arrivaAllaRete(a) || b.nuoviKmq - a.nuoviKmq);
     siti.ricerca = {proposte: lontani(valutati.filter(p => p.nuoviKmq >= 0.5), 2500, 5), provati: posti.length, senzaOsm: luoghi.manca,
-                    raggio, impianto: testoImpianto("p:prova")};
+                    raggio, impianto: testoImpianto("p:")};
     siti.ricerca.proposte.forEach((p, i) => { p.sigla = String(i + 1); });
     siti.stato = "";
   } catch (e) {
@@ -317,7 +317,7 @@ async function copriPunto(punto) {
     }
     buoni.sort((a, b) => arrivaAllaRete(b) - arrivaAllaRete(a) || b.alPunto.margine - a.alPunto.margine);
     Object.assign(siti.bersaglio, {quota: qui, oggi, proposte: lontani(buoni, 1000, 3), provati: provati.length, senzaOsm: luoghi.manca,
-                                   raggio, impianto: testoImpianto("p:prova"), pronto: true});
+                                   raggio, impianto: testoImpianto("p:"), pronto: true});
     siti.bersaglio.proposte.forEach((p, i) => { p.sigla = "ABC"[i]; });
     siti.stato = "";
   } catch (e) {
@@ -329,10 +329,8 @@ async function copriPunto(punto) {
 }
 
 function provaQui(p) {
-  puntoDiProva = {lat: p.lat, lon: p.lon};
-  sceltaCopertura.mostra = "p:prova";
-  daInquadrare = true;
-  disegnaCopertura();
+  // una proposta diventa un punto di prova (in piu' a quelli che ci sono), con il nome del posto
+  aggiungiProva(p.lat, p.lon, p.nome);
 }
 
 function mostraStatoSiti() {

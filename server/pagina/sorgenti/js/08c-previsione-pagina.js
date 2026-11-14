@@ -17,7 +17,12 @@ const AIUTI_IMPIANTO = {
                portatile: "Di solito 0: l'antenna è avvitata alla radio."},
   potenza_dbm: {fisso: "Quella impostata sulla radio. Le radio Meshtastic arrivano a 22; di più solo con un amplificatore.",
                 portatile: "Quella impostata sulle radio della squadra: di solito 22."}};
-let puntoDiProva = null, impiantoDiProva = {}, modoTocco = "";     // modoTocco: che cosa fa il prossimo tocco sulla mappa ("prova", "copri")
+// Dalla 1.19.0 i punti di prova sono piu' d'uno (fino a PUNTI_DI_PROVA_MAX), ognuno {chiave "p:N", nome, lat, lon,
+// impianto}: si calcolano e si vedono tutti insieme. "impiantoNuovi" e' l'impianto che si immagina per un posto nuovo:
+// vale per le ricerche e per i punti di prova che non hanno dati propri. Tutto resta finche' la pagina e' aperta.
+const PUNTI_DI_PROVA_MAX = 8;
+let puntiDiProva = [], impiantoNuovi = {}, prossimoPunto = 1, contiDiProva = {firma: "", per: new Map(), insieme: 0};
+let modoTocco = "";     // che cosa fa il prossimo tocco sulla mappa ("prova", "copri")
 let giroPrevisione = 0, previsioneInCorso = false, daInquadrare = false;
 let spuntaPrevista = null, statoPrevista = null, elencoPreviste = null, vocePrevista = null, bottoneProva = null;
 let bottoneTrova = null, bottoneCopri = null, statoSiti = null, esitoSiti = null;
@@ -30,12 +35,15 @@ function impiantoDi(chiave) {
   // gateway e poi i valori di fabbrica. "origine" dice da dove viene ogni valore.
   const tipo = chiave === "portatile" ? "portatile" : (chiave.startsWith("g:") ? "gateway" : "ripetitore");
   const fabbrica = IMPIANTO_FABBRICA[tipo];
-  const scritti = chiave === "p:prova" ? impiantoDiProva : ((gestione && gestione.impianti && gestione.impianti[chiave]) || {});
+  // "p:" e' l'impianto dei posti nuovi; "p:N" un punto di prova, che dove non ha dati suoi prende quelli dei posti nuovi
+  const prova = chiave.startsWith("p:"), punto = prova ? puntiDiProva.find(x => x.chiave === chiave) : null;
+  const scritti = prova ? (chiave === "p:" ? impiantoNuovi : (punto ? punto.impianto : {}))
+                        : ((gestione && gestione.impianti && gestione.impianti[chiave]) || {});
   const valori = {}, origine = {};
   for (const campo of Object.keys(fabbrica)) {
-    const scritto = Number.isFinite(scritti[campo]);
-    valori[campo] = scritto ? scritti[campo] : fabbrica[campo];
-    origine[campo] = scritto ? "scritto" : "fabbrica";
+    const scritto = Number.isFinite(scritti[campo]), ereditato = prova && chiave !== "p:" && Number.isFinite(impiantoNuovi[campo]);
+    valori[campo] = scritto ? scritti[campo] : (ereditato ? impiantoNuovi[campo] : fabbrica[campo]);
+    origine[campo] = scritto ? "scritto" : (ereditato ? "nuovi" : "fabbrica");
   }
   if (tipo === "gateway" && origine.potenza_dbm === "fabbrica") {
     const c = copertura.get(chiave.slice(2)), letta = c && c.dati && c.dati.radio && c.dati.radio.potenza_dbm;
@@ -53,14 +61,15 @@ function testoImpianto(chiave) {
     ? "a " + numIt(v.altezza_m) + " m da terra, antenna " + numIt(v.guadagno_dbi) + " dBi, " + numIt(v.potenza_dbm) + " dBm"
     : "antenna a " + numIt(v.altezza_m) + " m da terra, " + numIt(v.guadagno_dbi) + " dBi, cavo " + numIt(v.perdite_db) +
       " dB, " + numIt(v.potenza_dbm) + " dBm";
-  const fabbrica = Object.values(i.origine).filter(o => o === "fabbrica").length;
-  return testo + (fabbrica >= 3 ? " (valori di fabbrica)" : (fabbrica ? " (in parte di fabbrica)" : ""));
+  // "di fabbrica" finche' nessuno ha scritto niente (la potenza letta dalla radio non e' una scelta di qualcuno)
+  const origini = Object.values(i.origine), scritti = origini.filter(o => o === "scritto" || o === "nuovi").length;
+  return testo + (!scritti ? " (valori di fabbrica)" : (origini.includes("fabbrica") ? " (in parte di fabbrica)" : ""));
 }
 
 function impiantiSullaMappa() {
   const lista = puntiDellaRete().map(p => ({chiave: p.chiave, tipo: p.tipo, lat: p.lat, lon: p.lon,
                                            nome: (p.tipo === "gateway" ? "Gateway " : "") + p.nome}));
-  if (puntoDiProva) lista.push({chiave: "p:prova", tipo: "prova", nome: "Punto di prova", lat: puntoDiProva.lat, lon: puntoDiProva.lon});
+  for (const x of puntiDiProva) lista.push({chiave: x.chiave, tipo: "prova", nome: x.nome, lat: x.lat, lon: x.lon});
   return lista;
 }
 
@@ -79,12 +88,24 @@ function radioPerLaPrevisione(chiave) {
 }
 
 function firmaPrevisione(nodo) {
-  // quello da cui dipende il calcolo di un impianto: se cambia, si rifa'. Ripetitori e punto di prova dipendono anche
-  // dai gateway (il collegamento previsto con ognuno).
-  const gateway = nodo.tipo === "gateway" ? [] : impiantiSullaMappa().filter(n => n.tipo === "gateway")
-    .map(n => [n.chiave, n.lat, n.lon, impiantoDi(n.chiave).valori]);
+  // quello da cui dipende il calcolo di un impianto: se cambia, si rifa'. I ripetitori dipendono anche dai gateway
+  // (il collegamento previsto con ognuno), un punto di prova da tutti gli altri impianti e punti di prova.
+  const gateway = altriCapi(nodo).map(n => [n.chiave, n.lat, n.lon, impiantoDi(n.chiave).valori]);
   return JSON.stringify([nodo.lat, nodo.lon, impiantoDi(nodo.chiave).valori, radioPerLaPrevisione(nodo.chiave),
                          impiantoDi("portatile").valori, sceltaCopertura.raggio, gateway]);
+}
+
+function altriCapi(nodo) {
+  // con chi si calcola il collegamento di un impianto: un ripetitore con i gateway; un punto di prova con tutti (un
+  // ripetitore nuovo puo' appoggiarsi a un altro ripetitore, o a un altro punto di prova)
+  if (nodo.tipo === "gateway") return [];
+  return impiantiSullaMappa().filter(n => n.chiave !== nodo.chiave && (nodo.tipo === "prova" || n.tipo === "gateway"));
+}
+
+function mostrato(chiave) {
+  // se «Mostra» fa vedere questo impianto: tutta la rete, lui solo, o «Solo i punti di prova»
+  const scelta = sceltaCopertura.mostra;
+  return !scelta || scelta === chiave || (scelta === "p:" && chiave.startsWith("p:"));
 }
 
 function riquadroRilievo(x, y) {
@@ -152,7 +173,7 @@ async function calcolaPrevisione(nodo, giro) {
     p.raggio = raggio;
     p.collegamenti = [];
     if (nodo.tipo !== "gateway") {          // un ripetitore serve se arriva a un gateway
-      for (const g of impiantiSullaMappa().filter(n => n.tipo === "gateway")) {
+      for (const g of altriCapi(nodo)) {
         const c = margineTraImpianti(impianto, Object.assign({lat: g.lat, lon: g.lon}, impiantoDi(g.chiave).valori), radio, quota);
         if (c) p.collegamenti.push(Object.assign(c, {nome: g.nome, chiave: g.chiave}));
       }
@@ -178,8 +199,11 @@ async function avviaPrevisione() {
   if (!sceltaCopertura.prevista || !gestione) return;
   previsioneInCorso = true;
   try {
+    const cEAncora = nodo => nodo.tipo !== "prova" || puntiDiProva.some(x => x.chiave === nodo.chiave);
     for (const nodo of impiantiScelti()) {
+      if (!cEAncora(nodo)) continue;                 // un punto di prova tolto mentre si calcolavano gli altri
       await calcolaPrevisione(nodo, giro);
+      if (!cEAncora(nodo)) previsioni.delete(nodo.chiave);
       if (giro !== giroPrevisione) return;
       aggiornaPrevista();
     }
@@ -229,9 +253,9 @@ function correzioniPrevista() {
 
 function quadrettiPrevisti(corr) {
   // per la scelta di «Mostra»: quadretto per quadretto, il margine migliore tra gli impianti mostrati
-  const scelta = sceltaCopertura.mostra, celle = new Map(), sullaMappa = new Set(impiantiSullaMappa().map(n => n.chiave));
+  const celle = new Map(), sullaMappa = new Set(impiantiSullaMappa().map(n => n.chiave));
   for (const [chiave, p] of previsioni) {
-    if (p.stato !== "fatta" || (scelta && scelta !== chiave) || !sullaMappa.has(chiave)) continue;
+    if (p.stato !== "fatta" || !mostrato(chiave) || !sullaMappa.has(chiave)) continue;
     const c = corr.get(chiave);
     for (const q of p.celle.values()) {
       const margine = q.margine - correzioneDb(c, q.km);
@@ -268,13 +292,15 @@ function mostraStatoPrevista() {
   if (sceltaCopertura.prevista) {
     const scelti = impiantiScelti(), stati = scelti.map(n => previsioni.get(n.chiave));
     const corso = stati.find(p => p && p.stato === "calcolo");
-    if (modoTocco === "prova") testo = "Tocca sulla mappa il punto da provare (per esempio dove vorresti mettere un ripetitore).";
+    if (modoTocco === "prova") testo = "Tocca sulla mappa i punti da provare, uno dopo l'altro (per esempio dove vorresti mettere un ripetitore); poi premi «Fine».";
     else if (modoTocco === "copri") testo = "Tocca sulla mappa il punto da coprire (una valle, un rifugio, un sentiero).";
     else if (!gestione) testo = "La copertura prevista si calcola con il servizio della pagina, che adesso non risponde.";
     else if (!scelti.length) testo = "Nessun gateway o ripetitore ha ancora una posizione: la copertura prevista parte da lì.";
     else if (corso) {
       testo = "Calcolo la copertura prevista di " + corso.nome + ": " + Math.round(corso.parte * 100) + "%" +
               (scelti.length > 1 ? " (" + (stati.indexOf(corso) + 1) + " di " + scelti.length + ")" : "");
+    } else if (previsioneInCorso || previsioneDaFare()) {
+      testo = "Calcolo la copertura prevista...";        // tra un impianto e l'altro: i numeri di prima non valgono piu'
     } else {
       const conta = new Map();
       for (const q of mostrate.values()) { const k = classeCopertura(q.margine); conta.set(k, (conta.get(k) || 0) + 1); }
@@ -306,7 +332,7 @@ function rigaTaratura(chiave, corr) {
   }
   const t = chiave.startsWith("g:") ? taraturaDi(chiave) : null;
   const perche = chiave.startsWith("g:") ? "Ancora poche misure di questo gateway" + (t ? " (" + t.esatti + " utili, ne servono 5)" : "")
-                                         : "Non ha misure sue (solo i gateway misurano il segnale)";
+                                         : (chiave === "nuovi" ? "Un posto nuovo non ha misure" : "Non ha misure sue (solo i gateway misurano il segnale)");
   return perche + ": " + (c.come === "media" ? "uso la correzione media dei gateway tarati, segnale " + quanto + " rispetto al solo rilievo."
                                              : "per alberi, case e radio addosso conto un segnale " + quanto + " rispetto al solo rilievo, " +
                                                "una stima prudente finché non ci sono misure.");
@@ -317,7 +343,8 @@ function vociPrevista(chiave, p, corr) {
   if (!p) return ["In attesa del calcolo."];
   if (p.stato === "calcolo") return ["Calcolo in corso."];
   if (p.stato === "errore") return ["Non calcolata: " + frase(p.errore)];
-  const c = corr.get(chiave), righe = [rigaTaratura(chiave, corr)];
+  // (per i punti di prova la correzione e' quella dei posti nuovi, uguale per tutti: sta scritta una volta sola, li')
+  const c = corr.get(chiave), righe = [chiave.startsWith("p:") ? "" : rigaTaratura(chiave, corr)];
   let coperti = 0;
   for (const q of p.celle.values()) if (q.margine - correzioneDb(c, q.km) >= 0) coperti++;
   const nodo = impiantiSullaMappa().find(n => n.chiave === chiave);
@@ -335,34 +362,88 @@ function vociPrevista(chiave, p, corr) {
     if (raggiunti) righe.push(dentro + " su " + raggiunti + (raggiunti === 1 ? " quadretto arrivato" : " quadretti arrivati") +
                               " davvero tramite questo ripetitore " + (dentro === 1 ? "cade" : "cadono") + " nella zona prevista.");
   }
-  if (chiave === "p:prova") {
-    let nuovi = 0;
-    for (const q of p.celle.values()) {
-      if (q.margine - correzioneDb(c, q.km) < 0) continue;
-      let altri = false;
-      for (const [k, altro] of previsioni) {
-        if (k === chiave || altro.stato !== "fatta") continue;
-        const a = altro.celle.get(q.x + "," + q.y);
-        if (a && a.margine - correzioneDb(corr.get(k), a.km) >= 0) { altri = true; break; }
-      }
-      if (!altri) nuovi++;
-    }
-    righe.push("Rispetto alla rete di oggi aggiunge " + numIt(kmqDi(nuovi, puntoDiProva.lat), 0) + " km² previsti.");
+  if (chiave.startsWith("p:")) {
+    righe.push("Rispetto alla rete di oggi aggiunge " + numIt(aggiunteDiProva(corr).per.get(chiave) || 0, 0) + " km² previsti.");
+    righe.push(stradaVersoTak(chiave));
   }
   for (const l of p.collegamenti || []) {
     righe.push({testo: testoCollegamento(l), profilo: [chiave, l.chiave]});
   }
-  if (chiave !== "p:prova") righe.push(seSiSpegne(chiave, corr));
-  if (chiave !== "p:prova" && p.collegamenti && !p.collegamenti.length && chiave.startsWith("r:")) {
+  if (!chiave.startsWith("p:")) righe.push(seSiSpegne(chiave, corr));
+  if (p.collegamenti && !p.collegamenti.length && chiave.startsWith("r:")) {
     righe.push("Nessun gateway entro " + p.raggio + " km: il collegamento non si calcola.");
   }
   return righe.filter(Boolean);
 }
 
+function stradaVersoTak(chiave) {
+  // da un punto di prova fino a un gateway, anche passando da ripetitori e da altri punti di prova: prima si cerca
+  // una strada fatta solo di collegamenti buoni (almeno 5 dB), poi una qualsiasi che arrivi
+  const nodi = new Map(impiantiSullaMappa().map(n => [n.chiave, n]));
+  const sentiti = new Map(ripetitoriDellaRete().map(v => ["r:" + v.id, v.ponti.map(x => "g:" + x.ponte)]));
+  const vicini = (k, minimo) => {
+    const p = previsioni.get(k), lista = ((p && p.collegamenti) || []).filter(l => l.margine >= minimo).map(l => l.chiave);
+    return lista.concat(sentiti.get(k) || []).filter(x => nodi.has(x));       // un ripetitore vero: anche i gateway che lo sentono davvero
+  };
+  for (const minimo of [5, 0]) {
+    const da = new Map([[chiave, null]]), coda = [chiave];
+    while (coda.length) {
+      const k = coda.shift();
+      if (k.startsWith("g:")) {
+        const strada = [];
+        for (let x = k; x !== chiave; x = da.get(x)) strada.unshift(nodi.get(x).nome);
+        return "Strada verso TAK: " + (strada.length === 1 ? "diretta a " + strada[0] : "passando da " + strada.slice(0, -1).join(", poi da ") + " fino a " + strada[strada.length - 1]) +
+               (minimo ? "." : ", ma con almeno un collegamento debole.");
+      }
+      for (const x of vicini(k, minimo)) {
+        if (da.has(x)) continue;
+        da.set(x, k);
+        coda.push(x);
+      }
+    }
+  }
+  return "Strada verso TAK: nessuna. Da qui non si arriva a un gateway, nemmeno passando dagli altri impianti e punti di prova.";
+}
+
+function aggiunteDiProva(corr) {
+  // quanta zona prevista aggiungono i punti di prova alla rete di oggi (gateway e ripetitori veri): ognuno da solo e
+  // tutti insieme. Il conto si rifa' solo quando cambia qualcosa.
+  const nodi = impiantiSullaMappa().filter(n => (previsioni.get(n.chiave) || {}).stato === "fatta");
+  const firma = JSON.stringify(nodi.map(n => { const c = corr.get(n.chiave); return [n.chiave, previsioni.get(n.chiave).firma, c.a, c.b]; }));
+  if (contiDiProva.firma === firma) return contiDiProva;
+  const oggi = new Set(), tutti = new Set(), per = new Map();
+  const coperti = function* (n) {
+    const c = corr.get(n.chiave);
+    for (const q of previsioni.get(n.chiave).celle.values()) if (q.margine - correzioneDb(c, q.km) >= 0) yield q.x * 262144 + q.y;
+  };
+  for (const n of nodi.filter(x => x.tipo !== "prova")) for (const k of coperti(n)) oggi.add(k);
+  for (const n of nodi.filter(x => x.tipo === "prova")) {
+    let nuovi = 0;
+    for (const k of coperti(n)) {
+      if (oggi.has(k)) continue;
+      nuovi++;
+      tutti.add(k);
+    }
+    per.set(n.chiave, kmqDi(nuovi, n.lat));
+  }
+  contiDiProva = {firma, per, insieme: kmqDi(tutti.size, nodi.length ? nodi[0].lat : 45)};
+  return contiDiProva;
+}
+
 function disegnaElencoPreviste(corr) {
-  const voci = sceltaCopertura.prevista && gestione ? impiantiSullaMappa().filter(n => !sceltaCopertura.mostra || n.chiave === sceltaCopertura.mostra) : [];
+  const accesa = sceltaCopertura.prevista && gestione;
+  const voci = accesa ? impiantiSullaMappa().filter(n => mostrato(n.chiave)) : [];
   const contenuto = voci.map(n => [n.chiave, n.nome, testoImpianto(n.chiave), vociPrevista(n.chiave, previsioni.get(n.chiave), corr)]);
-  if (sceltaCopertura.prevista && gestione) contenuto.push(["portatile", "Radio portatili della squadra", testoImpianto("portatile"), []]);
+  if (accesa && puntiDiProva.length > 1) {         // i punti di prova insieme: una rete nuova si giudica tutta intera
+    const pronti = puntiDiProva.every(x => (previsioni.get(x.chiave) || {}).stato === "fatta");
+    contenuto.push(["p:*", "I " + puntiDiProva.length + " punti di prova insieme", "",
+                    [pronti ? "Rispetto alla rete di oggi aggiungono " + numIt(aggiunteDiProva(corr).insieme, 0) + " km² previsti (dove due punti " +
+                              "coprono la stessa zona, conta una volta sola)." : "Calcolo in corso."]]);
+  }
+  if (accesa) {
+    contenuto.push(["portatile", "Radio portatili della squadra", testoImpianto("portatile"), []],
+                   ["p:", "Posti nuovi (ricerche e punti di prova)", testoImpianto("p:"), [rigaTaratura("nuovi", corr)].filter(Boolean)]);
+  }
   const firma = JSON.stringify(contenuto);
   if (firma === firmaElenco) return;        // rifarlo a ogni giro toglierebbe il bottone da sotto il dito
   firmaElenco = firma;
@@ -370,17 +451,20 @@ function disegnaElencoPreviste(corr) {
     const li = el("li");
     li.dataset.impianto = chiave;
     const testa = el("div", "testa-prevista");
-    const dati = el("button", "bottone secondario piccolo", "Dati dell'impianto");
-    dati.type = "button";
-    dati.addEventListener("click", () => apriImpianto(chiave, nome));
-    testa.append(el("b", null, nome), dati);
-    if (chiave === "p:prova") {
-      const togli = el("button", "bottone secondario piccolo", "Togli il punto");
-      togli.type = "button";
-      togli.addEventListener("click", togliProva);
-      testa.append(togli);
+    const bottone = (testo, azione) => {
+      const b = el("button", "bottone secondario piccolo", testo);
+      b.type = "button";
+      b.addEventListener("click", azione);
+      return b;
+    };
+    testa.append(el("b", null, nome));
+    if (chiave === "p:*") {
+      testa.append(bottone("Togli tutti i punti", () => togliProva(null)));
+    } else {
+      testa.append(bottone("Dati dell'impianto", () => apriImpianto(chiave, nome)));
+      if (chiave.startsWith("p:") && chiave !== "p:") testa.append(bottone("Togli il punto", () => togliProva(chiave)));
     }
-    li.append(testa, el("p", "impianto", maiuscola(impianto) + "."), ...righe.map(r => {
+    li.append(testa, ...(impianto ? [el("p", "impianto", maiuscola(impianto) + ".")] : []), ...righe.map(r => {
       if (typeof r === "string") return el("p", null, r);
       const riga = el("p", null, r.testo + " "), profilo = el("button", "bottone secondario piccolo", "Profilo");
       profilo.type = "button";
@@ -398,7 +482,7 @@ function aggiornaPrevista() {
   const accesa = sceltaCopertura.prevista;
   for (const e of partiPrevista) e.hidden = !accesa;
   if (spuntaPrevista.checked !== accesa) spuntaPrevista.checked = accesa;
-  if (bottoneProva) bottoneProva.textContent = puntoDiProva ? "Sposta il punto di prova" : "Prova un punto";
+  if (bottoneProva) bottoneProva.textContent = modoTocco === "prova" ? "Fine" : "Prova un punto";
   for (const [b, modo] of [[bottoneProva, "prova"], [bottoneCopri, "copri"]]) b.setAttribute("aria-pressed", String(modoTocco === modo));
   mappaCopertura.e.classList.toggle("sceglie", accesa && modoTocco !== "");
   if (accesa && !vocePrevista.isConnected) document.querySelector(".legenda").append(vocePrevista);
@@ -414,7 +498,7 @@ function aggiornaPrevista() {
   }
   if (gestione && !previsioneInCorso && previsioneDaFare()) avviaPrevisione();
   const corr = correzioniPrevista(), scelta = sceltaCopertura.mostra;
-  const visti = impiantiSullaMappa().filter(n => (!scelta || n.chiave === scelta) && previsioni.has(n.chiave));
+  const visti = impiantiSullaMappa().filter(n => mostrato(n.chiave) && previsioni.has(n.chiave));
   const firma = JSON.stringify([scelta, visti.map(n => { const p = previsioni.get(n.chiave); const c = corr.get(n.chiave); return [n.chiave, p.firma, p.stato, c.a, c.b]; })]);
   if (firma !== firmaMostrate) {
     firmaMostrate = firma;
@@ -440,11 +524,31 @@ function accendiPrevista(chiave) {
   vaiA("mappa");
 }
 
-function togliProva() {
-  puntoDiProva = null;
-  impiantoDiProva = {};
-  previsioni.delete("p:prova");
-  if (sceltaCopertura.mostra === "p:prova") sceltaCopertura.mostra = "";
+function aggiungiProva(lat, lon, nome) {
+  // un punto di prova in piu' (dalla mappa, o da una proposta: allora porta il nome del posto)
+  if (puntiDiProva.length >= PUNTI_DI_PROVA_MAX) {
+    modoTocco = "";
+    siti.stato = "Al massimo " + PUNTI_DI_PROVA_MAX + " punti di prova insieme: togline uno per aggiungerne un altro.";
+    disegnaCopertura();
+    return;
+  }
+  const numero = prossimoPunto++;
+  let scelto = nome || "Punto di prova " + numero;
+  for (let i = 2; puntiDiProva.some(x => x.nome === scelto); i++) scelto = (nome || "Punto di prova " + numero) + " (" + i + ")";
+  puntiDiProva.push({chiave: "p:" + numero, nome: scelto, lat, lon, impianto: {}});
+  if (siti.stato.startsWith("Al massimo")) siti.stato = "";
+  // perche' si veda insieme agli altri: se «Mostra» faceva vedere un impianto solo, torna a tutta la rete
+  if (sceltaCopertura.mostra && sceltaCopertura.mostra !== "p:") sceltaCopertura.mostra = "";
+  disegnaCopertura();
+}
+
+function togliProva(chiave) {
+  // toglie un punto di prova, o tutti (chiave null)
+  for (const x of puntiDiProva) if (!chiave || x.chiave === chiave) previsioni.delete(x.chiave);
+  puntiDiProva = chiave ? puntiDiProva.filter(x => x.chiave !== chiave) : [];
+  if (siti.stato.startsWith("Al massimo")) siti.stato = "";
+  const scelta = sceltaCopertura.mostra;
+  if (scelta.startsWith("p:") && (scelta === "p:" ? puntiDiProva.length < 2 : !puntiDiProva.some(x => x.chiave === scelta))) sceltaCopertura.mostra = "";
   disegnaCopertura();
 }
 
@@ -490,14 +594,12 @@ function costruisciPrevista(comandi, scelta) {
   partiPrevista = [raggio.parentNode, strumenti, statoSiti, esitoSiti];
   mappaCopertura.alTocco = (lat, lon) => {
     if (!modoTocco || !sceltaCopertura.prevista) return false;
-    const modo = modoTocco, punto = {lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5};
-    modoTocco = "";
-    if (modo === "copri") {
+    const punto = {lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5};
+    if (modoTocco === "copri") {
+      modoTocco = "";
       copriPunto(punto);
     } else {
-      puntoDiProva = punto;
-      sceltaCopertura.mostra = "p:prova";
-      disegnaCopertura();
+      aggiungiProva(punto.lat, punto.lon, "");        // si resta a scegliere: un tocco, un punto, fino a «Fine»
     }
     return true;
   };
@@ -543,22 +645,26 @@ function spiegaPrevista() {
                   "rifugi) e propone i cinque che aggiungerebbero più zona alla rete di oggi, dicendo per ognuno se " +
                   "arriverebbe a un gateway o a un ripetitore. «Copri un punto» parte dal contrario: tocchi la valle o " +
                   "il rifugio che ti interessa e propone da dove lo si raggiungerebbe. «Prova un punto» calcola per " +
-                  "intero un posto scelto da te. «Profilo» disegna il terreno tra due impianti: si vede quale " +
+                  "intero i posti scelti da te, fino a otto insieme: tocchi la mappa una volta per punto e premi " +
+                  "«Fine»; per ognuno dice quanto aggiunge da solo, e sotto quanto aggiungono tutti insieme e come " +
+                  "si collegano tra loro e alla rete. «Profilo» disegna il terreno tra due impianti: si vede quale " +
                   "crinale ferma il segnale. Proposte e punti restano solo finché la pagina è aperta."),
     el("p", null, "Per ogni impianto la pagina dice anche che cosa si perderebbe se si spegnesse: la zona che copre " +
                   "solo lui e, per un gateway, i ripetitori che resterebbero senza strada verso TAK."),
     confronto, rilievo];
 }
 
-// ---- i dati di un impianto: una finestra per gateway, ripetitori, punto di prova e radio portatili
+// ---- i dati di un impianto: una finestra per gateway, ripetitori, punti di prova, posti nuovi e radio portatili
 function apriImpianto(chiave, nome) {
-  const i = impiantoDi(chiave), portatile = chiave === "portatile";
+  const i = impiantoDi(chiave), portatile = chiave === "portatile", nuovi = chiave === "p:";
   impiantoAperto = chiave;
-  document.getElementById("impianto-titolo").textContent = portatile ? "Radio portatili della squadra" : "Impianto di " + nome;
+  document.getElementById("impianto-titolo").textContent = portatile ? "Radio portatili della squadra" : (nuovi ? "Impianto dei posti nuovi" : "Impianto di " + nome);
   document.getElementById("impianto-spiega").textContent = portatile
     ? "Come sono, di solito, le radio che la squadra porta addosso: valgono per tutta la copertura prevista. Lascia vuoto quello che non sai."
-    : "Servono per calcolare la copertura prevista di questo impianto" + (chiave === "p:prova" ? ": valgono finché la pagina resta aperta" : "") +
-      ". Lascia vuoto quello che non sai: il calcolo usa il valore indicato nel campo.";
+    : (nuovi ? "Come sarebbe un impianto messo in un posto nuovo: vale per «Trova i punti migliori», per «Copri un punto» e per i punti di prova " +
+               "che non hanno dati propri, finché la pagina resta aperta. Lascia vuoto quello che non sai."
+             : "Servono per calcolare la copertura prevista di questo impianto" + (chiave.startsWith("p:") ? ": valgono finché la pagina resta aperta" : "") +
+               ". Lascia vuoto quello che non sai: il calcolo usa il valore indicato nel campo.");
   document.getElementById("impianto-esito").textContent = "";
   document.getElementById("impianto-campi").replaceChildren(...CAMPI_IMPIANTO.map(([campo, titolo, unita, minimo, massimo]) => {
     const p = el("p"), l = el("label", null, titolo + " (" + unita + ")"), input = el("input");
@@ -571,8 +677,9 @@ function apriImpianto(chiave, nome) {
     input.dataset.massimo = massimo;
     input.dataset.titolo = titolo;
     if (Number.isFinite(i.scritti[campo])) input.value = numIt(i.scritti[campo]).replace(/\./g, "");
-    const predefinito = i.origine[campo] === "scritto" ? IMPIANTO_FABBRICA[i.tipo][campo] : i.valori[campo];
-    input.placeholder = numIt(predefinito) + (i.origine[campo] === "radio" ? " (letta dalla radio)" : " (di fabbrica)");
+    const daiNuovi = chiave.startsWith("p:") && !nuovi && Number.isFinite(impiantoNuovi[campo]);
+    const predefinito = i.origine[campo] !== "scritto" ? i.valori[campo] : (daiNuovi ? impiantoNuovi[campo] : IMPIANTO_FABBRICA[i.tipo][campo]);
+    input.placeholder = numIt(predefinito) + (i.origine[campo] === "radio" ? " (letta dalla radio)" : (daiNuovi ? " (dei posti nuovi)" : " (di fabbrica)"));
     l.append(el("small", null, AIUTI_IMPIANTO[campo][portatile ? "portatile" : "fisso"] +
                                (i.origine[campo] === "radio" ? " Adesso vale quella letta dalla radio del gateway." : "")));
     p.append(l, input);
@@ -596,8 +703,11 @@ async function salvaImpianto() {
     dati[input.dataset.campo] = Math.round(v * 10) / 10;
   }
   try {
-    if (chiave === "p:prova") {
-      impiantoDiProva = Object.fromEntries(Object.entries(dati).filter(([k, v]) => k !== "chi" && v !== null));
+    if (chiave.startsWith("p:")) {          // punti di prova e posti nuovi: solo in questa pagina aperta
+      const scritti = Object.fromEntries(Object.entries(dati).filter(([k, v]) => k !== "chi" && v !== null));
+      const punto = puntiDiProva.find(x => x.chiave === chiave);
+      if (chiave === "p:") impiantoNuovi = scritti;
+      else if (punto) punto.impianto = scritti;
     } else {
       esito.textContent = "Salvo...";
       const d = await manda("impianto", dati);

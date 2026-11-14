@@ -3,6 +3,14 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.19.0
+
+- Più punti di prova insieme: con «Prova un punto» tocchi la mappa una volta per ogni posto che vuoi provare, fino a otto, e premi «Fine». Si calcolano e si vedono tutti insieme sulla mappa, con la rete di oggi. Anche «Prova qui» su una proposta aggiunge un punto, con il nome del posto, senza togliere gli altri.
+- Per ogni punto di prova la pagina dice quanto aggiunge da solo, con che margine si collega a ogni gateway, a ogni ripetitore e agli altri punti di prova, e qual è la sua strada verso TAK (diretta, o passando da un altro impianto). Sotto, quanto aggiungono tutti insieme.
+- In «Mostra» c'è «Solo i punti di prova», e ogni punto da solo. Ogni punto ha i suoi «Dati dell'impianto» e si toglie da solo; «Togli tutti i punti» li toglie insieme.
+- «Posti nuovi»: l'impianto che si immagina per un posto nuovo (di fabbrica antenna a 3 m, 2 dBi, 22 dBm) si scrive una volta e vale per «Trova i punti migliori», per «Copri un punto» e per i punti di prova che non hanno dati propri.
+- Serve aggiornare il server; i gateway non cambiano.
+
 ## 1.18.0
 
 - «Trova i punti migliori»: con la copertura prevista accesa, sotto la mappa, la pagina cerca nella zona che la mappa mostra le cime e i sostegni che ci sono già (tralicci, torri, serbatoi dell'acqua, rifugi) e propone i cinque posti che aggiungerebbero più zona alla rete di oggi, dicendo per ognuno quanti km² aggiunge e con che margine si collegherebbe a un gateway o a un ripetitore. I punti compaiono numerati sulla mappa; «Prova qui» ne calcola uno per intero.

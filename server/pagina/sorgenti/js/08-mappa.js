@@ -800,7 +800,7 @@ function disegnaCopertura() {
   const nomi = nomiDeiRipetitori();
   const scelte = [["", "Tutta la rete"], ...elenco.map(p => ["g:" + p.nome, "Gateway " + p.nome]),
                   ...[...nomi].sort((a, b) => a[1].localeCompare(b[1], "it")).map(([id, nome]) => ["r:" + id, nome]),
-                  ...(puntoDiProva ? [["p:prova", "Punto di prova"]] : [])];
+                  ...(puntiDiProva.length > 1 ? [["p:", "Solo i punti di prova"]] : []), ...puntiDiProva.map(x => [x.chiave, x.nome])];
   const attuali = [...selMostra.options].map(o => o.value + "\t" + o.textContent);
   if (scelte.map(x => x.join("\t")).join("\n") !== attuali.join("\n")) {
     selMostra.replaceChildren(...scelte.map(([v, t]) => {
@@ -816,9 +816,9 @@ function disegnaCopertura() {
   bottoneAzzera.textContent = "Azzera la copertura di " + (gateway || "un gateway");
   const celle = quadrettiCopertura();
   const punti = puntiDellaRete();
-  if (puntoDiProva) {
-    punti.push({tipo: "prova", chiave: "p:prova", nome: "Punto di prova", lat: puntoDiProva.lat, lon: puntoDiProva.lon, livello: 0,
-                spento: false, righe: ["Punto di prova: un impianto che non c'è ancora", "Sotto la mappa: quanta zona aggiungerebbe."]});
+  for (const x of puntiDiProva) {
+    punti.push({tipo: "prova", chiave: x.chiave, nome: x.nome, lat: x.lat, lon: x.lon, livello: 0,
+                spento: false, righe: [x.nome + ": un impianto che non c'è ancora", "Sotto la mappa: quanta zona aggiungerebbe."]});
   }
   mappaCopertura.dati(celle, punti);
   aggiornaPrevista();
