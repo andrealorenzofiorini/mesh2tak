@@ -188,15 +188,19 @@ def test_due_ponti_senza_doppioni(impianto, sdk):
     impianto.tak()
     nodo_a = impianto.nodo(0xABCD0001)
     nodo_b = impianto.nodo(0xABCD0002)
-    ponte_a = impianto.ponte(nodo_a, 0.1, "ponte-a")    # il piu' svelto
-    ponte_b = impianto.ponte(nodo_b, 1.0, "ponte-b")    # attese vere
+    # Il gateway A e' svelto (aspetta al massimo 0,25 s verso il server e 0,8 s verso la radio), il B lento (almeno
+    # 1,5 s e 6 s): tra i due resta piu' di un secondo, cosi' anche su una macchina carica B fa in tempo a vedere che
+    # A ha gia' fatto. Con le attese vere di B (da 0,5 s) restava un quarto di secondo, e ogni tanto non bastava: la
+    # prova falliva senza che ci fosse un difetto (la seconda copia ha lo stesso identificativo: TAK ne tiene una).
+    ponte_a = impianto.ponte(nodo_a, 0.1, "ponte-a")
+    ponte_b = impianto.ponte(nodo_b, 3.0, "ponte-b")
     try:
         assert aspetta(lambda: len({e["conn"] for e in impianto.eventi()}) >= 2), "i due gateway non sono partiti"
         time.sleep(1)
         # 1) la sala operativa scrive: la chat va in radio una volta sola
         impianto.dal_server(cot_fresco("geochat_broadcast"))
         assert aspetta(lambda: len(impianto.trasmissioni()) >= 1)
-        time.sleep(9)   # il ponte B avrebbe trasmesso entro 8 secondi
+        time.sleep(25)  # il ponte B avrebbe trasmesso entro 24 secondi
         uscite = impianto.trasmissioni()
         assert len(uscite) == 1 and uscite[0]["da"] == 0xABCD0001, uscite
         # ... e il ponte B, che l'ha sentita in radio, non la riporta al server
@@ -205,9 +209,9 @@ def test_due_ponti_senza_doppioni(impianto, sdk):
         _, filo = sdk.da_xml(cot_fresco("drawing_polygon"))
         impianto.in_radio(CAMPO, filo)
         assert aspetta(lambda: any(e["type"] == "u-d-p" for e in impianto.eventi()))
-        time.sleep(4)   # il ponte B avrebbe inoltrato entro 2,5 secondi
+        time.sleep(9)   # il ponte B avrebbe inoltrato entro 7,5 secondi
         poligoni = [e for e in impianto.eventi() if e["type"] == "u-d-p"]
-        assert len(poligoni) == 1, poligoni
+        assert len(poligoni) == 1, ("da quali collegamenti e' arrivata", [e["conn"] for e in poligoni])
     finally:
         registro_a = ferma(ponte_a)
         registro_b = ferma(ponte_b)
