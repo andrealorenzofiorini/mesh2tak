@@ -47,26 +47,35 @@ def leggi_mbr(dev):
 
 
 def x(*cmd, **kw):
-    """Un comando che deve riuscire. Formattare un disco di prova appena creato a volte non riesce al primo colpo
-    (visto su GitHub: la partizione del disco finto di prima non e' ancora stata lasciata dal sistema): si riprova
-    qualche volta e, se proprio non va, l'errore dice che cosa ha risposto il comando."""
-    import time
-    tentativi = 6 if cmd[0].startswith("mkfs") else 1
-    for i in range(tentativi):
-        r = subprocess.run(list(cmd), capture_output=True, text=True, **kw)
-        if r.returncode == 0:
-            return r
-        if i + 1 < tentativi:
-            subprocess.run(["udevadm", "settle", "--timeout=5"], capture_output=True)
-            time.sleep(1 + i)
-    raise AssertionError(f"{' '.join(cmd)}: uscita {r.returncode}\n{r.stderr.strip()}\n{r.stdout.strip()}")
+    """Un comando che deve riuscire; se no, l'errore dice che cosa ha risposto."""
+    r = subprocess.run(list(cmd), capture_output=True, text=True, **kw)
+    if r.returncode != 0:
+        raise AssertionError(f"{' '.join(cmd)}: uscita {r.returncode}\n{r.stderr.strip()}\n{r.stdout.strip()}")
+    return r
+
+
+def assesta():
+    """Aspetta che udev abbia finito di lavorare sui dischi (dove c'e': su GitHub si', qui no)."""
+    if shutil.which("udevadm") and os.path.exists("/run/udev/control"):
+        subprocess.run(["udevadm", "settle", "--timeout=20"], capture_output=True)
 
 
 class Dischi:
+    """Dischi di prova (dispositivi loop) con le loro partizioni.
+
+    Su GitHub udev rilegge la tabella delle partizioni di un disco quando qualcuno lo chiude dopo averlo aperto in
+    scrittura (formattazione, copia della scorta): per un attimo le partizioni spariscono e ricompaiono, e possono
+    tornare con numeri di dispositivo nuovi. Due prove fallivano cosi' ogni tanto senza un difetto vero: una
+    leggeva l'elenco delle partizioni proprio mentre spariva, l'altra formattava una partizione attraverso un nodo
+    con i numeri di prima. Per questo l'elenco si legge finche' e' completo e fermo, e un comando su una partizione
+    che non riesce si riprova dopo aver rifatto il nodo con i numeri di adesso. Il programma vero (scorta.py) si
+    difende da solo allo stesso modo: qui si sistemano solo le prove."""
+
     def __init__(self, cartella):
         self.cartella = cartella
         self.loop = []
         self.montati = []
+        self.origine = {}           # nodo in /dev -> (disco, numero della partizione)
 
     def nuovo(self, nome, mb, voci=None, ident=ID):
         img = self.cartella / f"{nome}.img"
@@ -78,25 +87,74 @@ class Dischi:
         self.loop.append(dev)
         return dev
 
-    def partizioni(self, dev):
-        subprocess.run(["partx", "-a", dev], capture_output=True)
-        base = os.path.basename(dev)
-        out = {}
+    @staticmethod
+    def _guarda(base):
+        """{numero: (nome, inizio, settori, numeri del dispositivo)} delle partizioni che il kernel vede adesso."""
+        trovate = {}
         for n in sorted(os.listdir(f"/sys/block/{base}")):
             sysp = f"/sys/block/{base}/{n}"
-            if n.startswith(base) and os.path.exists(sysp + "/partition"):
-                num = int(open(sysp + "/partition").read())
-                mag, mino = (int(v) for v in open(sysp + "/dev").read().split(":"))
-                nodo = f"/dev/{n}"
-                if os.path.lexists(nodo):
-                    os.remove(nodo)
-                os.mknod(nodo, 0o660 | stat.S_IFBLK, os.makedev(mag, mino))
-                out[num] = nodo
+            if not (n.startswith(base) and os.path.exists(sysp + "/partition")):
+                continue
+            valori = []
+            for campo in ("partition", "start", "size", "dev"):
+                with open(f"{sysp}/{campo}") as f:
+                    valori.append(f.read().strip())
+            trovate[int(valori[0])] = (n, int(valori[1]), int(valori[2]), valori[3])
+        return trovate
+
+    def partizioni(self, dev):
+        """Le partizioni scritte nella tabella del disco, come nodi in /dev: {numero: nodo}."""
+        import time
+        base = os.path.basename(dev)
+        attese = {i + 1: (inizio, settori) for i, (tipo, inizio, settori) in enumerate(leggi_mbr(dev)[1]) if tipo and settori}
+        visto, prima = "niente", None
+        for tentativo in range(15):
+            assesta()
+            subprocess.run(["partx", "-a", dev], capture_output=True)
+            try:
+                adesso = self._guarda(base)
+            except (OSError, ValueError) as e:      # sparita mentre la si leggeva
+                visto, prima = f"lettura non riuscita ({e})", None
+            else:
+                complete = all(n in adesso and adesso[n][1:3] == attese[n] for n in attese)
+                if complete and adesso == prima:    # due letture uguali di fila: il sistema ha finito
+                    break
+                visto = f"partizioni {sorted(adesso)} invece di {sorted(attese)}" if not complete else "ancora in movimento"
+                prima = adesso if complete else None
+            time.sleep(0.2 if prima else 0.5 * (tentativo + 1))
+        else:
+            raise AssertionError(f"{dev}: le partizioni non si fermano ({visto})")
+        out = {}
+        for num in attese:
+            nome, _, _, numeri = adesso[num]
+            nodo = f"/dev/{nome}"
+            if os.path.lexists(nodo):
+                os.remove(nodo)
+            os.mknod(nodo, 0o660 | stat.S_IFBLK, os.makedev(*(int(v) for v in numeri.split(":"))))
+            out[num] = nodo
+            self.origine[nodo] = (dev, num)
         return out
+
+    def sulla_partizione(self, nodo, *cmd):
+        """Un comando su una partizione (formattarla, montarla) che deve riuscire: se non riesce, si rifa' il nodo
+        con i numeri di adesso e si riprova; se proprio non va, l'errore dice che cosa ha risposto il comando."""
+        import time
+        for i in range(6):
+            r = subprocess.run(list(cmd), capture_output=True, text=True)
+            if r.returncode == 0:
+                return r
+            if i < 5:
+                time.sleep(1 + i)
+                if nodo in self.origine:
+                    self.partizioni(self.origine[nodo][0])
+        raise AssertionError(f"{' '.join(cmd)}: uscita {r.returncode}\n{r.stderr.strip()}\n{r.stdout.strip()}")
+
+    def formatta(self, nodo, *opzioni):
+        self.sulla_partizione(nodo, "mkfs.ext4", "-F", "-q", *opzioni, nodo)
 
     def monta(self, dev, dove):
         os.makedirs(dove, exist_ok=True)
-        x("mount", dev, str(dove))
+        self.sulla_partizione(dev, "mount", dev, str(dove))
         self.montati.append(str(dove))
 
     def chiudi(self):
@@ -126,8 +184,8 @@ def raspberry(dischi, tmp_path):
     """Una microSD come quella di Raspberry Pi OS (avvio FAT 64 MiB, sistema ext4), montata come il Pi."""
     dev = dischi.nuovo("raspberry", 200, [(0x0C, 8 * MIB, 64 * MIB), (0x83, 72 * MIB, 200 * MIB - 72 * MIB)])
     p = dischi.partizioni(dev)
-    x("mkfs.ext4", "-F", "-q", "-L", "bootfs", p[1])     # sul Raspberry e' FAT (vedi sopra)
-    x("mkfs.ext4", "-F", "-q", "-L", "rootfs", p[2])
+    dischi.formatta(p[1], "-L", "bootfs")     # sul Raspberry e' FAT (vedi sopra)
+    dischi.formatta(p[2], "-L", "rootfs")
     radice = tmp_path / "pi"
     dischi.monta(p[2], radice)
     (radice / "boot/firmware").mkdir(parents=True)
@@ -266,7 +324,7 @@ def test_scorta_troppo_piccola(dischi, raspberry, tmp_path):
 def test_scorta_montata_non_toccata(dischi, raspberry, tmp_path):
     dest = dischi.nuovo("usata", 800, [(0x83, 8 * MIB, 100 * MIB)], ident=0x55667788)
     p = dischi.partizioni(dest)
-    x("mkfs.ext4", "-F", "-q", p[1])
+    dischi.formatta(p[1])
     dischi.monta(p[1], tmp_path / "usata")
     r = lancia(tmp_path, raspberry, "--si", "--disco", dest)
     assert r.returncode == 1 and "montato" in r.stderr
