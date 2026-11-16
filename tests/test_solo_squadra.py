@@ -88,6 +88,46 @@ def test_solo_le_parti_chieste():
     assert nodo.scritti == [], "solo decise, non ancora fatte"
 
 
+def test_velocita_della_rete():
+    """1.20.0: la velocita' della rete si mette solo se e' data e solo quando quella parte della radio e' chiesta."""
+    Preset = config_pb2.Config.LoRaConfig.ModemPreset
+
+    def modifiche(nodo, parti, preset):
+        return m._modifiche_da_fare(iface(nodo), "Gateway CNSAS Varese", "GTSA", "CNSAS", "CLIENT_MUTE", None,
+                                    lambda: None, None, parti, preset)
+
+    def cambi(nodo, parti, preset):
+        return [d for d, _ in modifiche(nodo, parti, preset)]
+
+    nodo = NodoLocale([squadra()])
+    nodo.localConfig.lora.use_preset = True                     # Long Fast, come esce dalla scatola
+    assert m._stato_nodo(iface(nodo))["preset"] == "LONG_FAST"
+    assert cambi(nodo, {"preset"}, "") == [], "velocita' non data: resta quella della radio"
+    assert cambi(nodo, {"nome", "ruolo"}, "MEDIUM_FAST") == [], "parte non chiesta: non si tocca"
+    assert cambi(nodo, None, "") == [], "Reimposta la radio su un gateway di prima della 1.20.0: la velocita' resta"
+    assert cambi(nodo, {"preset"}, "MEDIUM_FAST") == ["velocita' della rete MediumFast"]
+    assert cambi(nodo, {"preset"}, "LONG_FAST") == [], "gia' quella"
+    # radio nuova: regione e velocita' in una scrittura sola della sezione LoRa
+    nuovo = NodoLocale([squadra()], regione="UNSET")
+    nuovo.localConfig.lora.use_preset = True
+    nuovo.writeConfig = nuovo.scritti.append
+    [(descrizione, azione)] = modifiche(nuovo, {"regione", "preset"}, "MEDIUM_FAST")
+    assert descrizione == "regione EU 868, velocita' della rete MediumFast" and nuovo.scritti == []
+    azione()
+    lora = nuovo.localConfig.lora
+    assert nuovo.scritti == ["lora"] and lora.use_preset and Preset.Name(lora.modem_preset) == "MEDIUM_FAST"
+    assert config_pb2.Config.LoRaConfig.RegionCode.Name(lora.region) == "EU_868"
+    assert cambi(nuovo, {"regione", "preset"}, "MEDIUM_FAST") == []
+    # parametri radio scritti a mano (niente preset): lo stato lo dice, e con la velocita' chiesta torna il preset
+    a_mano = NodoLocale([squadra()])
+    assert m._stato_nodo(iface(a_mano))["preset"] == ""
+    assert cambi(a_mano, {"preset"}, "MEDIUM_FAST") == ["velocita' della rete MediumFast"]
+    assert cambi(a_mano, {"preset"}, "") == []
+    assert "preset" in m.PARTI_NODO and m.PRESET_RETE == "MEDIUM_FAST" and m.PRESET_RETE in m.PRESET_AMMESSI
+    for p in m.PRESET_AMMESSI:                                  # tutte note alla libreria e dentro i 250 kHz
+        assert Preset.Value(p) >= 0 and m.PRESET_LORA[p][1] <= 250000, p
+
+
 def test_canale_della_squadra_dato_e_nodo_senza_canale_privato():
     nodo = NodoLocale([canale(0, P, b"\x01"), canale(1, S, b"\x01", "Altro")])
     # --canale-squadra in un aggiornamento: solo il primario, i secondari restano

@@ -8,6 +8,19 @@
 RE_POSIZIONE = re.compile(r"^-?\d{1,3}(?:\.\d+)?,-?\d{1,3}(?:\.\d+)?(?:,-?\d{1,5}(?:\.\d+)?)?$")
 RE_NOME_PACCHETTO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,78}\.(?:zip|p12|pfx)$")
 RE_NOME_CANALE = re.compile(r"^[A-Za-z0-9_-]{1,11}$")
+# Velocita' (preset) della rete, dalla 1.20.0: la stessa su gateway, ripetitori e radio, altrimenti non si sentono.
+# Le impostazioni salvate prima della 1.20.0 non la dicono: vale quella di fabbrica. Stesso elenco di mesh2tak.py.
+PRESET_RETE = "MEDIUM_FAST"
+PRESET_AMMESSI = ("MEDIUM_FAST", "MEDIUM_SLOW", "LONG_FAST", "LONG_MODERATE", "LONG_SLOW", "SHORT_FAST", "SHORT_SLOW")
+
+
+def preset_salvato(s: Optional[dict]) -> str:
+    p = str((s or {}).get("preset") or "")
+    return p if p in PRESET_AMMESSI else PRESET_RETE
+
+
+def nome_preset(p: str) -> str:
+    return " ".join(x.capitalize() for x in p.split("_"))
 RE_HOST_TAK = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 PACCHETTO_MAX = 256 << 10
 
@@ -141,14 +154,16 @@ def salva_impostazioni_nuovi(lavoro: dict) -> str:
     salvate = {"formato": 1, "pacchetto": d["pacchetto"], "nome_pacchetto": d["nome_pacchetto"], "password": password,
                "host": d["host"], "server": f"{host}:{c['porta']}",
                "canale": {"nome": d["canale"], "chiave": d["chiave"], "secondario": ""},
+               "preset": preset_salvato(d),
                "certificato": c["certificato"], "scade": c["scade"], "aggiornato": int(time.time()), "da": lavoro["da"]}
     os.makedirs(P(PONTI_NUOVI_DIR), exist_ok=True)
     os.chmod(P(PONTI_NUOVI_DIR), 0o700)
     scrivi(P(IMPOSTAZIONI_NUOVI), json.dumps(salvate, ensure_ascii=False) + "\n", 0o600)
     scrivi_riassunto_nuovi(salvate)
-    ok(f"TAK Server {host}:{c['porta']}, canale '{d['canale']}' (l'unico dei gateway nuovi)")
+    ok(f"TAK Server {host}:{c['porta']}, canale '{d['canale']}' (l'unico dei gateway nuovi), "
+       f"velocita' della rete {nome_preset(salvate['preset'])}")
     return (f"Impostazioni salvate: certificato '{c['certificato'] or '?'}', TAK Server {host}:{c['porta']}, "
-            f"canale {d['canale']}.")
+            f"canale {d['canale']}, velocità della rete {nome_preset(salvate['preset'])}.")
 
 
 def scrivi_riassunto_nuovi(s: Optional[dict]) -> None:
@@ -159,7 +174,7 @@ def scrivi_riassunto_nuovi(s: Optional[dict]) -> None:
     canale = s.get("canale") or {}
     scrivi(P(RIASSUNTO_NUOVI), json.dumps({
         "formato": 1, "pronto": True, "certificato": s.get("certificato") or "", "scade": s.get("scade"),
-        "server": s.get("server") or "", "canale": canale.get("nome") or "",
+        "server": s.get("server") or "", "canale": canale.get("nome") or "", "preset": preset_salvato(s),
         "aggiornato": s.get("aggiornato"), "da": s.get("da") or ""}, ensure_ascii=False) + "\n", 0o644)
 
 
@@ -189,7 +204,8 @@ def prepara_configurazione(imp: Impostazioni, reg: dict, nome: str, installa: di
             "rete": imp.url().rstrip("/"), "versione": VERSIONE, "tentativo": tentativo,
             "tak": {"pacchetto": s["pacchetto"], "nome_pacchetto": s["nome_pacchetto"], "password": s["password"],
                     "host": s.get("host") or ""},
-            "canale": dict(s["canale"], secondario="")}       # dalla 1.12.0 nessun canale pubblico, anche se salvato prima
+            "canale": dict(s["canale"], secondario=""),       # dalla 1.12.0 nessun canale pubblico, anche se salvato prima
+            "preset": preset_salvato(s)}
     prepara_cartelle_ponti()
     f = file_configurazione(nome)
     togli(f)

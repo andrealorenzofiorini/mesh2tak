@@ -17,9 +17,13 @@
 #            rak = scheda RAK6421 sui pin con la radio RAK13300 nello slot 1)
 #  Opzione: --canale-squadra  chiede nome e chiave del canale della squadra gia' esistente (es. quello
 #           di ICARO) e lo mette sul nodo al posto di quello creato dall'installatore
-#  La prima volta la radio si prepara tutta: regione EU 868, nome, ruolo, solo il canale della squadra (i canali
-#           secondari, es. il pubblico LongFast, si spengono) e posizione fissa. Dalla 1.13.0 gli aggiornamenti
-#           non cambiano le impostazioni della radio: resta quello che si e' scelto dall'app o dalla pagina.
+#  La prima volta la radio si prepara tutta: regione EU 868, velocita' della rete, nome, ruolo, solo il canale della
+#           squadra (i canali secondari, es. il pubblico LongFast, si spengono) e posizione fissa. Dalla 1.13.0 gli
+#           aggiornamenti non cambiano le impostazioni della radio: resta quello che si e' scelto dall'app o dalla pagina.
+#  Opzione: --preset NOME  velocita' della rete (dalla 1.20.0; di fabbrica MEDIUM_FAST su un gateway nuovo): deve
+#           essere la stessa su gateway, ripetitori e radio, altrimenti non si sentono. Si puo' scegliere tra
+#           MEDIUM_FAST, MEDIUM_SLOW, LONG_FAST, LONG_MODERATE, LONG_SLOW, SHORT_FAST, SHORT_SLOW. Su un gateway
+#           gia' installato la cambia subito; senza l'opzione la velocita' di un gateway gia' installato non si tocca
 #  Opzione: --reimposta-radio  rimette solo la radio come la prepara l'installatore (lo fa anche "Reimposta la
 #           radio" sulla pagina della rete); MESH2TAK_REIMPOSTA_RADIO=1 la rimette durante un aggiornamento
 #  Opzione: --accesso-esterno  gestione del nodo e stato del gateway anche da internet, dalla pagina della
@@ -135,7 +139,7 @@ scrivi_se_cambia() {  # $1 = file, contenuto da stdin; esito 0 se il file e' cam
 
 # ---------------------------------------------------------------- argomenti
 PACCHETTO=""; SCHEDA="${MESH2TAK_SCHEDA:-}"; RIMUOVI=0; AGGIORNA_MESHTASTICD=0; CHIEDI_CANALE=0; CHIEDI_ACCESSO=0; NOME_ACCESSO_DATO=""
-CANALE_PUBBLICO_DATO=""; SOLO_RADIO=0
+CANALE_PUBBLICO_DATO=""; SOLO_RADIO=0; PRESET_DATO="${MESH2TAK_PRESET:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --rimuovi) RIMUOVI=1 ;;
@@ -148,6 +152,8 @@ while [ $# -gt 0 ]; do
     --accesso-esterno=*) CHIEDI_ACCESSO=1; NOME_ACCESSO_DATO="${1#--accesso-esterno=}" ;;
     --scheda) SCHEDA="${2:-}"; shift ;;
     --scheda=*) SCHEDA="${1#--scheda=}" ;;
+    --preset) PRESET_DATO="${2:-}"; shift ;;
+    --preset=*) PRESET_DATO="${1#--preset=}" ;;
     -h|--help) sed -n '3,/^# =\{20\}/{/^# =\{20\}/!p}' "$0"; exit 0 ;;
     *) PACCHETTO="$1" ;;
   esac
@@ -155,6 +161,15 @@ while [ $# -gt 0 ]; do
 done
 
 [ "$(id -u)" -eq 0 ] || fallisci "Va avviato con sudo:  sudo bash $0"
+# velocita' della rete (dalla 1.20.0): le stesse ammesse da mesh2tak.py (PRESET_AMMESSI)
+PRESET_FABBRICA=MEDIUM_FAST
+if [ -n "$PRESET_DATO" ]; then
+  PRESET_DATO=$(printf '%s' "$PRESET_DATO" | tr 'a-z-' 'A-Z_')
+  case "$PRESET_DATO" in
+    MEDIUM_FAST|MEDIUM_SLOW|LONG_FAST|LONG_MODERATE|LONG_SLOW|SHORT_FAST|SHORT_SLOW) ;;
+    *) fallisci "Velocita' della rete '$PRESET_DATO' non valida. Si puo' scegliere: MEDIUM_FAST, MEDIUM_SLOW, LONG_FAST, LONG_MODERATE, LONG_SLOW, SHORT_FAST, SHORT_SLOW." ;;
+  esac
+fi
 command -v apt-get >/dev/null || fallisci "Questo installatore e' per Raspberry Pi OS (Debian)."
 
 # ---------------------------------------------------------------- rimozione
@@ -286,6 +301,11 @@ ACCESSO_NOME=""; ACCESSO_RETE=""
 # dalla 1.13.0: RADIO_PREPARATA=1 dopo che la radio e' stata preparata tutta una volta; RADIO_DA_FARE = parti da
 # sistemare una volta sola al prossimo passo 7 (es. il nome nuovo della 1.12.0), anche se l'installazione si interrompe
 RADIO_PREPARATA=""; RADIO_DA_FARE=""
+# dalla 1.20.0: PRESET_RETE = velocita' della rete da mettere sulla radio quando la si prepara tutta. Su un Raspberry
+# nuovo quella di fabbrica; su un gateway installato prima resta vuota finche' non la si legge dalla radio (passo 7):
+# cosi' "Reimposta la radio" non cambia la velocita' a una rete che ne usa un'altra
+PRESET_RETE=""
+[ -f "$STATO" ] || PRESET_RETE="$PRESET_FABBRICA"
 [ -f "$STATO" ] || NOME_NODO_AUTOMATICO=1           # Raspberry nuovo: il nodo prendera' il nome del gateway
 # shellcheck disable=SC1090
 [ -f "$STATO" ] && . "$STATO"
@@ -323,6 +343,7 @@ salva_stato() {
     printf 'ACCESSO_NOME=%q\nACCESSO_RETE=%q\n' "$ACCESSO_NOME" "$ACCESSO_RETE"
     printf 'NOME_NODO=%q\nNOME_BREVE=%q\nNOME_NODO_AUTOMATICO=%q\n' "$NOME_NODO" "$NOME_BREVE" "$NOME_NODO_AUTOMATICO"
     printf 'RADIO_PREPARATA=%q\nRADIO_DA_FARE=%q\n' "$RADIO_PREPARATA" "$RADIO_DA_FARE"
+    printf 'PRESET_RETE=%q\n' "$PRESET_RETE"
   } > "$STATO"
   chmod 600 "$STATO"
 }
@@ -351,6 +372,10 @@ if [ -z "$RADIO_PREPARATA" ]; then
   CAMBIO_STATO=1
 fi
 if [ "$NOMI_NUOVI" = 1 ]; then RADIO_DA_FARE=$(aggiungi_parte "$RADIO_DA_FARE" nome); CAMBIO_STATO=1; fi
+if [ -n "$PRESET_DATO" ] && [ "$PRESET_DATO" != "$PRESET_RETE" ]; then
+  # velocita' chiesta adesso (--preset, o la rete per un gateway nuovo): si mette al prossimo passo 7
+  PRESET_RETE="$PRESET_DATO"; RADIO_DA_FARE=$(aggiungi_parte "$RADIO_DA_FARE" preset); CAMBIO_STATO=1
+fi
 if [ -n "$SCHEDA_SALVATA" ] && [ "$SCHEDA" != "$SCHEDA_SALVATA" ] && [ "$RADIO_PREPARATA" = 1 ]; then
   RADIO_PREPARATA=0; CAMBIO_STATO=1          # radio diversa: si prepara tutta
 fi
@@ -365,10 +390,14 @@ configura_radio() {  # $1 = parti della radio da sistemare: tutto, nessuna o un 
   [ -s "$CHIAVE_CANALE" ] && opz+=(--chiave-canale-file "$CHIAVE_CANALE")
   NODO=$("$VENV/bin/python" "$DIR/mesh2tak.py" --configura-nodo "$COLLEGAMENTO" --parti "$1" --nome "$NOME_NODO" \
     --nome-breve "$NOME_BREVE" --canale "$CANALE" --ruolo "$RUOLO" --posizione "$POSIZIONE" \
-    --file-link "$FILE_LINK" "${opz[@]}" 2>&1 || true)
-  printf '%s\n' "$NODO" | grep -v -e '^ESITO' -e '^LINK ' | sed 's/^/    /'
+    --preset "$PRESET_RETE" --file-link "$FILE_LINK" "${opz[@]}" 2>&1 || true)
+  printf '%s\n' "$NODO" | grep -v -e '^ESITO' -e '^LINK ' -e '^PRESET' | sed 's/^/    /'
   printf '%s\n' "$NODO" | grep -q '^ESITO configurazione=ok' || fallisci "Configurazione del nodo non riuscita (vedi sopra)."
   rm -f "$CHIAVE_CANALE"   # la chiave ora e' sul nodo (e nel link del canale, solo root)
+  if [ -z "$PRESET_RETE" ]; then
+    # gateway installato prima della 1.20.0: la velocita' della rete e' quella che la sua radio ha adesso
+    PRESET_RETE=$(printf '%s\n' "$NODO" | sed -n 's/^PRESET \([A-Z_]*\)$/\1/p' | head -n1)
+  fi
   RADIO_PREPARATA=1; RADIO_DA_FARE=""
   salva_stato
 }
@@ -384,6 +413,7 @@ if [ "$SOLO_RADIO" = 1 ]; then
   [ -n "$COLLEGAMENTO" ] || fallisci "Nella configurazione del gateway manca il collegamento alla radio: rilancia l'installatore."
   info "regione EU 868, nome '$NOME_NODO' ($NOME_BREVE), ruolo $RUOLO, solo il canale privato '$CANALE'" \
        "(la sua chiave resta)${POSIZIONE:+, posizione fissa $POSIZIONE}"
+  info "velocita' della rete: ${PRESET_RETE:-quella che la radio ha adesso}"
   info "il gateway si ferma per un minuto e riparte da solo"
   systemctl stop mesh2tak >/dev/null 2>&1 || true
   RIPARTI_PONTE=1
@@ -969,6 +999,7 @@ ok "librerie pronte ($(printf '%s\n' "$LIB" | sed -n 's/^ *\(meshtastic-tak [^:]
 if [ "$RADIO_PREPARATA" != 1 ]; then
   PARTI_RADIO=tutto
   passo "7/9  Nodo Meshtastic: regione EU 868, nome, ruolo $RUOLO, solo il canale privato '$CANALE'"
+  info "velocita' della rete: ${PRESET_RETE:-quella che la radio ha adesso} (la stessa su gateway, ripetitori e radio)"
 else
   # dalla 1.13.0 l'aggiornamento lascia la radio com'e': solo le parti chieste (canale dato, nome nuovo della 1.12.0)
   PARTI_RADIO="$RADIO_DA_FARE"
@@ -978,7 +1009,8 @@ else
     passo "7/9  Nodo Meshtastic: impostazioni della radio lasciate come sono"
   else
     passo "7/9  Nodo Meshtastic: solo $(printf '%s' "$PARTI_RADIO" | sed 's/,/, /g; s/canale/canale della squadra/;
-      s/secondari/canali secondari spenti/; s/posizione/posizione fissa/'); il resto della radio resta com'e'"
+      s/secondari/canali secondari spenti/; s/posizione/posizione fissa/;
+      s/preset/velocita della rete/'); il resto della radio resta com'e'"
   fi
 fi
 systemctl stop mesh2tak >/dev/null 2>&1 || true

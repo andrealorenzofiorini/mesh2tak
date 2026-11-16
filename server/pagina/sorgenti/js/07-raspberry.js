@@ -263,7 +263,7 @@ function apriRaspberry(p) {
   const zonaRadio = el("div");
   zonaRadio.append(el("h3", null, "Radio del gateway"),
                    el("p", "spiegazione", "Gli aggiornamenti lasciano la radio com'è. Questo la rimette come la prepara " +
-                      "l'installatore: regione EU 868, nome e sigla dell'installatore, ruolo, solo il canale della squadra " +
+                      "l'installatore: regione EU 868, velocità della rete, nome e sigla dell'installatore, ruolo, solo il canale della squadra " +
                       "(la sua chiave resta) e posizione fissa. Il resto scelto dall'app non cambia."),
                    comandoSemplice("reimposta-radio", "Reimposta la radio",
                                    "Rimetto la radio del gateway come all'installazione? Il gateway si ferma per un paio di minuti; " +

@@ -190,7 +190,7 @@ def impostazioni(pki, **cambi):
 def test_impostazioni_dalla_pagina_al_lavoro_di_root(sv, pki):  # noqa: F811
     for cambi, parola in (({"nome_pacchetto": "virus.exe"}, "pacchetto"), ({"pacchetto": "non base64!"}, "certificato"),
                           ({"chiave": "corta"}, "chiave"), ({"canale": "nome troppo lungo"}, "canale"),
-                          ({"host": "tak server"}, "TAK Server"),
+                          ({"host": "tak server"}, "TAK Server"), ({"preset": "LONG_TURBO"}, "velocità"),
                           ({"pacchetto": base64.b64encode(b"x" * (rete.PACCHETTO_MAX + 1)).decode()}, "grande")):
         codice, r = sv.azione("/api/impostazioni-nuovi", impostazioni(pki, **cambi), "andrea")
         assert codice == 400 and parola in r["errore"], (cambi.keys(), r)
@@ -200,6 +200,9 @@ def test_impostazioni_dalla_pagina_al_lavoro_di_root(sv, pki):  # noqa: F811
     assert codice == 202
     # dalla 1.12.0 il canale pubblico secondario non c'e' piu': quello mandato da una pagina vecchia si ignora
     assert rete.controlla_impostazioni(impostazioni(pki, secondario="con spazi"))["secondario"] == ""
+    # 1.20.0, velocita' della rete: una pagina di prima non la manda e vale quella di fabbrica
+    assert rete.controlla_impostazioni(impostazioni(pki))["preset"] == "MEDIUM_FAST" == rete.PRESET_RETE
+    assert rete.controlla_impostazioni(impostazioni(pki, preset="long_fast"))["preset"] == "LONG_FAST"
     [lavoro] = lavori()
     f = rete.P(f"{rete.LAVORI_DIR}/{lavoro['id']}.json")
     assert stat.S_IMODE(os.stat(f).st_mode) == 0o600
@@ -278,6 +281,7 @@ def test_configurazione_del_ponte_nuovo_e_registrazione(radice, pki):
     assert (c["nome"], c["scheda"], c["posizione"], c["rete"], c["versione"], c["tentativo"]) == (
         "velate", "waveshare", "45.8,8.8", "https://meshtastic.prova.lan", "1.10.0", 1)
     assert c["canale"] == {"nome": "CNSAS-VA", "chiave": PSK, "secondario": ""}
+    assert c["preset"] == "MEDIUM_FAST" and json.load(open(rete.P(rete.RIASSUNTO_NUOVI)))["preset"] == "MEDIUM_FAST"
     assert c["tak"]["password"] == "atakatak" and c["tak"]["nome_pacchetto"] == "meshtastic-cnsas-integration.zip"
     assert base64.b64decode(c["tak"]["pacchetto"]) == (pki / "meshtastic-cnsas-integration.zip").read_bytes()
     assert reg["ponti"]["velate"]["installa"]["tentativo"] == 1
@@ -376,3 +380,24 @@ def test_ponte_che_si_installa_non_fa_partire_avvisi(radice):
     assert rete.Sorveglianza._in_installazione("velate") is True
     json.dump({"fase": "fatto", "testo": "", "quando": 1}, open(f, "w"))
     assert rete.Sorveglianza._in_installazione("velate") is False
+
+
+def test_velocita_della_rete_ai_gateway_nuovi(radice, pki):
+    """1.20.0: il gateway nuovo riceve la velocita' della rete; impostazioni salvate prima valgono con Medium Fast."""
+    reg = {"formato": 1, "ponti": {"velate": {"porta": 19402, "chiave": chiave(1), "impronta": impronta(1)}}}
+    rete.salva_impostazioni_nuovi({"da": "andrea", "impostazioni": rete.controlla_impostazioni(
+        impostazioni(pki, preset="LONG_FAST"))})
+    assert json.load(open(rete.P(rete.IMPOSTAZIONI_NUOVI)))["preset"] == "LONG_FAST"
+    assert json.load(open(rete.P(rete.RIASSUNTO_NUOVI)))["preset"] == "LONG_FAST"
+    rete.prepara_configurazione(IMP, reg, "velate", {"scheda": "usb", "posizione": ""}, "andrea")
+    assert json.load(open(rete.file_configurazione("velate")))["preset"] == "LONG_FAST"
+    # salvate con una versione di prima (niente velocita'), o con un valore rovinato: quella di fabbrica
+    for rovinato in (None, "INVENTATA"):
+        salvate = json.load(open(rete.P(rete.IMPOSTAZIONI_NUOVI)))
+        salvate.pop("preset", None)
+        if rovinato:
+            salvate["preset"] = rovinato
+        open(rete.P(rete.IMPOSTAZIONI_NUOVI), "w").write(json.dumps(salvate))
+        rete.prepara_configurazione(IMP, reg, "velate", {"scheda": "usb", "posizione": ""}, "andrea")
+        assert json.load(open(rete.file_configurazione("velate")))["preset"] == "MEDIUM_FAST"
+    assert rete.nome_preset("MEDIUM_FAST") == "Medium Fast"

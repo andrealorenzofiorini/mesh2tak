@@ -190,6 +190,7 @@ def test_dall_invito_al_ponte_installato(rasp):
                  "MESH2TAK_SECONDARIO=", "MESH2TAK_POSIZIONE=45.8205,8.8257", f"MESH2TAK_ACCESSO_RETE={rasp.hub.url}"):
         assert riga in lancio.splitlines(), riga
     assert "MESH2TAK_HOST" not in lancio
+    assert "MESH2TAK_PRESET" not in lancio, "server di prima della 1.20.0: decide l'installatore"
     fasi = rasp.avanzamento()
     assert [f[0] for f in fasi] == ["scarico", "installo", "installo", "installo", "fatto"]
     assert fasi[2][1] == "1/9 Certificato del gateway" and fasi[3][1] == "9/9 Avvio del gateway"
@@ -205,6 +206,15 @@ def test_dall_invito_al_ponte_installato(rasp):
     assert rasp.st["fase"] == "fatto" and rasp.giro() is None
     assert "primo avvio finito" in (rasp.t / pa.REGISTRO[1:]).read_text()
     assert PSK not in (rasp.t / pa.REGISTRO[1:]).read_text()
+
+
+def test_velocita_della_rete_passata_all_installatore(rasp):
+    """1.20.0: la velocita' della rete scelta sulla pagina arriva all'installatore."""
+    rasp.giro()
+    rasp.registra()
+    rasp.configura(preset="MEDIUM_FAST")
+    assert rasp.giro() is None
+    assert "MESH2TAK_PRESET=MEDIUM_FAST" in rasp.lanci()[0].splitlines()
 
 
 def test_riavvio_a_meta_poi_riprende_e_riferisce(rasp):
@@ -304,7 +314,7 @@ def test_installatore_diverso_da_quello_pubblicato_non_parte(rasp):
 
 @pytest.mark.parametrize("cambi", [{"nome": "Velate!"}, {"scheda": "inventata"}, {"versione": "1.10.0; rm -rf /"},
                                    {"rete": "http://rete.example"}, {"posizione": "45.8,8.8 $(id)"},
-                                   {"canale": {"nome": "CNSAS-VA", "chiave": "corta"}},
+                                   {"canale": {"nome": "CNSAS-VA", "chiave": "corta"}}, {"preset": "medium fast; id"},
                                    {"tak": {"pacchetto": "non-base64!", "nome_pacchetto": "a.zip", "password": "x"}},
                                    {"tak": {"pacchetto": PACCHETTO, "nome_pacchetto": "../../etc/cron.d/x.zip",
                                             "password": "x"}}])

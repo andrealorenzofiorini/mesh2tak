@@ -111,6 +111,9 @@ def main(argv=None) -> int:
     nodo.add_argument("--nome-breve", default="GTSA")
     nodo.add_argument("--canale", default="CNSAS")
     nodo.add_argument("--ruolo", default="CLIENT")
+    nodo.add_argument("--preset", default="",
+                      help="velocita' della rete da mettere sulla radio (" + ", ".join(PRESET_AMMESSI)
+                           + "); vuoto = resta quella della radio, su una radio nuova " + PRESET_RETE)
     nodo.add_argument("--posizione", default="", help="lat,lon[,quota] della posizione fissa")
     nodo.add_argument("--file-link", default="", help="dove salvare il link del canale")
     nodo.add_argument("--chiave-canale-file", default="",
@@ -153,6 +156,11 @@ def main(argv=None) -> int:
             print(f"ERRORE: {e}")
             print("ESITO configurazione=errore")
             return 2
+        preset = args.preset.strip().upper().replace("-", "_")
+        if preset and preset not in PRESET_AMMESSI:
+            print(f"ERRORE: velocita' della rete '{args.preset}' non valida (si puo' scegliere: {', '.join(PRESET_AMMESSI)})")
+            print("ESITO configurazione=errore")
+            return 2
         posizione = None
         if args.posizione.strip():
             try:
@@ -170,7 +178,7 @@ def main(argv=None) -> int:
                 return 2
         return configura_nodo(args.configura_nodo, args.nome.strip(), args.nome_breve.strip()[:4],
                               args.canale.strip(), args.ruolo.strip().upper(), posizione,
-                              args.file_link or None, chiave_canale=chiave, parti=parti)
+                              args.file_link or None, chiave_canale=chiave, parti=parti, preset=preset)
 
     try:
         cfg = carica_config(args.config)

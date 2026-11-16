@@ -1,4 +1,12 @@
 // ---- ponti nuovi (dalla 1.10.0): certificato e canale una volta, poi un invito per ogni Raspberry ----
+// Velocità della rete (dalla 1.20.0): la prima è quella di fabbrica. Stesso elenco del server e dell'installatore.
+const PRESET_DELLA_RETE = [["MEDIUM_FAST", "Medium Fast"], ["MEDIUM_SLOW", "Medium Slow"], ["LONG_FAST", "Long Fast"],
+                           ["LONG_MODERATE", "Long Moderate"], ["LONG_SLOW", "Long Slow"], ["SHORT_FAST", "Short Fast"],
+                           ["SHORT_SLOW", "Short Slow"]];
+function nomePresetRete(p) {
+  const t = PRESET_DELLA_RETE.find(x => x[0] === p);
+  return t ? t[1] : String(p);
+}
 
 const SCHEDE_RADIO = [["waveshare", "Scheda Waveshare SX1262 (sui pin del Raspberry)"],
                       ["usb", "Radio Meshtastic collegata via USB"],
@@ -116,6 +124,11 @@ function costruisciNuovi() {
   canale.placeholder = "es. CNSAS-VA";
   const chiave = el("input"); chiave.type = "password"; chiave.id = "nuovi-chiave"; chiave.required = true; chiave.autocomplete = "off";
   chiave.placeholder = "44 caratteri, finisce con =";
+  const preset = el("select"); preset.id = "nuovi-preset";
+  for (const [valore, nome] of PRESET_DELLA_RETE) {
+    const o = el("option", null, nome); o.value = valore;
+    preset.append(o);
+  }
   const invia = el("button", "bottone", "Controlla e salva");
   invia.type = "submit";
   const esito = el("p", "esito");
@@ -125,6 +138,8 @@ function costruisciNuovi() {
            ...campo("Indirizzo del TAK Server", host, "solo se il pacchetto non lo contiene"),
            ...campo("Nome del canale della squadra", canale),
            ...campo("Chiave del canale della squadra", chiave, "dall'app Meshtastic: Canali, il canale della squadra, chiave"),
+           ...campo("Velocità della rete", preset, "la stessa di tutte le radio e dei ripetitori (nell'app Meshtastic: LoRa, " +
+                    "Preset), altrimenti il gateway nuovo non le sente"),
            el("p", "nota", "Restano sul server, leggibili solo da root. Da qui non si possono rileggere: si possono solo sostituire. " +
                            "A ogni Raspberry approvato arrivano cifrati, e solo a lui."),
            invia, esito);
@@ -137,7 +152,7 @@ function costruisciNuovi() {
       if (file.files[0].size > 256 * 1024) throw new Error("il file è troppo grande: serve il pacchetto .zip della console infra-TAK");
       const d = await manda("impostazioni-nuovi", {
         nome_pacchetto: file.files[0].name, pacchetto: await fileInBase64(file.files[0]), password: password.value,
-        host: host.value.trim(), canale: canale.value.trim(), chiave: chiave.value.trim()});
+        host: host.value.trim(), canale: canale.value.trim(), chiave: chiave.value.trim(), preset: preset.value});
       esito.textContent = (d.messaggio || "Mandato.") + " L'esito compare in cima alla pagina tra qualche secondo.";
       f.reset();
       await giro();
@@ -199,7 +214,8 @@ function aggiornaNuovi() {
   if (n.pronto) {
     zonaStatoNuovi.textContent = "Per i gateway nuovi: certificato " + (n.certificato ? "\"" + n.certificato + "\"" : "caricato") +
       (n.scade ? " (scade il " + new Date(n.scade * 1000).toLocaleDateString("it-IT") + ")" : "") + ", TAK Server " + (n.server || "?") +
-      ", canale " + n.canale + " (l'unico del nodo dei gateway). Caricati da " + (n.da || "?") + " " +
+      ", canale " + n.canale + " (l'unico del nodo dei gateway)" +
+      (n.preset ? ", velocità della rete " + nomePresetRete(n.preset) : "") + ". Caricati da " + (n.da || "?") + " " +
       giornoOra(n.aggiornato) + ".";
     dettagliImpostazioni.firstChild.textContent = "Cambia certificato o canale";
   } else {

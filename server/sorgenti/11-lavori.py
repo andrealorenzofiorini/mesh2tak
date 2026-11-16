@@ -314,9 +314,13 @@ def controlla_impostazioni(d) -> dict:
         raise Errore("indirizzo del TAK Server non valido (es. takserver.tuodominio.it)")
     if not RE_NOME_CANALE.match(canale):
         raise Errore("nome del canale: lettere, numeri, - e _, al massimo 11 caratteri (es. CNSAS-VA)")
+    preset = str(d.get("preset") or PRESET_RETE).strip().upper()     # la pagina di prima della 1.20.0 non la manda
+    if preset not in PRESET_AMMESSI:
+        raise Errore("velocità della rete non valida: scegline una dall'elenco")
     # dalla 1.12.0 niente canale pubblico secondario: "secondario" vuoto per i programmi di primo avvio di prima
     return {"nome_pacchetto": nome_pacchetto, "pacchetto": pacchetto, "password": password, "host": host,
-            "canale": canale, "chiave": chiave_canale_valida(str(d.get("chiave") or "")), "secondario": ""}
+            "canale": canale, "chiave": chiave_canale_valida(str(d.get("chiave") or "")), "secondario": "",
+            "preset": preset}
 
 
 def leggi_impostazioni_lavoro(d) -> Optional[dict]:

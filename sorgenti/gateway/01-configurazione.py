@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-VERSIONE = "1.19.0"
+VERSIONE = "1.20.0"
 CONFIG_PREDEFINITA = "/etc/mesh2tak/mesh2tak.conf"
 
 log = logging.getLogger("mesh2tak")
@@ -97,6 +97,11 @@ PRESET_LORA = {
     "LONG_FAST": (11, 250000, 5), "LONG_MODERATE": (11, 125000, 8), "LONG_SLOW": (12, 125000, 8),
     "VERY_LONG_SLOW": (12, 62500, 8),
 }
+# Velocita' (preset) della rete della squadra, dalla 1.20.0: gateway, ripetitori e radio devono avere la stessa,
+# altrimenti non si sentono. E' quella che l'installatore mette su una radio che prepara tutta; si cambia con
+# --preset. Ammesse solo quelle che stanno nei 250 kHz della banda EU 868.
+PRESET_RETE = "MEDIUM_FAST"
+PRESET_AMMESSI = ("MEDIUM_FAST", "MEDIUM_SLOW", "LONG_FAST", "LONG_MODERATE", "LONG_SLOW", "SHORT_FAST", "SHORT_SLOW")
 
 
 # --------------------------------------------------------------------------

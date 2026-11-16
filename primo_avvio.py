@@ -332,7 +332,8 @@ def scarica_configurazione(reg: dict) -> dict:
                 "rete": str(c["rete"]).rstrip("/"), "versione": str(c["versione"]), "tentativo": int(c["tentativo"]),
                 "pacchetto": tak["pacchetto"], "nome_pacchetto": nome_pacchetto, "password": str(tak["password"]),
                 "host": str(tak.get("host") or ""), "canale": str(canale["nome"]), "chiave": str(canale["chiave"]),
-                "secondario": str(canale.get("secondario") or "")}
+                "secondario": str(canale.get("secondario") or ""),
+                "preset": str(c.get("preset") or "")}          # dalla 1.20.0: la velocita' della rete
     except (ValueError, KeyError, TypeError, UnicodeDecodeError, binascii.Error):
         raise Errore("configurazione ricevuta dal server non valida")
     if (not RE_NOME.match(conf["nome"]) or conf["scheda"] not in SCHEDE or not RE_RETE.match(conf["rete"])
@@ -340,7 +341,8 @@ def scarica_configurazione(reg: dict) -> dict:
             or not re.match(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,78}\.(zip|p12|pfx)$", nome_pacchetto)
             or not re.match(r"^[-0-9.,]*$", conf["posizione"]) or (conf["host"] and not RE_HOST.match(conf["host"]))
             or not re.match(r"^[A-Za-z0-9_-]{1,11}$", conf["canale"]) or not re.match(r"^[A-Za-z0-9+/=]{20,60}$", conf["chiave"])
-            or not re.match(r"^[A-Za-z0-9_-]{0,11}$", conf["secondario"]) or "\n" in conf["password"]):
+            or not re.match(r"^[A-Za-z0-9_-]{0,11}$", conf["secondario"]) or "\n" in conf["password"]
+            or not re.match(r"^[A-Z_]{0,16}$", conf["preset"])):
         raise Errore("configurazione ricevuta dal server non valida")
     return conf
 
@@ -394,6 +396,8 @@ def lancia_installatore(st: dict, reg: dict, conf: dict) -> str:
                 "MESH2TAK_SECONDARIO": conf["secondario"], "MESH2TAK_ACCESSO_RETE": conf["rete"]}
     if conf["posizione"]:
         ambiente["MESH2TAK_POSIZIONE"] = conf["posizione"]
+    if conf.get("preset"):
+        ambiente["MESH2TAK_PRESET"] = conf["preset"]
     if conf["host"]:
         ambiente["MESH2TAK_HOST"] = conf["host"]
     for nome, valore in os.environ.items():

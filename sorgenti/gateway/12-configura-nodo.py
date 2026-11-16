@@ -24,6 +24,9 @@ def _stato_nodo(iface) -> dict:
     return {
         "num": mio,
         "regione": config_pb2.Config.LoRaConfig.RegionCode.Name(nodo.localConfig.lora.region),
+        # "" = parametri radio scritti a mano (niente preset): l'installatore non li tocca
+        "preset": (config_pb2.Config.LoRaConfig.ModemPreset.Name(nodo.localConfig.lora.modem_preset)
+                   if nodo.localConfig.lora.use_preset else ""),
         "ruolo": config_pb2.Config.DeviceConfig.Role.Name(nodo.localConfig.device.role),
         "nome": utente.get("longName", ""),
         "nome_breve": utente.get("shortName", ""),
@@ -76,7 +79,8 @@ TENTATIVI_CONFIGURAZIONE = 3
 # Le parti della radio che l'installatore prepara. Dalla 1.13.0 (scelta dell'11/11/2026) le prepara tutte
 # solo la prima volta e con "Reimposta la radio": negli aggiornamenti resta quello che si e' scelto dall'app o dalla
 # pagina (l'installatore chiede solo le parti nuove, es. il canale della squadra dato con --canale-squadra).
-PARTI_NODO = ("regione", "ruolo", "nome", "canale", "secondari", "posizione")
+# Dalla 1.20.0 c'e' anche la velocita' della rete ("preset"): prima una radio nuova restava su LongFast.
+PARTI_NODO = ("regione", "preset", "ruolo", "nome", "canale", "secondari", "posizione")
 
 
 def leggi_parti(testo: str) -> Set[str]:
@@ -95,9 +99,11 @@ def leggi_parti(testo: str) -> Set[str]:
 
 def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: str,
                        posizione: Optional[Tuple[float, float, int]], pausa: Callable[[], None],
-                       chiave: Optional[bytes] = None, parti: Optional[Set[str]] = None):
+                       chiave: Optional[bytes] = None, parti: Optional[Set[str]] = None, preset: str = ""):
     """(descrizione, azione) per cio' che sul nodo non e' ancora come deve essere, solo nelle 'parti' chieste
     (None = tutte).
+
+    'preset' e' la velocita' della rete (es. MEDIUM_FAST); vuoto = quella della radio resta com'e'.
 
     Con 'chiave' il canale della squadra e' dato (es. quello di ICARO): il primario deve avere
     esattamente quel nome e quella chiave. Senza, si crea un canale con chiave nuova solo se non
@@ -110,12 +116,24 @@ def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: st
     nodo = iface.localNode
     prima = _stato_nodo(iface)
     da_fare = []
-    if "regione" in parti and nodo.localConfig.lora.region != Regione.EU_868:
-        def _regione():
-            nodo.localConfig.lora.region = Regione.EU_868
-            nodo.localConfig.lora.use_preset = True
+    # regione e velocita' stanno nella stessa sezione del nodo: una scrittura sola
+    Preset = config_pb2.Config.LoRaConfig.ModemPreset
+    lora = nodo.localConfig.lora
+    vuole_regione = "regione" in parti and lora.region != Regione.EU_868
+    vuole_preset = bool(preset) and "preset" in parti and (
+        not lora.use_preset or lora.modem_preset != Preset.Value(preset))
+    if vuole_regione or vuole_preset:
+        def _lora():
+            if vuole_regione:
+                lora.region = Regione.EU_868
+                lora.use_preset = True
+            if vuole_preset:
+                lora.use_preset = True
+                lora.modem_preset = Preset.Value(preset)
             nodo.writeConfig("lora")
-        da_fare.append(("regione EU 868", _regione))
+        cosa = (["regione EU 868"] if vuole_regione else []) + (
+            [f"velocita' della rete {nome_preset(preset)}"] if vuole_preset else [])
+        da_fare.append((", ".join(cosa), _lora))
     if "ruolo" in parti and ruolo and nodo.localConfig.device.role != Ruolo.Value(ruolo):
         def _ruolo():
             nodo.localConfig.device.role = Ruolo.Value(ruolo)
@@ -169,9 +187,11 @@ def _modifiche_da_fare(iface, nome: str, nome_breve: str, canale: str, ruolo: st
 def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, ruolo: str,
                    posizione: Optional[Tuple[float, float, int]] = None, file_link: Optional[str] = None,
                    attesa_riavvio_s: float = 15.0, pausa_s: float = PAUSA_ADMIN_S,
-                   chiave_canale: Optional[bytes] = None, parti: Optional[Set[str]] = None) -> int:
-    """Regione EU 868, nome, ruolo, canale privato della squadra, canali secondari spenti e posizione fissa: tutto
-    (parti None) o solo le parti chieste. Una radio nuova (regione non impostata) si prepara sempre tutta.
+                   chiave_canale: Optional[bytes] = None, parti: Optional[Set[str]] = None,
+                   preset: str = "") -> int:
+    """Regione EU 868, velocita' della rete, nome, ruolo, canale privato della squadra, canali secondari spenti e
+    posizione fissa: tutto (parti None) o solo le parti chieste. Una radio nuova (regione non impostata) si prepara
+    sempre tutta, e se la velocita' non e' data prende quella della rete (PRESET_RETE).
 
     Non cambia cio' che e' gia' a posto, quindi si puo' rilanciare senza danni: se un
     canale privato esiste gia', resta quello (e la sua chiave). Le modifiche partono una
@@ -194,13 +214,16 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
             return 1
         cambi = []
         try:
-            if tentativo == 1 and parti != set(PARTI_NODO) and _stato_nodo(iface)["regione"] == "UNSET":
+            nuova = tentativo == 1 and _stato_nodo(iface)["regione"] == "UNSET"
+            if nuova and not preset:
+                preset = PRESET_RETE          # radio appena uscita dalla scatola: la velocita' della rete
+            if nuova and parti != set(PARTI_NODO):
                 parti = set(PARTI_NODO)
                 print("  radio nuova (regione non impostata): la preparo tutta, come alla prima installazione")
             elif tentativo == 1 and not parti:
                 print("  impostazioni della radio lasciate come sono")
             da_fare = _modifiche_da_fare(iface, nome, nome_breve, canale, ruolo, posizione, pausa,
-                                         chiave_canale, parti)
+                                         chiave_canale, parti, preset)
             if not da_fare or tentativo == TENTATIVI_CONFIGURAZIONE:
                 dopo = _stato_nodo(iface)
                 link = iface.localNode.getURL(includeAll=True)
@@ -236,6 +259,8 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
     problemi = []
     if "regione" in parti and dopo["regione"] != "EU_868":
         problemi.append(f"regione {dopo['regione']}")
+    if "preset" in parti and preset and dopo["preset"] != preset:
+        problemi.append(f"velocita' {nome_preset(dopo['preset']) if dopo['preset'] else 'scritta a mano'}")
     if "ruolo" in parti and ruolo and dopo["ruolo"] != ruolo:
         problemi.append(f"ruolo {dopo['ruolo']}")
     if "canale" in parti and not dopo["privati"]:
@@ -249,7 +274,9 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
         problemi.append(f"canale della squadra '{canale}'")
     if "secondari" in parti and dopo["secondari"]:
         problemi.append("canali secondari ancora accesi: " + ", ".join(dopo["secondari"]))
-    print(f"  nodo !{dopo['num']:08x} '{dopo['nome']}' - regione {dopo['regione']}, ruolo {dopo['ruolo']}, "
+    velocita = nome_preset(dopo["preset"]) if dopo["preset"] else "scritta a mano"
+    print(f"  nodo !{dopo['num']:08x} '{dopo['nome']}' - regione {dopo['regione']}, velocita' {velocita}, "
+          f"ruolo {dopo['ruolo']}, "
           f"canale privato: {', '.join(dopo['privati']) or 'nessuno'}, "
           + (f"canali secondari: {', '.join(dopo['accesi'])}" if dopo["accesi"] else "nessun canale secondario"))
     if not dopo["privati"] and "canale" not in parti:
@@ -262,6 +289,7 @@ def configura_nodo(collegamento: str, nome: str, nome_breve: str, canale: str, r
         except OSError as e:
             print(f"  attenzione: link non salvato in {file_link}: {e}")
     print("LINK " + link)
+    print("PRESET " + dopo["preset"])       # per l'installatore: la velocita' che la radio ha adesso
     if problemi:
         print("  ERRORE: il nodo non ha preso queste impostazioni: " + ", ".join(problemi))
         print("ESITO configurazione=errore")

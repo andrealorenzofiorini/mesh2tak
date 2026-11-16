@@ -3,6 +3,14 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.20.0
+
+- Velocità della rete: un gateway nuovo ora nasce in Medium Fast, la velocità delle radio della squadra. Prima nasceva in Long Fast e, con le radio in Medium Fast, non le avrebbe sentite.
+- La velocità si sceglie in «Certificato e canale per i gateway nuovi», accanto al canale: deve essere la stessa su gateway, ripetitori e radio. Le impostazioni già salvate valgono con Medium Fast, senza ricaricare niente.
+- I gateway già installati non cambiano: l'aggiornamento legge la velocità che la loro radio ha adesso e la ricorda, così «Reimposta la radio» e una radio sostituita tornano su quella.
+- Dal terminale del Raspberry: `sudo bash installa-ponte-meshtastic.sh --preset MEDIUM_FAST` cambia subito la velocità di un gateway già installato.
+- Serve aggiornare prima il server, poi i gateway.
+
 ## 1.19.0
 
 - Più punti di prova insieme: con «Prova un punto» tocchi la mappa una volta per ogni posto che vuoi provare, fino a otto, e premi «Fine». Si calcolano e si vedono tutti insieme sulla mappa, con la rete di oggi. Anche «Prova qui» su una proposta aggiunge un punto, con il nome del posto, senza togliere gli altri.

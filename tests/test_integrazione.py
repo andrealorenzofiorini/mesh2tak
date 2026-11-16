@@ -271,6 +271,7 @@ def test_configura_nodo_appena_installato(nodo_nuovo, tmp_path):
         "indice": 0, "ruolo": "PRIMARY", "nome": "CNSAS", "psk_len": 32, "precisione": 32}
     assert [c["ruolo"] for c in s["canali"][1:]] == ["DISABLED"] * 7, "dalla 1.12.0 nessun canale secondario"
     assert "nessun canale secondario" in r.stdout
+    assert s["preset"] == "MEDIUM_FAST" and "velocita' MediumFast" in r.stdout, "1.20.0: la velocita' della rete"
     assert (s["posizione_fissa"], s["lat"], s["lon"], s["alt"]) == (True, 458205000, 88257000, 400)
     assert os.stat(link).st_mode & 0o777 == 0o600
     url = link.read_text().strip()
@@ -283,6 +284,31 @@ def test_configura_nodo_appena_installato(nodo_nuovo, tmp_path):
     assert r2.returncode == 0 and "era gia' tutto a posto" in r2.stdout, r2.stdout
     assert link2.read_text() == link.read_text()
     assert json.loads(stato.read_text())["riavvii"] == s["riavvii"]
+
+
+def test_configura_nodo_velocita_della_rete(nodo_nuovo, tmp_path):
+    """1.20.0: una radio nuova prende la velocita' della rete (Medium Fast); poi cambia solo se la si chiede."""
+    import json
+
+    def preset():
+        return json.loads(stato.read_text())["preset"]
+
+    porta, stato = nodo_nuovo
+    r, _ = _configura(porta, tmp_path)
+    assert r.returncode == 0 and "regione EU 868, velocita' della rete MediumFast" in r.stdout, r.stdout
+    assert "PRESET MEDIUM_FAST" in r.stdout.splitlines() and preset() == "MEDIUM_FAST"
+    # la velocita' data vale solo quando quella parte della radio e' chiesta
+    r, _ = _configura(porta, tmp_path, "--preset", "long-fast", "--parti", "nome")
+    assert r.returncode == 0 and preset() == "MEDIUM_FAST", r.stdout
+    r, _ = _configura(porta, tmp_path, "--preset", "long-fast", "--parti", "preset")
+    assert r.returncode == 0 and "modifiche: velocita' della rete LongFast" in r.stdout, r.stdout
+    assert "PRESET LONG_FAST" in r.stdout.splitlines() and preset() == "LONG_FAST"
+    # senza velocita' data resta quella della radio anche preparandola tutta ("Reimposta la radio" su un gateway
+    # installato prima della 1.20.0, quando l'installatore non sa ancora che velocita' ha la rete)
+    r, _ = _configura(porta, tmp_path)
+    assert r.returncode == 0 and "era gia' tutto a posto" in r.stdout and preset() == "LONG_FAST", r.stdout
+    r, _ = _configura(porta, tmp_path, "--preset", "LONG_TURBO")
+    assert r.returncode == 2 and "non valida" in r.stdout, r.stdout
 
 
 def test_configura_nodo_canale_della_squadra_dato(nodo_nuovo, tmp_path):
