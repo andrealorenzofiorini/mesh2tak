@@ -598,10 +598,6 @@ class Servizio:
             versione = str(dati.get("versione") or "")
             if not self.rilasci or not RE_VERSIONE_RILASCIO.match(versione) or not self.rilasci.pronta(versione):
                 return 409, {"errore": "versione non disponibile: ricarica la pagina"}
-            if percorso == "/api/aggiorna-server" and self.dentro_lo_stack():
-                # dalla 1.21.0: dentro lo stack takit la rete e' un suo modulo, e i moduli si aggiornano dalla console
-                return 409, {"errore": "Su questo server la rete si aggiorna dalla console takit: pagina Rete radio, "
-                                       f"pulsante \"Aggiorna alla {versione}\". Poi da qui si aggiornano i gateway."}
             with self.lock:
                 if percorso == "/api/aggiorna-server":
                     if numeri_versione(versione) <= numeri_versione(VERSIONE):
@@ -611,8 +607,10 @@ class Servizio:
                         return 409, {"errore": "l'aggiornamento del server e' gia' in corso"}
                     return 202, {"esito": "in_corso", "lavoro": self.accoda("aggiorna-server", "server", utente,
                                                                             versione=versione),
-                                 "messaggio": f"Aggiorno il server alla {versione}: per un minuto la pagina non "
-                                              "risponde, poi riprende da sola."}
+                                 "messaggio": (f"Chiedo alla console takit di portare la rete alla {versione}: tra un paio "
+                                               "di minuti la pagina riparte da sola." if self.dentro_lo_stack() else
+                                               f"Aggiorno il server alla {versione}: per un minuto la pagina non "
+                                               "risponde, poi riprende da sola.")}
                 if numeri_versione(versione) > numeri_versione(VERSIONE):
                     return 409, {"errore": f"prima aggiorna il server alla {versione}"}
                 nome = str(dati.get("nome") or "tutti")

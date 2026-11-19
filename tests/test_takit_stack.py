@@ -10,12 +10,14 @@ import http.server
 import json
 import os
 import ssl
+import struct
 import subprocess
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+import zlib
 
 import pytest
 
@@ -28,6 +30,7 @@ import rete_meshtastic as rete  # noqa: E402
 SCRIPT = os.path.join(RADICE, "dist", "rete-meshtastic.sh")
 DOMINIO = "stack.lan"
 OSPITE = f"meshtastic.{DOMINIO}"
+PAGINE = "/opt/takit-dati/rete-radio/pagine.json"     # dalla 1.22.0: l'elenco dei gateway per lo stack
 STACK = "/opt/takit-stack"
 IMPIANTO = "/etc/takit/impianto.json"
 
@@ -46,6 +49,26 @@ print("== qualche riga prima")
 print(risposta)
 '''
 
+# la console dello stack, finta: scrive che cosa le chiedono; con il file "console-ferma" accanto risponde con un errore
+CONSOLE_FINTA = r'''
+import json, os, sys
+qui = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(qui, "chiamate-console.jsonl"), "a") as f:
+    f.write(json.dumps(sys.argv[1:]) + "\n")
+if os.path.exists(os.path.join(qui, "console-ferma")):
+    print("ERRORE: la console e' ferma", file=sys.stderr)
+    sys.exit(2)
+print("0123456789abcdef")
+'''
+
+
+def png_di_prova():
+    """Un PNG di un punto (come in test_icone.py, che qui non si importa: vuole la libreria meshtastic)."""
+    def pezzo(tipo, dati):
+        return struct.pack(">I", len(dati)) + tipo + dati + struct.pack(">I", zlib.crc32(tipo + dati) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + pezzo(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)) +
+            pezzo(b"IDAT", zlib.compress(b"\x00" + bytes((10, 10, 10, 255)))) + pezzo(b"IEND", b""))
+
 
 def chiave(n):
     blob = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20" + bytes([n]) * 32
@@ -56,9 +79,10 @@ def chiave(n):
 def dns_di_prova():
     try:
         righe = open("/etc/hosts").read()
-        if OSPITE not in righe:
+        aggiunte = "".join(f"127.0.0.1 {n}\n" for n in (OSPITE, f"meshtastic-casa.{DOMINIO}") if n not in righe)
+        if aggiunte:
             with open("/etc/hosts", "a") as f:
-                f.write(f"# prove rete-meshtastic nello stack\n127.0.0.1 {OSPITE}\n")
+                f.write("# prove rete-meshtastic nello stack\n" + aggiunte)
     except OSError:
         pytest.skip("serve poter scrivere /etc/hosts (le prove girano da root)")
     yield
@@ -79,6 +103,9 @@ class ServerStack:
         (r / IMPIANTO.lstrip("/")).write_text('{"formato": 1, "profilo": "centrale", "dominio": "stack.lan"}\n')
         self.posta = r / STACK.lstrip("/") / "strumenti"
         (self.posta / "posta.py").write_text(POSTA_FINTA)
+        self.console = r / STACK.lstrip("/") / "console"
+        self.console.mkdir(parents=True)
+        (self.console / "takit_console.py").write_text(CONSOLE_FINTA)
         self.stub.mkdir()
         stub = {"systemctl": f'echo "systemctl $*" >> {self.log}\nexit 0',
                 "sshd": f'echo "sshd $*" >> {self.log}\n[ "$1" = "-T" ] && echo "port 22"\nexit 0',
@@ -100,6 +127,10 @@ class ServerStack:
     def installa(self, *in_piu):
         return self.esegui("installa", "--takit-stack", "--dominio", DOMINIO, "--takit-radice", STACK,
                            "--takit-impianto", IMPIANTO, *in_piu)
+
+    def richieste_alla_console(self):
+        f = self.console / "chiamate-console.jsonl"
+        return [json.loads(x) for x in f.read_text().splitlines()] if f.exists() else []
 
     def json(self, percorso):
         p = self.radice / percorso.lstrip("/")
@@ -214,6 +245,84 @@ def test_gateway_nello_stack_una_pagina_sola(stack):
     assert codice == 0, uscita
     assert "la pagina esce dal login quando lo stack takit toglie il modulo" in uscita
     assert not stack.esiste(rete.PIATTAFORMA) and not stack.esiste(rete.REGISTRO)
+
+
+def test_un_indirizzo_per_gateway_con_lo_stack(stack):
+    """Dalla 1.22.0: con --takit-pagine mesh2tak scrive l'elenco dei gateway e chiede alla console di rileggerlo."""
+    codice, uscita = stack.installa("--takit-pagine", PAGINE)
+    assert codice == 0, uscita
+    assert stack.json(rete.PIATTAFORMA)["pagine"] == PAGINE
+    assert stack.json(PAGINE) == {"formato": 1, "pagine": []}
+    assert stack.richieste_alla_console() == []          # niente da pubblicare: niente da chiedere
+    codice, uscita = stack.esegui("aggiungi", "casa", chiave(1))
+    assert codice == 0, uscita
+    assert stack.json(PAGINE) == {"formato": 1, "pagine": [{"nome": "casa", "porta": rete.PORTA_BASE}]}
+    assert stack.richieste_alla_console() == [["chiedi", "--impianto", str(stack.radice) + IMPIANTO, "--modulo", "sistema",
+                                               "--azione", "rileggi-indirizzi", "--utente", "rete-radio"]]
+    assert "la console rilegge gli indirizzi tra pochi secondi" in uscita
+    (r,) = [json.loads(p.read_text()) for p in (stack.radice / rete.ACCESSO_DIR.lstrip("/")).glob("*.json")]
+    assert r["indirizzo"] == f"https://meshtastic-casa.{DOMINIO}/" and r["ssh_host"] == OSPITE
+    sito = stack.json(rete.SITO_DIR + "/ponti.json")
+    assert sito["ponti"][0]["indirizzo"] == f"https://meshtastic-casa.{DOMINIO}/"    # "Gestisci la radio" c'e'
+    assert not [c for c in stack.chiamate() if c.startswith(("caddy", "docker"))]
+    # rilanciare non chiede niente; togliere il gateway si'
+    assert stack.esegui("installa")[0] == 0
+    assert len(stack.richieste_alla_console()) == 1
+    assert stack.esegui("rimuovi", "casa", "--si")[0] == 0
+    assert stack.json(PAGINE) == {"formato": 1, "pagine": []} and len(stack.richieste_alla_console()) == 2
+
+
+def test_se_la_console_non_prende_la_richiesta_lo_dice(stack):
+    assert stack.installa("--takit-pagine", PAGINE)[0] == 0
+    (stack.console / "console-ferma").write_text("")
+    codice, uscita = stack.esegui("aggiungi", "casa", chiave(1))
+    assert codice == 0, uscita                           # il gateway c'e' lo stesso: l'indirizzo arriva a mano
+    assert "premi 'Rileggi gli indirizzi dei moduli'" in uscita and "la console e' ferma" in uscita
+
+
+def test_dalla_pagina_il_server_si_aggiorna_con_la_console(stack):
+    assert stack.installa("--takit-pagine", PAGINE)[0] == 0
+    cartella = stack.radice / rete.LAVORI_DIR.lstrip("/")
+    (cartella / "a1b2c3d4e5f60718.json").write_text(json.dumps(
+        {"id": "a1b2c3d4e5f60718", "azione": "aggiorna-server", "nome": "server", "versione": "9.9.9", "da": "andrea",
+         "richiesta": None, "sostituisci": False}))
+    codice, uscita = stack.esegui("lavora")
+    assert codice == 0, uscita
+    assert [x[3:7] for x in stack.richieste_alla_console()] == [["--modulo", "sistema", "--azione", "aggiornamenti"],
+                                                                ["--modulo", "rete-radio", "--azione", "sistema-aggiorna"]]
+    assert all(x[-1] == "andrea" for x in stack.richieste_alla_console())
+    esito = stack.json(rete.ESITI_DIR + "/a1b2c3d4e5f60718.json")
+    assert esito["esito"] == "ok" and "Chiesto alla console takit" in esito["messaggio"]
+
+
+def test_le_figure_delle_icone_dal_catalogo_che_da_lo_stack(stack):
+    """Dalla 1.22.0: lo stack scarica e controlla lo stesso catalogo di infra-TAK e lo passa con --takit-icone."""
+    figura = png_di_prova()
+    catalogo = {"OSM": {"uid": rete.ICONSET_OSM, "groups": {
+        "General": [{"f": "people.png", "b": base64.b64encode(figura).decode()}]}}}
+    file = stack.radice / "opt/takit-dati/rete-radio/icon-catalog.json"
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_text(json.dumps(catalogo))
+    codice, uscita = stack.installa("--takit-icone", "/opt/takit-dati/rete-radio/icon-catalog.json")
+    assert codice == 0, uscita
+    assert stack.json(rete.PIATTAFORMA)["icone"] == "/opt/takit-dati/rete-radio/icon-catalog.json"
+    figure = {x["chiave"]: x["figura"] for x in stack.json(rete.ICONE_ELENCO)["icone"]}
+    assert figure["soccorritore"] == "icone/soccorritore.png" and figure["cinofilo"] == ""
+    assert (stack.radice / rete.ICONE_SITO.lstrip("/") / "soccorritore.png").read_bytes() == figura
+    # uno stack che non lo passa (prima della alfa.21): la scelta delle icone resta, con i nomi
+    assert stack.installa()[0] == 0
+    assert "icone" not in stack.json(rete.PIATTAFORMA)
+    assert all(x["figura"] == "" for x in stack.json(rete.ICONE_ELENCO)["icone"])
+
+
+def test_percorsi_dello_stack_scritti_male():
+    for voce in ("pagine", "icone"):
+        for valore in ("relativo/x.json", "/a/../b.json", "/con spazio.json"):
+            with pytest.raises(rete.Errore):
+                rete.controlla_piattaforma({"dominio": DOMINIO, "radice": STACK, "impianto": IMPIANTO, voce: valore})
+    d = rete.controlla_piattaforma({"dominio": DOMINIO, "radice": STACK, "impianto": IMPIANTO, "pagine": "", "icone": ""})
+    assert "pagine" not in d and "icone" not in d
+    assert rete.ImpostazioniStack(d).pagine_dei_gateway is False and rete.ImpostazioniStack(d).catalogo_icone() == ""
 
 
 def metti_in_coda(stack, ident, oggetto="[Rete Meshtastic] Gateway casa: non risponde", testo="Da 10 minuti."):
@@ -419,13 +528,14 @@ def test_accanto_a_infratak_il_servizio_non_fa_da_pagina(pagina):
     assert pagina.gateway.richieste == []
 
 
-def test_il_server_dello_stack_non_si_aggiorna_dalla_pagina(pagina):
+def test_il_server_dello_stack_si_aggiorna_dalla_pagina_attraverso_la_console(pagina):
     class Rilasci:
         pronta = staticmethod(lambda v: True)
     pagina.servizio.rilasci = Rilasci()
     codice, d = pagina.servizio.azione("/api/aggiorna-server", {"versione": "99.0.0"}, "andrea")
-    assert codice == 409 and "dalla console takit" in d["errore"]
-    assert os.listdir(rete.P(rete.LAVORI_DIR)) == []
+    assert codice == 202 and "Chiedo alla console takit" in d["messaggio"]
+    (lavoro,) = os.listdir(rete.P(rete.LAVORI_DIR))
+    assert json.load(open(rete.P(f"{rete.LAVORI_DIR}/{lavoro}")))["azione"] == "aggiorna-server"
 
 
 def test_avvisi_con_la_posta_dello_stack_mandati_da_root(pagina, tmp_path):

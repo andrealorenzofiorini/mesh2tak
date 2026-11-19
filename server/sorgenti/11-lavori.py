@@ -183,7 +183,8 @@ def scegli_piattaforma(a) -> None:
     in poi ogni comando lo sa da solo. Senza, tutto come prima (accanto a infra-TAK, o come dice il file)."""
     if not getattr(a, "takit_stack", False):
         return
-    nuova = controlla_piattaforma({"dominio": a.dominio, "radice": a.takit_radice, "impianto": a.takit_impianto})
+    nuova = controlla_piattaforma({"dominio": a.dominio, "radice": a.takit_radice, "impianto": a.takit_impianto,
+                                   "pagine": getattr(a, "takit_pagine", ""), "icone": getattr(a, "takit_icone", "")})
     for f in (nuova["radice"] + "/strumenti/posta.py", nuova["impianto"]):
         if not os.path.isfile(P(f)):
             raise Errore(f"non trovo {f}: lo stack takit e' installato su questo server?")
@@ -197,7 +198,8 @@ def scegli_piattaforma(a) -> None:
     os.makedirs(P(CONF_DIR), exist_ok=True)
     os.chmod(P(CONF_DIR), 0o755)
     if scrivi(P(PIATTAFORMA), json.dumps(nuova, indent=1) + "\n", 0o644):
-        ok(f"rete dentro lo stack takit ({nuova['radice']}, dominio {nuova['dominio']})")
+        ok(f"rete dentro lo stack takit ({nuova['radice']}, dominio {nuova['dominio']})"
+           + (": un indirizzo anche per ogni gateway" if nuova.get("pagine") else ""))
 
 
 def cmd_installa(a) -> int:
@@ -231,8 +233,12 @@ def cmd_aggiungi(a) -> int:
         installa_servizio_web()
     print(f"\n{B}Fatto.{N}")
     info(f"Entro un paio di minuti il Raspberry apre il tunnel e il gateway '{nome}' compare su:")
-    info(f"    {imp.url()}   (in Authentik: applicazione 'Rete Meshtastic')")
-    info(f"Gestione del suo nodo: {imp.url(nome)}  (mentre la usi il gateway va in pausa)")
+    info(f"    {imp.url()}   " + ("(dietro al login dello stack takit)" if getattr(imp, "tipo", INFRA_TAK) == TAKIT_STACK
+                                     else "(in Authentik: applicazione 'Rete Meshtastic')"))
+    if getattr(imp, "pagine_dei_gateway", True):
+        info(f"Gestione del suo nodo: {imp.url(nome)}  (mentre la usi il gateway va in pausa)")
+    else:
+        info("Gestione del suo nodo: dalla rete di casa del gateway o con l'app Meshtastic")
     info("Sul Raspberry lo stato del tunnel:  sudo mesh2tak-accesso")
     return 0
 
@@ -670,6 +676,19 @@ def aggiorna_server(lavoro: dict) -> str:
     raise ErroreConTesto(f"{motivo}; anche il ritorno alla {VERSIONE} non e' riuscito", uscita)
 
 
+def aggiorna_server_stack(imp, lavoro: dict) -> str:
+    """Dalla 1.22.0, dentro lo stack takit: la rete e' un modulo dello stack, quindi la versione nuova la installa la
+    console (prima controlla gli aggiornamenti, poi "Aggiorna alla versione nuova" del modulo rete-radio), come se
+    l'avesse premuto chi l'ha chiesto dalla pagina. Resta tra le operazioni della console, con il suo esito."""
+    for modulo, azione in (("sistema", "aggiornamenti"), ("rete-radio", "sistema-aggiorna")):
+        fatto, detto = chiedi_alla_console(imp, modulo, azione, lavoro.get("da") or "rete-radio")
+        if not fatto:
+            raise Errore(f"la console dello stack takit non ha preso la richiesta ({detto}): aggiorna dalla console, "
+                         "pagina Rete radio")
+    return (f"Chiesto alla console takit: controlla gli aggiornamenti e porta la rete radio alla {lavoro['versione']}. "
+            "Tra un paio di minuti la pagina riparte con la versione nuova; l'esito e' anche nella console, pagina Rete radio.")
+
+
 class ErroreConTesto(Errore):
     def __init__(self, messaggio: str, testo: str):
         super().__init__(messaggio)
@@ -752,6 +771,11 @@ def cmd_lavora(a) -> int:
         pulisci_configurazioni()
     for lavoro in server_da_aggiornare[-1:]:           # piu' richieste insieme: basta l'ultima
         try:
+            if getattr(imp, "tipo", INFRA_TAK) == TAKIT_STACK:
+                messaggio = aggiorna_server_stack(imp, lavoro)
+                scrivi_esito(lavoro, "ok", messaggio)
+                registra(f"lavoro {lavoro['id']}: aggiornamento alla {lavoro['versione']} chiesto alla console takit")
+                continue
             testo = aggiorna_server(lavoro)
             scrivi_esito(lavoro, "ok", f"server aggiornato alla {lavoro['versione']}", testo)
             registra(f"lavoro {lavoro['id']}: server aggiornato alla {lavoro['versione']}")

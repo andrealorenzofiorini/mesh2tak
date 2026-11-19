@@ -9,6 +9,10 @@ def main(argv=None) -> int:
     s.add_argument("--dominio", default="", help="con --takit-stack: il dominio dello stack, es. takit.org")
     s.add_argument("--takit-radice", default="", help="con --takit-stack: la cartella dello stack, es. /opt/takit-stack")
     s.add_argument("--takit-impianto", default="", help="con --takit-stack: il file dell'impianto dello stack")
+    s.add_argument("--takit-pagine", default="", help="con --takit-stack (dalla 1.22.0): dove scrivere l'elenco dei "
+                   "gateway, perche' lo stack pubblichi l'indirizzo di ognuno")
+    s.add_argument("--takit-icone", default="", help="con --takit-stack (dalla 1.22.0): il catalogo delle icone di "
+                   "ATAK che lo stack ha scaricato (lo stesso di infra-TAK), per le figure nella pagina")
     s.set_defaults(fn=cmd_installa)
     s = sotto.add_parser("aggiungi", help="registra o aggiorna un gateway a mano")
     s.add_argument("nome", help="nome del gateway, es. casa")

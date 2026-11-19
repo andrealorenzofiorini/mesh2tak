@@ -37,10 +37,11 @@ def scrivi_sito(imp: Impostazioni, reg: dict) -> None:
 def figure_infratak(imp: Impostazioni) -> Dict[str, bytes]:
     """Le figure delle icone dell'elenco, dal catalogo che infra-TAK usa per i suoi flussi (nodered/
     icon-catalog.json, le stesse icone che ATAK ha di serie). Il codice di mesh2tak non le contiene: la pagina
-    le mostra solo se infra-TAK c'e' e le ha."""
-    if not imp.percorso:          # con lo stack takit non c'e' infra-TAK: la pagina mostra i nomi delle icone
+    le mostra solo se il catalogo c'e' (accanto a infra-TAK il suo; dalla 1.22.0, con lo stack takit, quello che
+    lo stack ha scaricato e controllato)."""
+    catalogo = imp.catalogo_icone()
+    if not catalogo:
         return {}
-    catalogo = os.path.join(os.path.dirname(os.path.dirname(imp.percorso)), "nodered", "icon-catalog.json")
     try:
         if os.path.getsize(catalogo) > 64 << 20:
             return {}

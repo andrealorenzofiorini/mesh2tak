@@ -58,10 +58,14 @@ function chiediAggiornamento(o) {
   const server = o.azione === "aggiorna-server";
   document.getElementById("aggiorna-titolo").textContent = server ? "Aggiornare il server alla " + o.versione + "?" :
     "Aggiornare " + (o.nomi.length === 1 ? "il gateway " + o.nomi[0] : "i gateway") + " alla " + o.versione + "?";
-  document.getElementById("aggiorna-testo").textContent = server ?
+  document.getElementById("aggiorna-testo").textContent = server ? (nelloStack() ?
+    // dalla 1.22.0 dentro lo stack takit: lo fa la console, come con il suo pulsante "Aggiorna alla ..."
+    "La console takit cerca la versione nuova, la scarica da GitHub, la controlla e la installa. Tra un paio di minuti " +
+    "questa pagina per un momento non risponde, poi riprende da sola; i gateway continuano a portare le radio al TAK " +
+    "Server. Se non riparte, la console torna alla versione di prima. L'esito resta anche nella console, pagina Rete radio." :
     "Il server scarica la versione nuova da GitHub, la controlla e la installa. Per circa un minuto questa pagina non " +
     "risponde; i gateway continuano a portare le radio al TAK Server. Se il server non riparte, torna da solo alla " +
-    "versione di prima." :
+    "versione di prima.") :
     "Ogni gateway scarica la versione nuova da GitHub entro un paio di minuti, la controlla e la installa: intanto si " +
     "ferma per un paio di minuti, quindi non farlo durante un intervento. Se non riparte, torna da solo alla versione " +
     "di prima.";
@@ -95,18 +99,14 @@ function aggiornaAggiornamenti() {
     z.append(el("p", "evidenza", "È uscita la versione " + u.versione +
                                  (u.pubblicata ? ", pubblicata il " + giorno(Date.parse(u.pubblicata) / 1000) : "") + ". Novità:"));
     z.append(note(u.note));
-    if (nelloStack()) {          // dalla 1.21.0: la rete e' un modulo dello stack, e si aggiorna dalla sua console
-      z.append(el("p", null, "Il server si aggiorna dalla console takit: pagina Rete radio, pulsante \"Aggiorna alla " +
-                             u.versione + "\". Poi, da qui, i gateway."));
-      banner = "È uscita la versione " + u.versione + ": aggiorna la rete dalla console takit.";
-    } else {
     const b = el("button", "bottone", inCorso("aggiorna-server") ? "Aggiornamento del server in corso" : "Aggiorna il server alla " + u.versione);
     b.type = "button";
     b.disabled = inCorso("aggiorna-server");
     b.addEventListener("click", () => chiediAggiornamento({azione: "aggiorna-server", versione: u.versione}));
-    z.append(b, el("small", null, "Prima il server, poi i gateway. I gateway continuano a lavorare mentre il server si aggiorna."));
+    z.append(b, el("small", null, "Prima il server, poi i gateway. I gateway continuano a lavorare mentre il server si aggiorna." +
+                                  // dalla 1.22.0 dentro lo stack takit: lo fa la sua console, e resta tra le sue operazioni
+                                  (nelloStack() ? " Su questo server lo fa la console takit." : "")));
     banner = "È uscita la versione " + u.versione + ": aggiorna il server.";
-    }
   } else if (u && confronta(u.versione, r.installata) <= 0) {
     const vecchi = ponti.filter(p => p.versione && confronta(p.versione, u.versione) < 0);
     const daQui = vecchi.filter(p => p.aggiornabile && !(p.aggiornamento && p.aggiornamento.stato === "in_corso"));

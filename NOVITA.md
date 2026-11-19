@@ -3,6 +3,12 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.22.0
+
+- Dentro lo **stack takit** torna «Gestisci la radio» da internet: ogni gateway ha di nuovo il suo indirizzo (meshtastic-NOME), che lo stack pubblica dietro al suo login, solo per gli amministratori. Quando aggiungi o togli un gateway, la console takit rilegge gli indirizzi da sola (qualche secondo senza pagine). Serve lo stack alfa.21 o successivo.
+- Dentro lo stack «Aggiorna il server» si preme dalla pagina, come accanto a infra-TAK: lo esegue la console takit, che controlla la versione nuova e la installa; nella console resta l'operazione con il nome di chi l'ha chiesta.
+- Accanto a infra-TAK non cambia niente di quello che vedi: aggiorna il server dalla pagina come sempre. I gateway non cambiano: non serve aggiornarli.
+
 ## 1.21.0
 
 - La rete può stare anche dentro lo **stack takit**, come suo modulo «Rete radio», invece che accanto a infra-TAK. Lì l'indirizzo della pagina e il login li gestisce lo stack (solo i suoi amministratori aprono la pagina), gli avvisi partono con la posta di servizio dello stack e la rete si aggiorna dalla console takit. Si installa dalla console takit, non a mano.

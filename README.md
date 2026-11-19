@@ -18,8 +18,13 @@ arrivano in ATAK e in sala operativa, e la chat e gli oggetti della sala operati
   takit con `rete-meshtastic.sh installa --takit-stack --dominio ... --takit-radice ... --takit-impianto ...`.
   Indirizzo e login della pagina li gestisce lo stack (dalla scheda del modulo); il servizio della pagina fa da
   pagina intera (file, registrazioni dei Raspberry, domande ai gateway attraverso i tunnel), gli avvisi partono con
-  la posta dello stack (le manda root con `strumenti/posta.py manda`) e il server si aggiorna dalla console takit.
-  Niente indirizzo per gateway: la gestione del nodo resta dalla rete di casa del gateway.
+  la posta dello stack (le manda root con `strumenti/posta.py manda`).
+  Dalla 1.22.0, con lo stack alfa.21 o successivo (`--takit-pagine FILE`), anche un indirizzo per gateway
+  (`meshtastic-NOME`, «Gestisci la radio»): lo script scrive l'elenco dei gateway in quel file e chiede alla console
+  di rileggerlo (`takit_console.py chiedi ... --azione rileggi-indirizzi`); ingresso e login dello stack pubblicano
+  ogni indirizzo dietro al login, verso il tunnel del gateway, come fa Caddy accanto a infra-TAK. «Aggiorna il
+  server» dalla pagina chiede alla console di controllare e installare la versione nuova. Le figure delle icone
+  vengono dallo stesso catalogo di infra-TAK, che lo stack scarica e controlla (`--takit-icone FILE`).
 
 ## Installare
 

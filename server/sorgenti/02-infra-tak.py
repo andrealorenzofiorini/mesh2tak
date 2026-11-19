@@ -32,6 +32,12 @@ class Impostazioni:
         porta = "" if self.porta_https == 443 else f":{self.porta_https}"
         return f"https://{self.host(nome)}{porta}/"
 
+    def catalogo_icone(self) -> str:
+        """Il catalogo delle icone che infra-TAK usa per i suoi flussi (nodered/icon-catalog.json)."""
+        if not self.percorso:
+            return ""
+        return os.path.join(os.path.dirname(os.path.dirname(self.percorso)), "nodered", "icon-catalog.json")
+
 
 RE_DOMINIO_STACK = re.compile(r"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
 RE_PERCORSO_STACK = re.compile(r"^/[A-Za-z0-9._/-]{1,200}$")
@@ -43,13 +49,20 @@ def controlla_piattaforma(d: dict) -> dict:
     if not RE_DOMINIO_STACK.match(dominio) or "." not in dominio or ".." in dominio:
         raise Errore("il dominio dello stack takit non e' valido (es. takit.org)")
     valori = {}
-    for voce in ("radice", "impianto"):
+    for voce in ("radice", "impianto", "pagine", "icone"):
         v = str(d.get(voce) or "").rstrip("/") if voce == "radice" else str(d.get(voce) or "")
+        if voce in ("pagine", "icone") and not v:
+            continue                    # facoltativi: con uno stack di prima della alfa.21 niente pagine per gateway
+                                        # e niente figure delle icone
         if not RE_PERCORSO_STACK.match(v) or any(x in ("", ".", "..") for x in v.split("/")[1:]):
             raise Errore(f"il percorso '{voce}' dello stack takit deve essere completo, es. /opt/takit-stack")
         valori[voce] = v
-    return {"formato": 1, "tipo": TAKIT_STACK, "dominio": dominio, "radice": valori["radice"],
-            "impianto": valori["impianto"]}
+    piattaforma = {"formato": 1, "tipo": TAKIT_STACK, "dominio": dominio, "radice": valori["radice"],
+                   "impianto": valori["impianto"]}
+    for voce in ("pagine", "icone"):
+        if voce in valori:
+            piattaforma[voce] = valori[voce]
+    return piattaforma
 
 
 def leggi_piattaforma() -> Optional[dict]:
@@ -70,24 +83,33 @@ class ImpostazioniStack:
     """La rete dentro lo stack takit (dalla 1.21.0). L'ingresso (Caddy) e il login (Authentik) li gestisce lo
     stack: pubblica la pagina della rete al suo indirizzo e la mette dietro al login dei suoi amministratori, leggendo
     la scheda del modulo "rete-radio". La pagina e' una sola: niente indirizzi per gateway (la gestione del nodo di
-    un gateway resta dalla rete di casa sua). Gli avvisi partono con la posta dello stack."""
+    un gateway resta dalla rete di casa sua). Gli avvisi partono con la posta dello stack.
+
+    Dalla 1.22.0, se lo stack gliel'ha chiesto (--takit-pagine), anche un indirizzo per gateway: la 1.22.0 scrive
+    l'elenco dei gateway in quel file e chiede alla console dello stack di rileggerlo; ingresso e login pubblicano
+    https://meshtastic-NOME.dominio, solo per gli amministratori, verso il tunnel del gateway."""
     tipo = TAKIT_STACK
-    pagine_dei_gateway = False
 
     def __init__(self, piattaforma: dict):
         self.piattaforma = piattaforma
+        self.pagine_dei_gateway = bool(piattaforma.get("pagine"))
         self.dominio = piattaforma["dominio"]
         self.server_ip = ""        # il DNS si controlla solo che risponda: l'indirizzo del server non lo sappiamo
         self.ssl = ""
         self.porta_https = 443
         self.dati: dict = {}
-        self.percorso = ""         # niente catalogo delle icone di infra-TAK: la pagina mostra i nomi
+        self.percorso = ""         # niente impostazioni di infra-TAK
 
     def host(self, nome: Optional[str] = None) -> str:
-        return f"meshtastic.{self.dominio}"
+        return f"meshtastic-{nome}.{self.dominio}" if nome and self.pagine_dei_gateway else f"meshtastic.{self.dominio}"
+
+    def catalogo_icone(self) -> str:
+        """Dalla 1.22.0: lo stesso catalogo di infra-TAK, che lo stack scarica e controlla (--takit-icone). Senza, la
+        pagina mostra i nomi delle icone."""
+        return P(self.piattaforma["icone"]) if self.piattaforma.get("icone") else ""
 
     def url(self, nome: Optional[str] = None) -> str:
-        return f"https://{self.host()}/"
+        return f"https://{self.host(nome)}/"
 
     def tak(self) -> str:
         return f"takserver.{self.dominio}"

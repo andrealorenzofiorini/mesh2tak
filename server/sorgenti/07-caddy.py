@@ -195,6 +195,55 @@ def testo_caddy(imp: Impostazioni, reg: dict) -> str:
     return "\n".join(r)
 
 
+def chiedi_alla_console(imp, modulo: str, azione: str, utente: str = "rete-radio") -> Tuple[bool, str]:
+    """Con lo stack takit: mette in coda un pulsante della console (takit_console.py chiedi). Lo esegue chi lavora per
+    la console, in ordine con gli altri, e resta tra le sue operazioni con il nome di chi l'ha chiesto."""
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$", utente or ""):
+        utente = "rete-radio"
+    programma = P(imp.piattaforma["radice"] + "/console/takit_console.py")
+    if not os.path.isfile(programma):
+        return False, "non trovo la console dello stack takit"
+    comando = [sys.executable or "/usr/bin/python3", programma, "chiedi", "--impianto", P(imp.piattaforma["impianto"]),
+               "--modulo", modulo, "--azione", azione, "--utente", utente]
+    try:
+        r = subprocess.run(comando, capture_output=True, text=True, timeout=60, cwd="/", stdin=subprocess.DEVNULL,
+                           env={"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
+                                **({"TAKIT_PROVA_CHIEDI": "1"} if RADICE else {})})
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"la console dello stack non risponde ({type(e).__name__})"
+    if r.returncode != 0:
+        return False, ((r.stderr or r.stdout or "").strip().splitlines() or ["errore"])[-1][:200]
+    return True, (r.stdout or "").strip()[:40]
+
+
+def pagine_dello_stack(imp, reg: dict, con: bool = True) -> None:
+    """Dalla 1.22.0, con lo stack takit: l'elenco dei gateway per l'ingresso e il login dello stack (un indirizzo
+    meshtastic-NOME per ognuno, verso il suo tunnel). Se cambia, chiede alla console di rileggerlo."""
+    if not imp.pagine_dei_gateway:
+        ok("Caddy: lo gestisce lo stack takit (ingresso), niente da cambiare qui")
+        return
+    file = P(imp.piattaforma["pagine"])
+    nuove = [{"nome": n, "porta": p["porta"]} for n, p in sorted(reg["ponti"].items())] if con else []
+    try:
+        with open(file, encoding="utf-8") as f:
+            prima = json.load(f).get("pagine")
+    except (OSError, ValueError, AttributeError):
+        prima = []
+    os.makedirs(os.path.dirname(file), mode=0o700, exist_ok=True)
+    scrivi(file, json.dumps({"formato": 1, "pagine": nuove}, indent=1) + "\n", 0o600)
+    if nuove == prima:
+        ok("indirizzi dei gateway nello stack takit gia' a posto" if nuove else
+           "Caddy: lo gestisce lo stack takit (ingresso), niente da cambiare qui")
+        return
+    fatto, detto = chiedi_alla_console(imp, "sistema", "rileggi-indirizzi")
+    if fatto:
+        ok(f"elenco dei gateway per lo stack takit: {len(nuove)}; la console rilegge gli indirizzi tra pochi secondi "
+           "(l'ingresso riparte: qualche secondo senza pagine)")
+    else:
+        avviso(f"elenco dei gateway scritto, ma la console dello stack non l'ha preso in carico ({detto}): nella "
+               "console, pagina Sistema, premi 'Rileggi gli indirizzi dei moduli'")
+
+
 def blocco_import() -> str:
     return f"{INIZIO_BLOCCO}\nimport {P(CADDY_DIR)}/*.caddy\n{FINE_BLOCCO}\n"
 
@@ -264,8 +313,9 @@ def applica_caddy(nuovi: Dict[str, Optional[str]]) -> None:
 def configura_caddy(imp: Impostazioni, reg: dict, con: bool = True) -> None:
     if imp.tipo == TAKIT_STACK:
         # dalla 1.21.0: con lo stack takit l'indirizzo della pagina lo pubblica l'ingresso dello stack, dalla scheda
-        # del modulo rete-radio (tutto passa dal servizio della pagina: anche file, registrazioni e gateway)
-        ok("Caddy: lo gestisce lo stack takit (ingresso), niente da cambiare qui")
+        # del modulo rete-radio (tutto passa dal servizio della pagina: anche file, registrazioni e gateway); dalla
+        # 1.22.0 anche quelli dei gateway, dall'elenco che scriviamo qui
+        pagine_dello_stack(imp, reg, con)
         return
     caddyfile = leggi(P(CADDYFILE))
     if caddyfile is None:
