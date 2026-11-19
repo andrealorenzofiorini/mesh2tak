@@ -16,12 +16,17 @@ def scrivi_sito(imp: Impostazioni, reg: dict) -> None:
         os.chmod(d, 0o755)
     scrivi(P(SITO_DIR + "/index.html"), risorsa("index.html", PAGINA_B64).decode("utf-8"))
     scrivi(P(SITO_DIR + "/icona.svg"), risorsa("icona.svg", ICONA_B64).decode("utf-8"))
-    ponti = [{"nome": n, "indirizzo": imp.url(n), "stato": f"stato/{n}.json",
+    # "indirizzo": la gestione del nodo di ogni gateway da internet; con lo stack takit non c'e' (dalla 1.21.0)
+    ponti = [{"nome": n, "indirizzo": imp.url(n) if imp.pagine_dei_gateway else "", "stato": f"stato/{n}.json",
               "aggiunto": p.get("aggiunto", "")} for n, p in sorted(reg["ponti"].items())]
-    scrivi(P(SITO_DIR + "/ponti.json"), json.dumps({"formato": 1, "dominio": imp.dominio, "versione": VERSIONE,
-                                                    "ponti": ponti}, ensure_ascii=False, indent=1) + "\n")
-    # per gli avvisi del servizio (senza privilegi): dove chiedere lo stato dei ponti e dove mandare le email
-    scrivi(P(SORVEGLIANZA), json.dumps({"formato": 1, "pagina": imp.url(), "console": porta_console(imp),
+    sito = {"formato": 1, "dominio": imp.dominio, "versione": VERSIONE, "piattaforma": imp.tipo, "ponti": ponti}
+    if imp.tipo == TAKIT_STACK:
+        sito["tak"] = imp.tak()       # il TAK Server dello stack: la pagina lo propone per i gateway nuovi
+    scrivi(P(SITO_DIR + "/ponti.json"), json.dumps(sito, ensure_ascii=False, indent=1) + "\n")
+    # per gli avvisi del servizio (senza privilegi): dove chiedere lo stato dei ponti e dove mandare le email; dalla
+    # 1.21.0 anche la piattaforma (con lo stack takit il servizio fa anche da pagina e le email le manda root)
+    scrivi(P(SORVEGLIANZA), json.dumps({"formato": 1, "pagina": imp.url(), "piattaforma": imp.tipo,
+                                        "console": porta_console(imp) if imp.tipo == INFRA_TAK else 0,
                                         "ponti": [{"nome": n, "porta": p["porta"]}
                                                   for n, p in sorted(reg["ponti"].items())]},
                                        ensure_ascii=False, indent=1) + "\n")
@@ -33,6 +38,8 @@ def figure_infratak(imp: Impostazioni) -> Dict[str, bytes]:
     """Le figure delle icone dell'elenco, dal catalogo che infra-TAK usa per i suoi flussi (nodered/
     icon-catalog.json, le stesse icone che ATAK ha di serie). Il codice di mesh2tak non le contiene: la pagina
     le mostra solo se infra-TAK c'e' e le ha."""
+    if not imp.percorso:          # con lo stack takit non c'e' infra-TAK: la pagina mostra i nomi delle icone
+        return {}
     catalogo = os.path.join(os.path.dirname(os.path.dirname(imp.percorso)), "nodered", "icon-catalog.json")
     try:
         if os.path.getsize(catalogo) > 64 << 20:

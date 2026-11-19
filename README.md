@@ -1,6 +1,7 @@
 # mesh2tak
 
-Gateway tra una rete radio [Meshtastic](https://meshtastic.org) e un TAK Server installato con infra-TAK.
+Gateway tra una rete radio [Meshtastic](https://meshtastic.org) e un TAK Server installato con infra-TAK
+(o, dalla 1.21.0, con lo stack takit).
 Nato per una squadra del soccorso alpino (CNSAS): le posizioni, le chat e gli oggetti delle radio in campo
 arrivano in ATAK e in sala operativa, e la chat e gli oggetti della sala operativa arrivano alle radio.
 
@@ -13,6 +14,12 @@ arrivano in ATAK e in sala operativa, e la chat e gli oggetti della sala operati
 - **Server infra-TAK**: `rete-meshtastic.sh` aggiunge la pagina della rete (dietro Authentik, solo
   amministratori) con lo stato di tutti i gateway, le radio sentite, gli avvisi per email e gli aggiornamenti.
   I Raspberry arrivano con un tunnel SSH aperto da loro: a casa non si apre nessuna porta.
+- **Server con lo stack takit** (dalla 1.21.0): lo stesso script, installato dal modulo «Rete radio» della console
+  takit con `rete-meshtastic.sh installa --takit-stack --dominio ... --takit-radice ... --takit-impianto ...`.
+  Indirizzo e login della pagina li gestisce lo stack (dalla scheda del modulo); il servizio della pagina fa da
+  pagina intera (file, registrazioni dei Raspberry, domande ai gateway attraverso i tunnel), gli avvisi partono con
+  la posta dello stack (le manda root con `strumenti/posta.py manda`) e il server si aggiorna dalla console takit.
+  Niente indirizzo per gateway: la gestione del nodo resta dalla rete di casa del gateway.
 
 ## Installare
 

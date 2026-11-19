@@ -190,6 +190,10 @@ def riavvia_authentik() -> None:
 
 
 def configura_authentik(imp: Impostazioni, reg: dict, rimossi: Optional[Dict[str, dict]] = None) -> None:
+    if imp.tipo == TAKIT_STACK:
+        # dalla 1.21.0: la pagina della rete e' nel login dello stack takit, solo per i suoi amministratori
+        ok("Authentik: lo gestisce lo stack takit (solo i suoi amministratori aprono la pagina)")
+        return
     ak = Authentik(AK_URL, token_authentik())
     flussi = ak.flussi()
     politica = ak.politica_admin()

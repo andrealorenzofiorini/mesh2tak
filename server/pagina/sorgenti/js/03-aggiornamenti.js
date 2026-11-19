@@ -95,12 +95,18 @@ function aggiornaAggiornamenti() {
     z.append(el("p", "evidenza", "È uscita la versione " + u.versione +
                                  (u.pubblicata ? ", pubblicata il " + giorno(Date.parse(u.pubblicata) / 1000) : "") + ". Novità:"));
     z.append(note(u.note));
+    if (nelloStack()) {          // dalla 1.21.0: la rete e' un modulo dello stack, e si aggiorna dalla sua console
+      z.append(el("p", null, "Il server si aggiorna dalla console takit: pagina Rete radio, pulsante \"Aggiorna alla " +
+                             u.versione + "\". Poi, da qui, i gateway."));
+      banner = "È uscita la versione " + u.versione + ": aggiorna la rete dalla console takit.";
+    } else {
     const b = el("button", "bottone", inCorso("aggiorna-server") ? "Aggiornamento del server in corso" : "Aggiorna il server alla " + u.versione);
     b.type = "button";
     b.disabled = inCorso("aggiorna-server");
     b.addEventListener("click", () => chiediAggiornamento({azione: "aggiorna-server", versione: u.versione}));
     z.append(b, el("small", null, "Prima il server, poi i gateway. I gateway continuano a lavorare mentre il server si aggiorna."));
     banner = "È uscita la versione " + u.versione + ": aggiorna il server.";
+    }
   } else if (u && confronta(u.versione, r.installata) <= 0) {
     const vecchi = ponti.filter(p => p.versione && confronta(p.versione, u.versione) < 0);
     const daQui = vecchi.filter(p => p.aggiornabile && !(p.aggiornamento && p.aggiornamento.stato === "in_corso"));
@@ -165,14 +171,19 @@ function aggiornaAggiornamenti() {
   }
 }
 
-let sezAvvisi = null, statoAvvisi = null;
+let sezAvvisi = null, statoAvvisi = null, introAvvisi = null;
+
+function testoIntroAvvisi() {
+  return "Il server ti scrive quando un gateway non risponde, perde la radio o il TAK Server da 10 minuti, " +
+         "e quando torna a posto; quando la microSD è quasi piena, il certificato sta per scadere, " +
+         "la corrente non basta o un Raspberry si riavvia. Le email vanno agli indirizzi " +
+         (nelloStack() ? "della posta di servizio dello stack takit." : "degli avvisi di infra-TAK (Guard Dog).");
+}
 
 function costruisciAvvisi() {
   const sez = el("section", "aggiungi avvisi-email");
-  sez.append(el("p", null, "Il server ti scrive quando un gateway non risponde, perde la radio o il TAK Server da 10 minuti, " +
-                           "e quando torna a posto; quando la microSD è quasi piena, il certificato sta per scadere, " +
-                           "la corrente non basta o un Raspberry si riavvia. Le email vanno agli indirizzi degli avvisi " +
-                           "di infra-TAK (Guard Dog)."));
+  introAvvisi = el("p", null, testoIntroAvvisi());
+  sez.append(introAvvisi);
   statoAvvisi = el("p", "stato-avvisi");
   statoAvvisi.setAttribute("aria-live", "polite");
   const b = el("button", "bottone secondario", "Manda un'email di prova");
@@ -203,11 +214,16 @@ function aggiornaAvvisi() {
   const a = gestione && gestione.avvisi;
   gestioneDettagli.avvisi.hidden = !a;
   if (!a) return;
+  introAvvisi.textContent = testoIntroAvvisi();
   const u = a.ultimo;
   let testo;
   if (!u) testo = "Finora nessun avviso.";
   else if (u.esito === "mandato") testo = "Ultimo avviso mandato " + giornoOra(u.quando) + ": " +
                                           String(u.oggetto || "").replace(/^\[Rete Meshtastic\] /, "") + ".";
+  else if (u.esito === "nessuno" && nelloStack()) testo = "L'ultimo avviso non è partito: la posta di servizio dello stack " +
+                                          "takit non è impostata. Impostala dalla console takit, poi manda un'email di prova.";
+  else if (u.esito === "pausa" && nelloStack()) testo = "L'ultimo avviso non è partito: gli avvisi dello stack takit sono " +
+                                          "in pausa (console takit, Sorveglianza). Riprovo da solo.";
   else if (u.esito === "nessuno") testo = "L'ultimo avviso non è partito: in infra-TAK non c'è un indirizzo per gli avvisi. " +
                                           "Impostalo nella console infra-TAK, in Guard Dog, poi manda un'email di prova.";
   else if (u.esito === "pausa") testo = "L'ultimo avviso non è partito: gli avvisi di infra-TAK sono sospesi (Guard Dog).";
@@ -263,8 +279,8 @@ let avviso = "";                   // esito dell'ultima azione, mostrato una vol
 
 function chiediTogli(p) {
   daTogliere = p;
-  document.getElementById("togli-testo").textContent = "Il gateway " + p.nome + " non sarà più raggiungibile da questa pagina e il suo indirizzo " +
-    p.indirizzo.replace(/^https:\/\//, "").replace(/\/$/, "") + " smette di funzionare.";
+  document.getElementById("togli-testo").textContent = "Il gateway " + p.nome + " non sarà più raggiungibile da questa pagina" +
+    (p.indirizzo ? " e il suo indirizzo " + p.indirizzo.replace(/^https:\/\//, "").replace(/\/$/, "") + " smette di funzionare." : ".");
   document.getElementById("togli").showModal();
 }
 

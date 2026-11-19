@@ -585,7 +585,8 @@ function disegna() {
   if (erroreGiro === "sessione scaduta") {
     messaggi.push("La sessione è scaduta: ricarica la pagina.");
   } else if (riavvio) {
-    messaggi.push("Authentik si sta riavviando per il lavoro in corso: la pagina torna da sola tra circa un minuto.");
+    messaggi.push(nelloStack() ? "La pagina non risponde mentre il server lavora: torna da sola tra poco."
+                               : "Authentik si sta riavviando per il lavoro in corso: la pagina torna da sola tra circa un minuto.");
   } else if (erroreGiro) {
     messaggi.push((ultimoElenco ? "Ultimo aggiornamento non riuscito" : "Elenco dei gateway non disponibile") +
                   " (" + erroreGiro + "): riprovo da solo.");

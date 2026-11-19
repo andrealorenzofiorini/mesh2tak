@@ -35,6 +35,7 @@ import fcntl
 import glob
 import grp
 import hashlib
+import http.client
 import http.server
 import io
 import ipaddress
@@ -86,6 +87,12 @@ LAVORI_DIR = SERVIZIO_DIR + "/lavori"    # coda dei lavori: la scrive il servizi
 TMP_DIR = SERVIZIO_DIR + "/tmp"          # i lavori si scrivono qui e poi si spostano in coda, gia' completi
 ESITI_DIR = WEB_DIR + "/esiti"           # esiti dei lavori: li scrive root, li legge il servizio
 SORVEGLIANZA = WEB_DIR + "/sorveglianza.json"   # per gli avvisi: porte dei tunnel e porta della console (da root)
+# Dalla 1.21.0 la rete puo' stare dentro lo stack takit invece che accanto a infra-TAK: lo dice questo file (da root)
+PIATTAFORMA = CONF_DIR + "/piattaforma.json"
+TAKIT_STACK = "takit-stack"
+INFRA_TAK = "infra-tak"
+POSTA_DIR = SERVIZIO_DIR + "/posta"             # avvisi da mandare con la posta dello stack: li scrive il servizio
+ESITI_POSTA_DIR = WEB_DIR + "/esiti-posta"     # com'e' andata ognuno: li scrive root, li legge il servizio
 STATO_AVVISI = SERVIZIO_DIR + "/avvisi.json"    # problemi in corso e avvisi da mandare (del servizio)
 AVVISI_PROVATI = CONF_DIR + "/avvisi-provati"   # la prima email di prova di installa e' gia' partita
 RILASCI = SERVIZIO_DIR + "/rilasci.json"        # ultima versione pubblicata su GitHub (del servizio)

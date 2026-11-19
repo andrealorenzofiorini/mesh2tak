@@ -188,13 +188,17 @@ function moduloCertificatoPonte(a, d) {
   const salva = el("button", "bottone piccolo", "Sostituisci il certificato");
   salva.type = "submit";
   f.append(el("p", "spiegazione", adesso),
-           ...campo("Pacchetto del gateway", file, "il .zip scaricato dalla console infra-TAK per questo gateway, o il suo .p12"),
-           ...campo("Password del certificato", password, "quella mostrata nella console infra-TAK"), el("p"), salva);
+           ...campo("Pacchetto del gateway", file, nelloStack()
+                    ? "il .p12 scaricato dalla console takit (TAK Server, \"Crea il certificato per un programma\")"
+                    : "il .zip scaricato dalla console infra-TAK per questo gateway, o il suo .p12"),
+           ...campo("Password del certificato", password, nelloStack() ? "quella scelta nella console takit"
+                                                                       : "quella mostrata nella console infra-TAK"), el("p"), salva);
   f.addEventListener("submit", async ev => {
     ev.preventDefault();
     const scelto = file.files && file.files[0];
     if (!scelto) return;
-    if (scelto.size > 256 * 1024) { statoRaspberry("Il file è troppo grande: serve il pacchetto della console infra-TAK.", "errore"); return; }
+    if (scelto.size > 256 * 1024) { statoRaspberry(nelloStack() ? "Il file è troppo grande: serve il .p12 della console takit."
+                                                               : "Il file è troppo grande: serve il pacchetto della console infra-TAK.", "errore"); return; }
     if (!window.confirm("Il Raspberry installa il certificato nuovo come fa l'installatore: il gateway si ferma per qualche " +
                         "minuto. Se il pacchetto o la password non vanno, resta il certificato di prima.\n\nProcedo?")) return;
     let pacchetto;

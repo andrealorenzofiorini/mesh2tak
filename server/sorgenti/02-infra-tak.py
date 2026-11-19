@@ -1,8 +1,12 @@
 # --------------------------------------------------------------------------
-# Impostazioni di infra-TAK
+# Impostazioni: di infra-TAK (di serie) o dello stack takit (dalla 1.21.0)
 # --------------------------------------------------------------------------
 
 class Impostazioni:
+    """La rete accanto a infra-TAK: Caddy e Authentik di infra-TAK, un indirizzo per la pagina e uno per gateway."""
+    tipo = INFRA_TAK
+    pagine_dei_gateway = True       # meshtastic-NOME.dominio: la gestione del nodo di ogni gateway
+
     def __init__(self, dati: dict, percorso: str):
         self.dati = dati
         self.percorso = percorso
@@ -29,7 +33,70 @@ class Impostazioni:
         return f"https://{self.host(nome)}{porta}/"
 
 
-def trova_impostazioni() -> Impostazioni:
+RE_DOMINIO_STACK = re.compile(r"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$")
+RE_PERCORSO_STACK = re.compile(r"^/[A-Za-z0-9._/-]{1,200}$")
+
+
+def controlla_piattaforma(d: dict) -> dict:
+    """La piattaforma dello stack takit, controllata: dominio, cartella dello stack e file del suo impianto."""
+    dominio = str(d.get("dominio") or "").strip().lower().rstrip(".")
+    if not RE_DOMINIO_STACK.match(dominio) or "." not in dominio or ".." in dominio:
+        raise Errore("il dominio dello stack takit non e' valido (es. takit.org)")
+    valori = {}
+    for voce in ("radice", "impianto"):
+        v = str(d.get(voce) or "").rstrip("/") if voce == "radice" else str(d.get(voce) or "")
+        if not RE_PERCORSO_STACK.match(v) or any(x in ("", ".", "..") for x in v.split("/")[1:]):
+            raise Errore(f"il percorso '{voce}' dello stack takit deve essere completo, es. /opt/takit-stack")
+        valori[voce] = v
+    return {"formato": 1, "tipo": TAKIT_STACK, "dominio": dominio, "radice": valori["radice"],
+            "impianto": valori["impianto"]}
+
+
+def leggi_piattaforma() -> Optional[dict]:
+    """La piattaforma scelta all'installazione. None: accanto a infra-TAK, come fino alla 1.20.0."""
+    testo = leggi(P(PIATTAFORMA))
+    if testo is None:
+        return None
+    try:
+        d = json.loads(testo)
+    except ValueError:
+        raise Errore(f"{PIATTAFORMA} e' rovinato: rilancia l'installazione dallo stack takit")
+    if not isinstance(d, dict) or d.get("tipo") != TAKIT_STACK:
+        raise Errore(f"{PIATTAFORMA}: piattaforma sconosciuta")
+    return controlla_piattaforma(d)
+
+
+class ImpostazioniStack:
+    """La rete dentro lo stack takit (dalla 1.21.0). L'ingresso (Caddy) e il login (Authentik) li gestisce lo
+    stack: pubblica la pagina della rete al suo indirizzo e la mette dietro al login dei suoi amministratori, leggendo
+    la scheda del modulo "rete-radio". La pagina e' una sola: niente indirizzi per gateway (la gestione del nodo di
+    un gateway resta dalla rete di casa sua). Gli avvisi partono con la posta dello stack."""
+    tipo = TAKIT_STACK
+    pagine_dei_gateway = False
+
+    def __init__(self, piattaforma: dict):
+        self.piattaforma = piattaforma
+        self.dominio = piattaforma["dominio"]
+        self.server_ip = ""        # il DNS si controlla solo che risponda: l'indirizzo del server non lo sappiamo
+        self.ssl = ""
+        self.porta_https = 443
+        self.dati: dict = {}
+        self.percorso = ""         # niente catalogo delle icone di infra-TAK: la pagina mostra i nomi
+
+    def host(self, nome: Optional[str] = None) -> str:
+        return f"meshtastic.{self.dominio}"
+
+    def url(self, nome: Optional[str] = None) -> str:
+        return f"https://{self.host()}/"
+
+    def tak(self) -> str:
+        return f"takserver.{self.dominio}"
+
+
+def trova_impostazioni():
+    piattaforma = leggi_piattaforma()
+    if piattaforma is not None:
+        return ImpostazioniStack(piattaforma)
     candidati = []
     unita = leggi(P("/etc/systemd/system/takwerx-console.service")) or ""
     for riga in unita.splitlines():

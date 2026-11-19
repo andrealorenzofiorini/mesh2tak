@@ -1,9 +1,14 @@
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="rete-meshtastic.sh", description="Rete Meshtastic sul server infra-TAK "
-                                 f"(mesh2tak {VERSIONE})")
+    ap = argparse.ArgumentParser(prog="rete-meshtastic.sh", description="Rete Meshtastic sul server infra-TAK o "
+                                 f"dentro lo stack takit (mesh2tak {VERSIONE})")
     sotto = ap.add_subparsers(dest="comando", metavar="COMANDO")
     s = sotto.add_parser("installa", help="una volta sola: pagina della rete e tutto quello che serve")
     s.add_argument("--ignora-dns", action="store_true", help="vai avanti anche se il DNS non e' ancora giusto")
+    # dalla 1.21.0: dentro lo stack takit invece che accanto a infra-TAK (lo lancia il modulo rete-radio dello stack)
+    s.add_argument("--takit-stack", action="store_true", help="dentro lo stack takit (lo usa il modulo rete-radio)")
+    s.add_argument("--dominio", default="", help="con --takit-stack: il dominio dello stack, es. takit.org")
+    s.add_argument("--takit-radice", default="", help="con --takit-stack: la cartella dello stack, es. /opt/takit-stack")
+    s.add_argument("--takit-impianto", default="", help="con --takit-stack: il file dell'impianto dello stack")
     s.set_defaults(fn=cmd_installa)
     s = sotto.add_parser("aggiungi", help="registra o aggiorna un gateway a mano")
     s.add_argument("nome", help="nome del gateway, es. casa")

@@ -48,6 +48,7 @@ Description=Rete Meshtastic: guarda la coda dei lavori della pagina della rete
 
 [Path]
 DirectoryNotEmpty={LAVORI_DIR}
+DirectoryNotEmpty={POSTA_DIR}
 Unit=mesh2tak-rete-lavori.service
 
 [Install]
@@ -71,7 +72,8 @@ def installa_servizio_web() -> None:
             pw = None   # prove con useradd finto
     for d, modo, proprio in ((WEB_DIR, 0o755, False), (SERVIZIO_DIR, 0o700, True), (RICHIESTE_DIR, 0o700, True),
                              (LAVORI_DIR, 0o700, True), (TMP_DIR, 0o700, True), (ESITI_DIR, 0o755, False),
-                             (INVITI_DIR, 0o700, True), (INSTALLAZIONI_DIR, 0o700, True), (OPT_DIR, 0o755, False)):
+                             (INVITI_DIR, 0o700, True), (INSTALLAZIONI_DIR, 0o700, True), (OPT_DIR, 0o755, False),
+                             (POSTA_DIR, 0o700, True), (ESITI_POSTA_DIR, 0o755, False)):
         os.makedirs(P(d), exist_ok=True)
         os.chmod(P(d), modo)
         if proprio and pw is not None:
@@ -131,6 +133,9 @@ def installa_rete(imp: Impostazioni, reg: dict, ignora_dns: bool) -> None:
 
 def prepara_avvisi(imp: Impostazioni) -> None:
     """Dice dove arriveranno gli avvisi e, la prima volta, manda un'email di prova."""
+    if imp.tipo == TAKIT_STACK:
+        prepara_avvisi_stack(imp)
+        return
     destinatari = re.sub(r"\s+", " ", str(imp.dati.get("guarddog_alert_email") or "")).strip()
     if not destinatari:
         avviso("in infra-TAK non c'e' un indirizzo per gli avvisi: impostalo nella console (Guard Dog), poi sulla "
@@ -151,12 +156,63 @@ def prepara_avvisi(imp: Impostazioni) -> None:
         avviso(f"email di prova non partita: {dettaglio}. Riprova dalla pagina della rete")
 
 
+def prepara_avvisi_stack(imp) -> None:
+    """Con lo stack takit gli avvisi partono con la sua posta di servizio, agli stessi destinatari."""
+    if os.path.exists(P(AVVISI_PROVATI)):
+        ok("avvisi per email con la posta di servizio dello stack takit")
+        return
+    esito, dettaglio = manda_con_lo_stack(imp.piattaforma, "[Rete Meshtastic] Email di prova",
+                                          "Gli avvisi della rete Meshtastic sono attivi: ti scrivo quando un gateway non "
+                                          "risponde da 10 minuti, perde la radio o il TAK Server, quando il suo "
+                                          "certificato sta per scadere, quando la corrente non basta e quando un "
+                                          f"Raspberry si riavvia.\nPagina della rete: {imp.url()}")
+    if esito == "mandato":
+        scrivi(P(AVVISI_PROVATI), time.strftime("%Y-%m-%d %H:%M:%S") + "\n", 0o600)
+        ok("avvisi per email con la posta di servizio dello stack takit: email di prova mandata")
+    elif esito == "nessuno":
+        avviso("la posta di servizio dello stack takit non e' impostata: gli avvisi della rete non arrivano a nessuno. "
+               "Impostala dalla console takit, poi sulla pagina della rete premi 'Manda un'email di prova'")
+    elif esito == "pausa":
+        avviso("gli avvisi dello stack takit sono in pausa: l'email di prova si manda dalla pagina della rete")
+    else:
+        avviso(f"email di prova non partita: {dettaglio}. Riprova dalla pagina della rete")
+
+
+def scegli_piattaforma(a) -> None:
+    """Con --takit-stack (dalla 1.21.0) la rete si installa dentro lo stack takit: lo scrive in PIATTAFORMA, e da li'
+    in poi ogni comando lo sa da solo. Senza, tutto come prima (accanto a infra-TAK, o come dice il file)."""
+    if not getattr(a, "takit_stack", False):
+        return
+    nuova = controlla_piattaforma({"dominio": a.dominio, "radice": a.takit_radice, "impianto": a.takit_impianto})
+    for f in (nuova["radice"] + "/strumenti/posta.py", nuova["impianto"]):
+        if not os.path.isfile(P(f)):
+            raise Errore(f"non trovo {f}: lo stack takit e' installato su questo server?")
+    prima = leggi_piattaforma()
+    if prima is None and os.path.exists(P(REGISTRO)):
+        raise Errore("su questo server la rete e' installata accanto a infra-TAK: per passarla allo stack takit prima "
+                     "va tolta (disinstalla), e poi i gateway vanno approvati di nuovo")
+    if prima is not None and prima["dominio"] != nuova["dominio"]:
+        raise Errore(f"la rete e' installata per {prima['dominio']}, non per {nuova['dominio']}: per cambiare dominio "
+                     "prima va tolta (disinstalla)")
+    os.makedirs(P(CONF_DIR), exist_ok=True)
+    os.chmod(P(CONF_DIR), 0o755)
+    if scrivi(P(PIATTAFORMA), json.dumps(nuova, indent=1) + "\n", 0o644):
+        ok(f"rete dentro lo stack takit ({nuova['radice']}, dominio {nuova['dominio']})")
+
+
 def cmd_installa(a) -> int:
+    scegli_piattaforma(a)
     imp = trova_impostazioni()
     with Blocco():
         reg = carica_registro()
         installa_rete(imp, reg, a.ignora_dns)
     prepara_avvisi(imp)
+    if imp.tipo == TAKIT_STACK:
+        print(f"\n{B}Fatto.{N} Pagina della rete: {imp.url()}  (dietro al login dello stack takit, solo amministratori)")
+        info("I gateway si aggiungono dalla pagina: un Raspberry nuovo si prepara da li' ('Prepara un gateway nuovo'),")
+        info("uno gia' installato si collega con  sudo bash installa-ponte-meshtastic.sh --accesso-esterno")
+        info("e sulla pagina approvi la sua richiesta. Qui sul server non serve altro.")
+        return 0
     print(f"\n{B}Fatto.{N} Pagina della rete: {imp.url()}  (in Authentik: applicazione 'Rete Meshtastic')")
     info("Da ora i gateway si aggiungono dalla pagina: sul Raspberry")
     info("    sudo bash installa-ponte-meshtastic.sh --accesso-esterno")
@@ -230,10 +286,13 @@ def cmd_disinstalla(a) -> int:
         togli_servizio_web()
         ok("servizio della pagina tolto")
         passo("2/5  Authentik")
-        try:
-            togli_authentik(reg)
-        except Errore as e:
-            avviso(f"Authentik: {e} (le applicazioni 'Rete Meshtastic' e 'Meshtastic ...' toglile a mano)")
+        if imp.tipo == TAKIT_STACK:
+            ok("Authentik: la pagina esce dal login quando lo stack takit toglie il modulo rete-radio")
+        else:
+            try:
+                togli_authentik(reg)
+            except Errore as e:
+                avviso(f"Authentik: {e} (le applicazioni 'Rete Meshtastic' e 'Meshtastic ...' toglile a mano)")
         passo("3/5  Caddy")
         configura_caddy(imp, reg, con=False)
         passo("4/5  Utenti dei gateway e sshd")
@@ -264,6 +323,7 @@ def cmd_disinstalla(a) -> int:
             togli(f)
         togli(P(REGISTRO))
         togli(P(AVVISI_PROVATI))
+        togli(P(PIATTAFORMA))                                    # dalla 1.21.0: con lo stack takit
         ok(f"tolti {WEB_DIR}, {CADDY_DIR} e il registro (resta {REGISTRO_LOG})")
     print(f"\n{B}Fatto.{N} Sui Raspberry spegni l'accesso:  sudo bash installa-ponte-meshtastic.sh --accesso-esterno=no")
     return 0
@@ -637,6 +697,7 @@ def chiedi_aggiornamento_ponti(imp: Impostazioni, reg: dict, lavoro: dict) -> No
 
 def cmd_lavora(a) -> int:
     imp = trova_impostazioni()
+    consegna_la_posta(imp)          # dalla 1.21.0, con lo stack takit: prima gli avvisi, che non aspettano i lavori
     cartella = P(LAVORI_DIR)
     server_da_aggiornare: List[dict] = []
     with Blocco(attendi=True):

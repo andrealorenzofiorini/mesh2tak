@@ -566,6 +566,20 @@ class Servizio:
         return 202, {"esito": "in_corso", "lavoro": lavoro, "messaggio": f"Sto aggiungendo il gateway {r['nome']}." +
                      (" Poi il Raspberry si installa da solo: qui vedi a che punto e'." if installa else "")}
 
+    def configurazione(self) -> dict:
+        """Quello che root scrive per il servizio (sorveglianza.json): piattaforma, ponti e loro porte."""
+        return self._leggi_json(P(SORVEGLIANZA)) or {}
+
+    def dentro_lo_stack(self) -> bool:
+        """Dalla 1.21.0: dentro lo stack takit questo servizio e' tutta la pagina (file, registrazioni, gateway)."""
+        return self.configurazione().get("piattaforma") == TAKIT_STACK
+
+    def porta_del_ponte(self, nome: str) -> Optional[int]:
+        for p in self.configurazione().get("ponti") or []:
+            if isinstance(p, dict) and p.get("nome") == nome and isinstance(p.get("porta"), int) and 1024 < p["porta"] < 65536:
+                return p["porta"]
+        return None
+
     def azione(self, percorso: str, dati, utente: str) -> Tuple[int, dict]:
         if not isinstance(dati, dict):
             return 400, {"errore": "richiesta non valida"}
@@ -584,6 +598,10 @@ class Servizio:
             versione = str(dati.get("versione") or "")
             if not self.rilasci or not RE_VERSIONE_RILASCIO.match(versione) or not self.rilasci.pronta(versione):
                 return 409, {"errore": "versione non disponibile: ricarica la pagina"}
+            if percorso == "/api/aggiorna-server" and self.dentro_lo_stack():
+                # dalla 1.21.0: dentro lo stack takit la rete e' un suo modulo, e i moduli si aggiornano dalla console
+                return 409, {"errore": "Su questo server la rete si aggiorna dalla console takit: pagina Rete radio, "
+                                       f"pulsante \"Aggiorna alla {versione}\". Poi da qui si aggiornano i gateway."}
             with self.lock:
                 if percorso == "/api/aggiorna-server":
                     if numeri_versione(versione) <= numeri_versione(VERSIONE):
@@ -729,6 +747,25 @@ class Servizio:
 
 CORPO_IMPOSTAZIONI_MAX = 400 << 10       # pacchetto del certificato (fino a 256 kB) in base64, con il resto
 
+# Dalla 1.21.0, dentro lo stack takit: l'ingresso dello stack manda tutto qui (dopo il login, tranne /accesso/* e
+# /icona.svg), quindi il servizio fa quello che accanto a infra-TAK fa Caddy: i file della pagina, le registrazioni
+# dei Raspberry e le domande ai gateway attraverso i tunnel. Stesse regole: la CSP e le intestazioni di quel Caddy.
+CSP_PAGINA = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' "
+              "data: https://*.tile.opentopomap.org https://tile.openstreetmap.org; connect-src 'self'; "
+              "frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+FILE_PAGINA = {"/": ("index.html", "text/html; charset=utf-8"), "/index.html": ("index.html", "text/html; charset=utf-8"),
+               "/ponti.json": ("ponti.json", "application/json; charset=utf-8"),
+               "/icone-mappa.json": ("icone-mappa.json", "application/json; charset=utf-8")}
+RE_FIGURA_ICONA = re.compile(r"^/icone/([a-z0-9-]{1,40})\.png$")
+RE_REGISTRAZIONE = re.compile(r"^/accesso/([0-9a-f]{64})\.json$")
+# per ogni gateway, come in Caddy: indirizzo sulla pagina -> indirizzo sul gateway, corpo massimo, attesa massima
+RE_DEL_PONTE = re.compile(r"^/(stato|storico|copertura)/([a-z0-9-]{1,20})\.json$|^/registro/([a-z0-9-]{1,20})\.txt$|"
+                          r"^/radio/([a-z0-9-]{1,20})(/[A-Za-z0-9/_.-]{0,100})$")
+VERSO_IL_PONTE = {"stato": ("/mesh2tak/stato.json", 0, 15), "storico": ("/mesh2tak/storico.json", 0, 30),
+                  "copertura": ("/mesh2tak/copertura.json", 1024, 30), "registro": ("/mesh2tak/registro", 0, 30),
+                  "radio": ("/mesh2tak/radio", 16384, 15)}
+RISPOSTA_PONTE_MAX = 16 << 20
+
 
 def gestore_per(servizio: Servizio):
     class Gestore(http.server.BaseHTTPRequestHandler):
@@ -765,6 +802,106 @@ def gestore_per(servizio: Servizio):
             browser). Senza, la richiesta non e' passata da Authentik."""
             u = (self.headers.get("X-Authentik-Username") or "").strip()
             return u if RE_UTENTE_AK.match(u) else ""
+
+        def _file(self, percorso: str, tipo: str, cache: str = "no-store") -> None:
+            """Un file della pagina, con le intestazioni che accanto a infra-TAK mette Caddy."""
+            try:
+                with open(percorso, "rb") as f:
+                    corpo = f.read(8 << 20)
+            except OSError:
+                return self._manda(404, {"errore": "non trovato"})
+            self.send_response(200)
+            self.send_header("Content-Type", tipo)
+            self.send_header("Cache-Control", cache)
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy", CSP_PAGINA)
+            self.send_header("Content-Length", str(len(corpo)))
+            self.end_headers()
+            self.wfile.write(corpo)
+            return None
+
+        def _get_dello_stack(self, percorso: str):
+            """GET dentro lo stack takit: registrazioni e icona per tutti; il resto solo dopo il login."""
+            m = RE_REGISTRAZIONE.match(percorso)
+            if m:                                   # i Raspberry leggono la loro registrazione (pubblica)
+                return self._file(P(f"{ACCESSO_DIR}/{m.group(1)}.json"), "application/json; charset=utf-8")
+            if percorso == "/icona.svg":
+                return self._file(P(SITO_DIR + "/icona.svg"), "image/svg+xml", "public, max-age=86400")
+            utente = self._utente()
+            if not utente:
+                return self._manda(403, {"errore": "serve l'accesso dal login"})
+            if percorso in FILE_PAGINA:
+                nome, tipo = FILE_PAGINA[percorso]
+                return self._file(P(f"{SITO_DIR}/{nome}"), tipo)
+            m = RE_FIGURA_ICONA.match(percorso)
+            if m:
+                return self._file(P(f"{ICONE_SITO}/{m.group(1)}.png"), "image/png", "public, max-age=86400")
+            if RE_DEL_PONTE.match(percorso):
+                return self._al_ponte(percorso, utente)
+            return self._manda(404, {"errore": "non trovato"})
+
+        def _al_ponte(self, percorso: str, utente: str):
+            """Una domanda della pagina a un gateway, attraverso il suo tunnel (come fa Caddy accanto a infra-TAK): solo
+            gli indirizzi previsti, niente cookie, il nome dell'amministratore messo dal login."""
+            m = RE_DEL_PONTE.match(percorso)
+            if m.group(1):
+                tipo, nome, resto = m.group(1), m.group(2), ""
+            elif m.group(3):
+                tipo, nome, resto = "registro", m.group(3), ""
+            else:
+                tipo, nome, resto = "radio", m.group(4), m.group(5)
+            dove, corpo_max, attesa = VERSO_IL_PONTE[tipo]
+            if not RE_NOME.match(nome):
+                return self._manda(404, {"errore": "gateway non trovato"})
+            if self.command == "POST" and tipo not in ("copertura", "radio"):
+                return self._manda(405, {"errore": "solo lettura"})
+            porta = servizio.porta_del_ponte(nome)
+            if porta is None:
+                return self._manda(404, {"errore": "gateway non trovato: ricarica la pagina"})
+            corpo = b""
+            if self.command == "POST":
+                try:
+                    n = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    n = -1
+                if n < 0 or n > corpo_max:
+                    return self._manda(413, {"errore": "richiesta troppo grande"})
+                corpo = self.rfile.read(n)
+            query = urllib.parse.urlsplit(self.path).query
+            if len(query) > 200:
+                return self._manda(414, {"errore": "richiesta troppo lunga"})
+            intestazioni = {"X-Authentik-Username": utente, "X-Forwarded-Host": self.headers.get("Host") or "",
+                            "Accept": "application/json, text/plain, */*"}
+            for h in ("X-Mesh2tak", "Origin", "Content-Type"):
+                if self.headers.get(h):
+                    intestazioni[h] = self.headers.get(h)
+            k = http.client.HTTPSConnection("127.0.0.1", porta, timeout=5, context=ssl._create_unverified_context())
+            try:
+                k.connect()
+                k.sock.settimeout(attesa)
+                k.request(self.command, dove + resto + (f"?{query}" if query else ""),
+                          body=corpo if self.command == "POST" else None, headers=intestazioni)
+                r = k.getresponse()
+                risposta = r.read(RISPOSTA_PONTE_MAX + 1)
+                tipo_risposta = r.getheader("Content-Type") or "application/octet-stream"
+                stato = r.status
+            except (OSError, http.client.HTTPException, ValueError):
+                return self._manda(502, {"errore": f"il gateway {nome} non risponde: Raspberry spento, senza internet "
+                                                   "o tunnel in riconnessione"})
+            finally:
+                k.close()
+            if len(risposta) > RISPOSTA_PONTE_MAX:
+                return self._manda(502, {"errore": f"il gateway {nome} ha risposto troppo"})
+            self.send_response(stato)
+            self.send_header("Content-Type", tipo_risposta[:100])
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Length", str(len(risposta)))
+            self.end_headers()
+            self.wfile.write(risposta)
+            return None
 
         def _ip(self) -> str:
             ip = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
@@ -810,10 +947,17 @@ def gestore_per(servizio: Servizio):
                 self.end_headers()
                 self.wfile.write(corpo)
                 return None
+            if servizio.dentro_lo_stack():
+                return self._get_dello_stack(percorso)
             self._manda(404, {"errore": "non trovato"})
 
         def do_POST(self):  # noqa: N802
             percorso = urllib.parse.urlsplit(self.path).path
+            if RE_DEL_PONTE.match(percorso) and servizio.dentro_lo_stack():
+                utente = self._utente()     # dalla 1.21.0: copertura e radio, verso il gateway
+                if not utente:
+                    return self._manda(403, {"errore": "serve l'accesso dal login"})
+                return self._al_ponte(percorso, utente)
             # il certificato dei ponti nuovi (dalla 1.10.0) e di un ponte (1.13.0) e' piu' grande delle altre richieste
             dati, errore = self._corpo(CORPO_IMPOSTAZIONI_MAX if percorso in ("/api/impostazioni-nuovi",
                                                                                "/api/certificato-ponte") else 16384)

@@ -133,9 +133,12 @@ function costruisciNuovi() {
   invia.type = "submit";
   const esito = el("p", "esito");
   esito.setAttribute("aria-live", "polite");
-  f.append(...campo("Pacchetto del certificato", file, "il file .zip che la console infra-TAK fa scaricare per il certificato del gateway"),
+  if (nelloStack() && takDelloStack && !host.value) host.value = takDelloStack;   // dalla 1.21.0: il TAK Server dello stack
+  f.append(...campo("Pacchetto del certificato", file, nelloStack()
+             ? "il file .p12 che la console takit fa scaricare: TAK Server, \"Crea il certificato per un programma\""
+             : "il file .zip che la console infra-TAK fa scaricare per il certificato del gateway"),
            ...campo("Password del certificato", password),
-           ...campo("Indirizzo del TAK Server", host, "solo se il pacchetto non lo contiene"),
+           ...campo("Indirizzo del TAK Server", host, nelloStack() ? "quello dello stack" : "solo se il pacchetto non lo contiene"),
            ...campo("Nome del canale della squadra", canale),
            ...campo("Chiave del canale della squadra", chiave, "dall'app Meshtastic: Canali, il canale della squadra, chiave"),
            ...campo("Velocità della rete", preset, "la stessa di tutte le radio e dei ripetitori (nell'app Meshtastic: LoRa, " +
@@ -149,7 +152,8 @@ function costruisciNuovi() {
     esito.textContent = "Mando...";
     try {
       if (!file.files.length) throw new Error("scegli il pacchetto del certificato");
-      if (file.files[0].size > 256 * 1024) throw new Error("il file è troppo grande: serve il pacchetto .zip della console infra-TAK");
+      if (file.files[0].size > 256 * 1024) throw new Error(nelloStack() ? "il file è troppo grande: serve il .p12 della console takit"
+                                                                         : "il file è troppo grande: serve il pacchetto .zip della console infra-TAK");
       const d = await manda("impostazioni-nuovi", {
         nome_pacchetto: file.files[0].name, pacchetto: await fileInBase64(file.files[0]), password: password.value,
         host: host.value.trim(), canale: canale.value.trim(), chiave: chiave.value.trim(), preset: preset.value});

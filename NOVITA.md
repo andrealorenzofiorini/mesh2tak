@@ -3,6 +3,12 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.21.0
+
+- La rete può stare anche dentro lo **stack takit**, come suo modulo «Rete radio», invece che accanto a infra-TAK. Lì l'indirizzo della pagina e il login li gestisce lo stack (solo i suoi amministratori aprono la pagina), gli avvisi partono con la posta di servizio dello stack e la rete si aggiorna dalla console takit. Si installa dalla console takit, non a mano.
+- Dentro lo stack la pagina è una sola: la gestione del nodo di un gateway («Gestisci la radio») si fa dalla rete di casa del gateway o con l'app Meshtastic; tutto il resto (gateway, radio della squadra da lontano, Raspberry, copertura, storico, gateway nuovi) funziona come prima.
+- Accanto a infra-TAK non cambia niente: aggiornare il server è facoltativo. I gateway non cambiano: non serve aggiornarli.
+
 ## 1.20.0
 
 - Velocità della rete: un gateway nuovo ora nasce in Medium Fast, la velocità delle radio della squadra. Prima nasceva in Long Fast e, con le radio in Medium Fast, non le avrebbe sentite.

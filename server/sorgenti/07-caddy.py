@@ -262,6 +262,11 @@ def applica_caddy(nuovi: Dict[str, Optional[str]]) -> None:
 
 
 def configura_caddy(imp: Impostazioni, reg: dict, con: bool = True) -> None:
+    if imp.tipo == TAKIT_STACK:
+        # dalla 1.21.0: con lo stack takit l'indirizzo della pagina lo pubblica l'ingresso dello stack, dalla scheda
+        # del modulo rete-radio (tutto passa dal servizio della pagina: anche file, registrazioni e gateway)
+        ok("Caddy: lo gestisce lo stack takit (ingresso), niente da cambiare qui")
+        return
     caddyfile = leggi(P(CADDYFILE))
     if caddyfile is None:
         raise Errore(f"non trovo {CADDYFILE}: Caddy di infra-TAK non e' installato?")

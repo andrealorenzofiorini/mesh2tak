@@ -13,6 +13,7 @@ def controlla_dns(imp: Impostazioni, nomi: List[str], ignora: bool) -> None:
     if shutil.which("resolvectl"):
         esegui(["resolvectl", "flush-caches"], controlla=False, attesa=10)
     atteso = imp.server_ip
+    nomi = list(dict.fromkeys(nomi))      # con lo stack takit la pagina e' una sola: niente doppioni
     problemi = []
     for n in nomi:
         ips = indirizzi(n)

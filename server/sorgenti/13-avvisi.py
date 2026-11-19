@@ -87,7 +87,8 @@ class Sorveglianza:
     def __init__(self, ora=time.time, prendi=None, manda=None, percorso: Optional[str] = None, config=None):
         self.ora = ora
         self.prendi = prendi or self.chiedi_stato
-        self.manda = manda or (lambda oggetto, testo, cfg: self.invia(porta_di(cfg), oggetto, testo))
+        self.manda = manda or (lambda oggetto, testo, cfg: self.invia_stack(oggetto, testo)
+                               if cfg.get("piattaforma") == TAKIT_STACK else self.invia(porta_di(cfg), oggetto, testo))
         self.percorso = percorso or P(STATO_AVVISI)
         self.config = config or (lambda: Servizio._leggi_json(P(SORVEGLIANZA)) or {})
         self.lock = threading.Lock()
@@ -353,7 +354,10 @@ class Sorveglianza:
         pagina = str(cfg.get("pagina") or "")
         if re.match(r"^https://[A-Za-z0-9.:-]+/$", pagina):
             righe.append(f"Pagina della rete: {pagina}")
-        righe.append("Ti arriva perche' sei tra i destinatari degli avvisi di infra-TAK (Guard Dog).")
+        if cfg.get("piattaforma") == TAKIT_STACK:
+            righe.append("Ti arriva perche' sei tra i destinatari degli avvisi dello stack takit (Posta di servizio).")
+        else:
+            righe.append("Ti arriva perche' sei tra i destinatari degli avvisi di infra-TAK (Guard Dog).")
         if len(titoli) == 1:
             oggetto = titoli[0]
         else:
@@ -492,6 +496,38 @@ class Sorveglianza:
             return "errore", str(risposta.get("error") or "risposta di infra-TAK non valida")[:200]
         return "errore", "la console di infra-TAK non risponde"
 
+    ATTESA_POSTA_S = float(os.environ.get("RETE_PROVA_ATTESA_POSTA", "120"))
+
+    @classmethod
+    def invia_stack(cls, oggetto: str, testo: str) -> Tuple[str, str]:
+        """Con lo stack takit (dalla 1.21.0): l'email la manda root con la posta dello stack, che usa i suoi segreti.
+        Il servizio (senza privilegi) la mette in coda e aspetta com'e' andata; stessi esiti di invia()."""
+        ident = secrets.token_hex(8)
+        lavoro = {"formato": 1, "id": ident, "oggetto": oggetto[:200], "testo": testo[:50000], "creato": int(time.time())}
+        coda, esito_file = P(f"{POSTA_DIR}/{ident}.json"), P(f"{ESITI_POSTA_DIR}/{ident}.json")
+        try:
+            os.makedirs(P(TMP_DIR), mode=0o700, exist_ok=True)
+            nuovo = P(f"{TMP_DIR}/posta-{ident}.json")
+            with open(os.open(nuovo, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as f:
+                json.dump(lavoro, f, ensure_ascii=False)
+            os.replace(nuovo, coda)
+        except OSError as e:
+            return "errore", f"non riesco a mettere l'email in coda ({e.strerror})"
+        fine = time.time() + cls.ATTESA_POSTA_S
+        while time.time() < fine:
+            d = Servizio._leggi_json(esito_file)
+            if d is not None:
+                esito = d.get("esito") if d.get("esito") in ("mandato", "nessuno", "pausa", "errore") else "errore"
+                return esito, str(d.get("dettaglio") or "")[:300]
+            time.sleep(0.5)
+        try:
+            os.unlink(coda)               # non ancora presa: non parte piu', niente email doppia al prossimo tentativo
+            return "errore", "il server non ha mandato l'email in tempo: riprovo tra poco"
+        except FileNotFoundError:
+            return "errore", "l'email e' ancora in partenza: se arriva due volte, e' per questo"
+        except OSError as e:
+            return "errore", f"email ferma in coda ({e.strerror})"
+
     @staticmethod
     def chiedi_stato(porta: int) -> Optional[dict]:
         """Lo stato del ponte dal suo tunnel (solo su 127.0.0.1; il certificato della pagina e' quello del ponte)."""
@@ -535,11 +571,18 @@ class Sorveglianza:
         self._ultima_prova = ora
         cfg = self.config()
         q = _ore(ora)
+        stack = cfg.get("piattaforma") == TAKIT_STACK
         esito, dettaglio = self.manda("[Rete Meshtastic] Email di prova",
                                       f"Prova degli avvisi della rete Meshtastic, chiesta da {utente} il {q.day}/{q.month} "
                                       f"alle {q.strftime('%H:%M')}.\nSe la leggi, gli avvisi ti arrivano.", cfg)
         print(f"avvisi: prova chiesta da {utente}: {esito}" + (f" ({dettaglio})" if dettaglio else ""), flush=True)
-        parole = {"mandato": "Email di prova consegnata a infra-TAK: controlla la casella degli avvisi (anche lo "
+        parole = {"mandato": "Email di prova consegnata al fornitore della posta dello stack takit: controlla la casella "
+                             "degli avvisi (anche lo spam) tra un paio di minuti.",
+                  "nessuno": "Non partita: la posta di servizio dello stack takit non è impostata. Impostala dalla "
+                             "console takit (Posta di servizio) e riprova.",
+                  "pausa": "Non partita: gli avvisi dello stack takit sono in pausa (console takit, Sorveglianza)."} \
+            if stack else {
+                  "mandato": "Email di prova consegnata a infra-TAK: controlla la casella degli avvisi (anche lo "
                              "spam) tra un paio di minuti.",
                   "nessuno": "Non partita: in infra-TAK non c'e' un indirizzo per gli avvisi. Impostalo nella "
                              "console infra-TAK, in Guard Dog, e riprova.",
@@ -549,3 +592,92 @@ class Sorveglianza:
         return 200, {"esito": esito, "messaggio": messaggio}
 
 
+# ---- dalla 1.21.0, con lo stack takit: la posta la manda root (usa i segreti dello stack) ----
+
+POSTA_LAVORO_MAX = 128 << 10
+
+
+def manda_con_lo_stack(piattaforma: dict, oggetto: str, testo: str) -> Tuple[str, str]:
+    """Un'email agli amministratori con la posta di servizio dello stack takit (strumenti/posta.py manda): destinatari,
+    fornitore e pausa degli avvisi li decide lo stack. Esiti come invia(): mandato, nessuno, pausa, errore."""
+    programma = piattaforma["radice"] + "/strumenti/posta.py"
+    if not os.path.isfile(P(programma)):
+        return "errore", "non trovo la posta dello stack takit"
+    comando = [sys.executable or "/usr/bin/python3", P(programma), "manda", "--impianto", P(piattaforma["impianto"])]
+    try:
+        r = subprocess.run(comando, input=json.dumps({"oggetto": oggetto[:200], "testo": testo[:50000]},
+                                                     ensure_ascii=False),
+                           capture_output=True, text=True, timeout=150, cwd="/",
+                           env={"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"})
+    except (OSError, subprocess.SubprocessError) as e:
+        return "errore", f"la posta dello stack non risponde ({type(e).__name__})"
+    righe = [x for x in (r.stdout or "").splitlines() if x.strip()]
+    try:
+        d = json.loads(righe[-1]) if righe else {}
+    except ValueError:
+        d = {}
+    if not isinstance(d, dict):
+        d = {}
+    esito = d.get("esito") if d.get("esito") in ("mandato", "nessuno", "pausa", "errore") else "errore"
+    dettaglio = str(d.get("dettaglio") or "")
+    if esito == "errore" and not dettaglio:
+        dettaglio = f"la posta dello stack ha risposto senza dire com'e' andata (codice {r.returncode})"
+    return esito, dettaglio[:300]
+
+
+def leggi_posta_in_coda(percorso: str) -> Optional[dict]:
+    """Un'email messa in coda dal servizio della pagina: non ci si fida di nulla (come per i lavori)."""
+    try:
+        fd = os.open(percorso, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+    try:
+        st = os.fstat(fd)
+        if not (st.st_mode & 0o170000 == 0o100000) or st.st_size > POSTA_LAVORO_MAX:
+            return None
+        grezzo = os.read(fd, POSTA_LAVORO_MAX + 1)
+        d = json.loads(grezzo.decode("utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    finally:
+        os.close(fd)
+    if not (isinstance(d, dict) and RE_ID.match(str(d.get("id", ""))) and isinstance(d.get("oggetto"), str)
+            and isinstance(d.get("testo"), str) and 0 < len(d["oggetto"]) <= 200 and len(d["testo"]) <= 50000):
+        return None
+    if not d["oggetto"].isprintable() or os.path.basename(percorso) != d["id"] + ".json":
+        return None
+    return d
+
+
+def consegna_la_posta(imp) -> int:
+    """Manda le email che il servizio della pagina ha messo in coda (solo con lo stack takit) e scrive com'e' andata.
+    Restituisce quante ne ha trovate."""
+    cartella = P(POSTA_DIR)
+    if getattr(imp, "tipo", INFRA_TAK) != TAKIT_STACK or not os.path.isdir(cartella):
+        return 0
+    os.makedirs(P(ESITI_POSTA_DIR), exist_ok=True)
+    os.chmod(P(ESITI_POSTA_DIR), 0o755)
+    trovate = 0
+    for nome_file in sorted(os.listdir(cartella))[:50]:
+        percorso = os.path.join(cartella, nome_file)
+        d = leggi_posta_in_coda(percorso) if RE_FILE_LAVORO.match(nome_file) else None
+        try:
+            togli(percorso)          # tolta subito: il servizio sa che e' stata presa e non la rimette in coda
+        except IsADirectoryError:
+            shutil.rmtree(percorso, ignore_errors=True)
+        if d is None:
+            registra(f"email scartata (non valida): {nome_file!r}")
+            continue
+        trovate += 1
+        esito, dettaglio = manda_con_lo_stack(imp.piattaforma, d["oggetto"], d["testo"])
+        registra(f"email {d['id']}: {esito}: {d['oggetto'][:80]}" + (f" ({dettaglio})" if dettaglio else ""))
+        scrivi(P(f"{ESITI_POSTA_DIR}/{d['id']}.json"),
+               json.dumps({"id": d["id"], "esito": esito, "dettaglio": dettaglio, "quando": int(time.time())},
+                          ensure_ascii=False) + "\n", 0o644)
+    for f in glob.glob(P(ESITI_POSTA_DIR) + "/*.json"):       # gli esiti servono solo per qualche minuto
+        try:
+            if time.time() - os.path.getmtime(f) > 24 * 3600:
+                togli(f)
+        except OSError:
+            pass
+    return trovate

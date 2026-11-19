@@ -5,6 +5,9 @@ const MOSTRATE = 12;               // radio visibili prima di "Mostra tutte"
 let elenco = [];
 let ultimoElenco = 0;
 let versione = "";
+// dalla 1.21.0 la rete puo' stare dentro lo stack takit: pagina una sola, posta e aggiornamenti dello stack
+let piattaforma = "infra-tak", takDelloStack = "";
+const nelloStack = () => piattaforma === "takit-stack";
 const stati = new Map();           // nome -> {dati, quando, errore, ultimoOk}
 let gestione = null;               // /api/stato: richieste dei Raspberry e lavori; null = servizio non raggiungibile
 let erroreGestione = "";
@@ -185,6 +188,8 @@ async function aggiornaElenco() {
   const d = await prendi("ponti.json");
   elenco = Array.isArray(d.ponti) ? d.ponti : [];
   versione = d.versione || "";
+  piattaforma = d.piattaforma === "takit-stack" ? "takit-stack" : "infra-tak";
+  takDelloStack = typeof d.tak === "string" ? d.tak : "";
   ultimoElenco = Date.now();
 }
 
@@ -356,7 +361,7 @@ function disegnaPonte(p) {
   const testa = el("div");
   const h3 = el("h3", null, p.nome);
   h3.id = "ponte-" + p.nome;
-  const chi = el("p", "chi", d ? [d.nome || "nodo senza nome", d.nome_breve ? "sigla " + d.nome_breve : "", d.id_nodo || ""].filter(Boolean).join(", ") : p.indirizzo.replace(/^https:\/\//, "").replace(/\/$/, ""));
+  const chi = el("p", "chi", d ? [d.nome || "nodo senza nome", d.nome_breve ? "sigla " + d.nome_breve : "", d.id_nodo || ""].filter(Boolean).join(", ") : (p.indirizzo || "").replace(/^https:\/\//, "").replace(/\/$/, ""));
   const stato = el("p", "stato");
   stato.dataset.livello = v.classe === "giu" ? "spento" : ["ok", "attenzione", "problema"][s.livello];
   stato.append(segnoStato(s.livello, v.classe === "giu"), el("span", null, v.parole));
@@ -372,6 +377,9 @@ function disegnaPonte(p) {
   } else if (!d.gestione || !d.gestione.pagina) {
     b.disabled = true;
     azione.append(b, el("small", null, "Radio USB: si gestisce dall'app Meshtastic"));
+  } else if (!p.indirizzo) {       // dalla 1.21.0, dentro lo stack takit: niente indirizzo per gateway
+    b.disabled = true;
+    azione.append(b, el("small", null, "Da qui no: dalla rete di casa del gateway o con l'app Meshtastic"));
   } else {
     b.addEventListener("click", () => chiediConferma(p, d));
     azione.append(b, el("small", null, "Mentre è aperta il gateway è in pausa"));
@@ -463,7 +471,8 @@ function disegnaRichiesta(r) {
     const lav = el("p", "lavora", r.installa ? "Sto aggiungendo il gateway; poi il Raspberry si installa da solo." :
                                                 "Sto aggiungendo il gateway, ci vuole un paio di minuti.");
     lav.append(el("small", null, r.fermo ? "Il server non ha ancora cominciato: se resta così, sul server  sudo bash rete-meshtastic.sh installa"
-                                         : "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
+                                         : nelloStack() ? "Ci vogliono pochi secondi." :
+                                           "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
     li.append(lav);
   } else {
     const pulsanti = el("div", "pulsanti");
@@ -504,7 +513,7 @@ function disegnaLavoro(l) {
   if (l.esito === "in_coda" || l.esito === "in_corso") {
     p.append(document.createTextNode(cosa + ": in corso (chiesta da " + (l.da || "?") + ")."));
     if (l.fermo) p.append(el("small", null, "Il server non ha ancora cominciato: se resta così, sul server  sudo bash rete-meshtastic.sh installa"));
-    else if (l.azione === "aggiungi") p.append(el("small", null, "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
+    else if (l.azione === "aggiungi" && !nelloStack()) p.append(el("small", null, "Authentik si riavvia: per circa un minuto anche questa pagina può non rispondere."));
     else if (l.azione === "aggiorna-server") p.append(el("small", null, "Il servizio della pagina riparte: per circa un minuto la pagina può non rispondere, poi riprende da sola."));
   } else if (l.esito === "ok") {
     p.textContent = cosa + ": " + (l.azione === "impostazioni-nuovi" ? "salvati alle " : "fatta alle ") + oraDi(l.quando) + "." +
