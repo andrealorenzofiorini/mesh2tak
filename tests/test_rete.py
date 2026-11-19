@@ -606,7 +606,8 @@ def test_avvisi_per_email_preparati_da_installa(server):
         assert esito == 0, uscita
         assert "non c'e' un indirizzo per gli avvisi" in uscita and ricevute == []
         sorv = json.loads(s.file("/var/lib/mesh2tak-rete/sorveglianza.json"))
-        assert sorv == {"formato": 1, "pagina": "https://meshtastic.prova.lan:8443/", "console": 5001, "ponti": []}
+        assert sorv == {"formato": 1, "pagina": "https://meshtastic.prova.lan:8443/", "piattaforma": "infra-tak",
+                        "console": 5001, "ponti": []}
         s.impostazioni.update(guarddog_alert_email="info@prova.lan", console_port=console.server_address[1])
         s.scrivi_impostazioni()
         assert s.esegui("aggiungi", "casa", chiave(1))[0] == 0
