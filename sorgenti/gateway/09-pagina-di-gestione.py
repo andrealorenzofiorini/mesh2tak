@@ -139,7 +139,7 @@ class Gestione:
 
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(self.cfg.gestione_certificato, self.cfg.gestione_chiave)
-        self._server = _ServerPagina(("0.0.0.0", self.cfg.gestione_porta_pagina), Gestore, ctx)
+        self._server = _ServerPagina((self.cfg.gestione_indirizzo, self.cfg.gestione_porta_pagina), Gestore, ctx)
         threading.Thread(target=self._server.serve_forever, name="gestione-pagina", daemon=True).start()
 
     def ferma(self) -> None:

@@ -28,6 +28,8 @@ class Ponte:
         self.copertura = Copertura()            # dalla 1.14.0: mappa della copertura (main: su file)
         self.storico = Storico()                # dalla 1.16.0: andamento di ponte e ripetitori (main: su file)
         self.squadra = RadioSquadra()           # dalla 1.15.0: radio sentite sul canale della squadra (main: su file)
+        self.inoltro: Optional["Inoltro"] = None   # dalla 1.23.0: copia dei pacchetti per altri server (main)
+        self._inoltro_guasto = False
         # ultimo nodo visto (resta anche da scollegati, per la pagina della rete)
         self.nodo_nome = ""
         self.nodo_nome_breve = ""
@@ -73,6 +75,14 @@ class Ponte:
             self._gestisci(packet)
         except Exception:  # noqa
             log.exception("Errore inatteso nel gestire un pacchetto")
+        if self.inoltro is not None:
+            # dopo il lavoro di sempre, e senza poterlo disturbare: la copia per gli altri server
+            try:
+                self.inoltro.aggiungi(packet)
+            except Exception:  # noqa
+                if not self._inoltro_guasto:
+                    self._inoltro_guasto = True
+                    log.exception("Inoltro verso altri server: pacchetto non copiato (lo dico una volta sola)")
 
     def su_perdita(self, interface=None):
         if interface is self.iface:
@@ -83,9 +93,26 @@ class Ponte:
     def collega(self, iface) -> None:
         # dalla 1.13.0 il ponte non tocca le impostazioni del suo nodo: vale quello che si sceglie dall'app o dalla
         # pagina (anche un canale secondario acceso). Le rimette come all'installazione solo "Reimposta la radio".
-        canali, ok = leggi_canali(iface, self.cfg)
         preset, salti, potenza, regione = "LONG_FAST", 3, None, ""
+        remoto = getattr(iface, "descrizione", None)
+        if remoto is not None:
+            # dalla 1.23.0, sul server: canali e radio li ha letti il gateway che inoltra, qui arrivano gia' pronti
+            canali = {}
+            for c in remoto.get("canali") or []:
+                if isinstance(c, list) and len(c) == 3 and isinstance(c[0], int) and 0 <= c[0] <= 7:
+                    canali[c[0]] = Canale(c[0], pulisci(c[1], 30), bool(c[2]))
+            ok = {i for i in remoto.get("canali_ok") or [] if i in canali}
+            if remoto.get("preset") in PRESET_LORA:
+                preset = remoto["preset"]
+            salti = int(numero(remoto.get("salti"), 1, 7, 0) or 3)
+            potenza = numero(remoto.get("potenza_dbm"), 1, 30, 0)
+            potenza = int(potenza) if potenza else None
+            regione = pulisci(remoto.get("regione"), 20)
+        else:
+            canali, ok = leggi_canali(iface, self.cfg)
         try:
+            if remoto is not None:
+                raise LookupError   # niente da chiedere al nodo: preset e potenza sono qui sopra
             from meshtastic.protobuf import config_pb2
             lora = iface.localNode.localConfig.lora
             if lora.use_preset:
@@ -113,11 +140,18 @@ class Ponte:
         self._descrivi_nodo()
         self._carica_database()
         self._carica_viste()
+        if self.inoltro is not None:
+            try:
+                self.inoltro.descrivi(descrizione_del_nodo(self, iface))
+            except Exception:  # noqa
+                log.exception("Inoltro verso altri server: nodo non descritto")
 
     def scollega(self) -> None:
         with self._lock:
             self.iface = None
             self.nodo_collegato_dal = None
+        if self.inoltro is not None:
+            self.inoltro.descrivi(None)
 
     def _descrivi_nodo(self) -> None:
         info = self._info(self.mio_num) if self.mio_num else {}

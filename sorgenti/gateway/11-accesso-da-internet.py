@@ -55,10 +55,13 @@ class AccessoEsterno:
     RE_CHIAVE_HOST = re.compile(r"^(ssh-ed25519|ecdsa-sha2-nistp(?:256|384|521)|rsa-sha2-(?:256|512)|ssh-rsa) "
                                 r"[A-Za-z0-9+/]+={0,3}$")
 
-    def __init__(self, cfg: Config, porta_locale: int):
+    def __init__(self, cfg: Config, porta_locale: int, rete: str = "", inoltro: bool = False):
         self.cfg = cfg
         self.porta_locale = porta_locale
-        self.rete = cfg.accesso_rete.rstrip("/")
+        # dalla 1.23.0, inoltro: un altro server, a cui il tunnel porta solo la copia dei pacchetti (mai la pagina)
+        self.inoltro = inoltro
+        self.rete = (rete if inoltro else cfg.accesso_rete).rstrip("/")
+        self.etichetta = f"Inoltro verso {self.rete}" if inoltro else "Accesso da internet"
         with open(cfg.accesso_chiave + ".pub", encoding="utf-8") as f:
             self.chiave_pubblica = f.read().strip()
         self.impronta = impronta_chiave(self.chiave_pubblica)
@@ -66,13 +69,15 @@ class AccessoEsterno:
         self.url_registrazione = f"{self.rete}/accesso/{self.impronta}.json"
         self.macchina = (re.sub(r"[^A-Za-z0-9._-]", "-", socket.gethostname() or "")[:63].strip(".-")
                          or "raspberry")
-        self.known_hosts = os.path.join(cfg.accesso_cartella_stato, "server-rete.known_hosts")
+        self.known_hosts = os.path.join(cfg.accesso_cartella_stato, "server-rete.known_hosts" if not inoltro else
+                                        f"server-inoltro-{hashlib.sha256(self.rete.encode()).hexdigest()[:12]}.known_hosts")
         self.ssh = shutil.which("ssh") or "/usr/bin/ssh"
         self.contesto_https = ssl.create_default_context()
         self._lock = threading.Lock()
         self._fermo = threading.Event()
         self._proc: Optional[subprocess.Popen] = None
-        self._thread = threading.Thread(target=self._ciclo, name="accesso-esterno", daemon=True)
+        self._thread = threading.Thread(target=self._ciclo, name="inoltro-tunnel" if inoltro else "accesso-esterno",
+                                        daemon=True)
         self.collegato = False
         self.dal: Optional[float] = None
         self.indirizzo: Optional[str] = None
@@ -95,7 +100,7 @@ class AccessoEsterno:
         with self._lock:
             return {"collegato": self.collegato, "dal": round(self.dal) if self.dal else None,
                     "indirizzo": self.indirizzo, "messaggio": self.messaggio, "controllo": self.controllo,
-                    "richiesta": self.richiesta}
+                    "richiesta": self.richiesta, "rete": self.rete}
 
     def _segna(self, collegato: bool, messaggio: str, livello: int = logging.INFO) -> None:
         with self._lock:
@@ -105,7 +110,7 @@ class AccessoEsterno:
                 self.dal = None
             self.collegato, self.messaggio = collegato, messaggio
         if messaggio != self._ultimo_messaggio:   # lo stesso avviso una volta sola, non a ogni tentativo
-            log.log(livello, "Accesso da internet: %s", messaggio)
+            log.log(livello, "%s: %s", self.etichetta, messaggio)
             self._ultimo_messaggio = messaggio
 
     # ---- registrazione pubblicata dal server ----
@@ -129,8 +134,11 @@ class AccessoEsterno:
 
     def _richiesta(self) -> Tuple[int, dict]:
         """Manda alla pagina della rete nome e chiave pubblica del ponte: (codice HTTP, risposta)."""
-        corpo = json.dumps({"formato": 1, "nome": self.cfg.accesso_nome, "chiave": self.chiave_pubblica,
-                            "macchina": self.macchina, "versione": VERSIONE}).encode("utf-8")
+        dati = {"formato": 1, "nome": self.cfg.accesso_nome, "chiave": self.chiave_pubblica,
+                "macchina": self.macchina, "versione": VERSIONE}
+        if self.inoltro:
+            dati["inoltro"] = True     # il server lo aggiunge come gateway "in ascolto": converte lui i pacchetti
+        corpo = json.dumps(dati).encode("utf-8")
         apri = urllib.request.build_opener(urllib.request.ProxyHandler({}),
                                            urllib.request.HTTPSHandler(context=self.contesto_https))
         richiesta = urllib.request.Request(f"{self.rete}/accesso/richiesta", data=corpo, method="POST", headers={
@@ -203,7 +211,8 @@ class AccessoEsterno:
         if not re.match(r"^https://[A-Za-z0-9.-]+(?::\d+)?/?$", indirizzo):
             indirizzo = ""
         return {"utente": utente, "porta": porta, "host": host, "porta_ssh": porta_ssh,
-                "chiavi": [c.strip() for c in chiavi], "indirizzo": indirizzo or None}
+                "chiavi": [c.strip() for c in chiavi], "indirizzo": indirizzo or None,
+                "inoltro": d.get("inoltro") is True}
 
     def _scrivi_known_hosts(self, reg: dict) -> None:
         # Le chiavi del server arrivano con la registrazione, via HTTPS con certificato valido:
@@ -324,6 +333,15 @@ class AccessoEsterno:
                     if self.richiesta == "registrato":
                         attesa = 2.0     # approvato in questo momento: la registrazione c'e' gia'
                 self._segna(False, notizia[0], notizia[1])
+                continue
+            if reg["inoltro"] != self.inoltro:
+                # Un tunnel verso la porta sbagliata darebbe la pagina del gateway a un server che deve solo
+                # ascoltare, o i pacchetti al posto della pagina: non si apre.
+                attesa = self.ATTESA_RIFIUTO_S
+                self._segna(False, ("su questo server il gateway c'e' gia' come gateway normale, non in ascolto: "
+                                    "va tolto e approvato di nuovo" if self.inoltro else
+                                    "su questo server il gateway e' registrato solo in ascolto: va tolto e approvato "
+                                    "di nuovo") + f". Riprovo tra {attesa / 60:.0f} minuti", logging.WARNING)
                 continue
             inizio_attesa = 0.0
             prossima_richiesta = 0.0     # se un giorno sparisce (ponte tolto) si richiede subito

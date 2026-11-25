@@ -27,6 +27,8 @@ def descrivi_collegamento(collegamento: str) -> str:
     tipo, _, resto = collegamento.partition(":")
     if tipo == "tcp":
         return f"meshtasticd su {resto or '127.0.0.1:4403'}"
+    if tipo == "inoltro":
+        return f"radio di un gateway che inoltra ({resto})"
     return f"radio USB {resto or '(ricerca automatica)'}"
 
 
@@ -34,6 +36,8 @@ def apri_interfaccia(cfg):
     """cfg puo' essere la Config del ponte o direttamente la stringa di collegamento."""
     collegamento = cfg if isinstance(cfg, str) else cfg.collegamento
     tipo, _, resto = collegamento.partition(":")
+    if tipo == "inoltro":
+        return _classe_remota()(resto)
     if tipo == "tcp":
         host, porta = resto or "127.0.0.1", 4403
         if ":" in host:
@@ -59,6 +63,8 @@ def apri_interfaccia(cfg):
 
 def spiega_errore_nodo(e: BaseException, cfg) -> str:
     dove = descrivi_collegamento(cfg if isinstance(cfg, str) else cfg.collegamento)
+    if dove.startswith("radio di un gateway"):
+        return f"{dove}: {e}"
     if isinstance(e, ConnectionRefusedError):
         return f"{dove}: connessione rifiutata (meshtasticd e' avviato?)"
     if isinstance(e, (socket.timeout, TimeoutError)):

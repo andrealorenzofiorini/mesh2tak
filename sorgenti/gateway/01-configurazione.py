@@ -149,6 +149,11 @@ class Config:
     accesso_chiave: str = "/etc/mesh2tak/accesso/chiave"
     accesso_cartella_stato: str = "/var/lib/mesh2tak"   # scrivibile dal servizio: chiave del server
     accesso_errore: str = ""                   # configurazione non valida: accesso spento, il ponte lavora
+    # dalla 1.23.0: copia dei pacchetti ricevuti dalla radio verso altri server (spento se 'reti' e' vuoto)
+    gestione_indirizzo: str = "0.0.0.0"        # dove ascolta la pagina del gateway
+    inoltro_reti: Tuple[str, ...] = ()         # pagine della rete degli altri server, es. https://rete.altro.it
+    inoltro_porta: int = 9447                  # solo sul Raspberry (127.0.0.1): ci arrivano i tunnel degli altri server
+    inoltro_errore: str = ""                   # configurazione non valida: inoltro spento, il ponte lavora
 
 def _booleano(testo: str) -> bool:
     t = testo.strip().lower()
@@ -217,6 +222,11 @@ def carica_config(percorso: str) -> Config:
         accesso_rete=leggi("accesso_esterno", "rete", predefinito=""),
         accesso_chiave=leggi("accesso_esterno", "chiave", predefinito=base.accesso_chiave),
         accesso_cartella_stato=leggi("accesso_esterno", "cartella_stato", predefinito=base.accesso_cartella_stato),
+        gestione_indirizzo=leggi("gestione", "indirizzo", predefinito=base.gestione_indirizzo),
+        inoltro_reti=tuple(dict.fromkeys(x.strip().rstrip("/") for x in
+                                         leggi("inoltro", "reti", predefinito="").replace(";", ",").split(",")
+                                         if x.strip())),
+        inoltro_porta=leggi("inoltro", "porta", int, predefinito=base.inoltro_porta),
     )
     if not 0.5 <= cfg.tempo_radio_percento <= 10:
         raise ErroreConfig("tempo_radio_percento va da 0.5 a 10 (la legge permette al massimo il 10%)")
@@ -231,7 +241,15 @@ def carica_config(percorso: str) -> Config:
         if not indici or any(i < 0 or i > 7 for i in indici):
             raise ErroreConfig("i numeri dei canali vanno da 0 a 7")
     tipo_colleg, _, _ = cfg.collegamento.partition(":")
-    if tipo_colleg not in ("tcp", "serial"):
+    if tipo_colleg == "inoltro":
+        # dalla 1.23.0: sul server, la radio e' quella di un gateway che inoltra i suoi pacchetti. Solo ascolto.
+        if not re.match(r"^inoltro:http://127\.0\.0\.1:\d{2,5}$", cfg.collegamento):
+            raise ErroreConfig("collegamento = inoltro:http://127.0.0.1:PORTA (la porta del tunnel del gateway)")
+        cfg.invio_radio = False
+        cfg.gestione_porta_app = 0
+        cfg.gestione_nodo_pagina = ""
+        cfg.inoltro_reti = ()
+    elif tipo_colleg not in ("tcp", "serial"):
         raise ErroreConfig("collegamento deve iniziare con 'tcp:' o 'serial:'")
     for nome in ("certificato", "chiave"):
         if not os.path.isfile(getattr(cfg, nome)):
@@ -274,6 +292,24 @@ def carica_config(percorso: str) -> Config:
             errore = "serve la pagina del gateway: in [gestione] attiva = si e porta_pagina = 9443"
         if errore:
             cfg.accesso_attivo, cfg.accesso_errore = False, errore
+    if cfg.inoltro_reti:
+        # Facoltativo anche questo: un errore spegne solo l'inoltro verso gli altri server.
+        errore = ""
+        principale = cfg.accesso_rete.rstrip("/")
+        if len(cfg.inoltro_reti) > 4:
+            errore = "al massimo 4 server in 'reti'"
+        elif not all(re.match(r"^https://[A-Za-z0-9.-]+(:\d+)?$", r) for r in cfg.inoltro_reti):
+            errore = "reti: indirizzi tipo https://rete.altrodominio.it, separati da virgole"
+        elif principale in cfg.inoltro_reti:
+            errore = "in 'reti' c'e' la pagina della rete principale: li' il gateway c'e' gia'"
+        elif not re.match(r"^[a-z0-9](?:[a-z0-9-]{0,18}[a-z0-9])?$", cfg.accesso_nome):
+            errore = "serve il nome del gateway in [accesso_esterno]"
+        elif not (os.path.isfile(cfg.accesso_chiave) and os.path.isfile(cfg.accesso_chiave + ".pub")):
+            errore = f"chiave del gateway non trovata ({cfg.accesso_chiave}): rilancia l'installatore con --accesso-esterno"
+        elif not 1024 <= cfg.inoltro_porta <= 65535 or cfg.inoltro_porta == cfg.gestione_porta_pagina:
+            errore = "porta in [inoltro] non valida"
+        if errore:
+            cfg.inoltro_reti, cfg.inoltro_errore = (), errore
     return cfg
 
 

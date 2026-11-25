@@ -4,7 +4,8 @@
 
 def stato_per_la_rete(cfg: Config, ponte: Ponte, tak: ClienteTAK, gestione: Gestione,
                       accesso: Optional[AccessoEsterno], avviato: float,
-                      sistema: Optional[Sistema] = None) -> dict:
+                      sistema: Optional[Sistema] = None, inoltro: Optional["Inoltro"] = None,
+                      tunnel_inoltro: Optional[List[AccessoEsterno]] = None) -> dict:
     """Quello che la pagina della rete legge da /mesh2tak/stato.json."""
     s = ponte.istantanea()
     s.update({
@@ -22,6 +23,11 @@ def stato_per_la_rete(cfg: Config, ponte: Ponte, tak: ClienteTAK, gestione: Gest
         "sistema": sistema.stato() if sistema is not None else None,
         "certificato": certificato_tak(cfg.certificato),
         "icone": ponte.icone.stato(),
+        # dalla 1.23.0: gli altri server a cui il gateway inoltra una copia dei pacchetti (None: nessuno) e, sul
+        # server, il gateway di cui questo programma converte i pacchetti (solo ascolto)
+        "inoltro": None if inoltro is None else dict(inoltro.stato(), errore=cfg.inoltro_errore or None,
+                                                     server=[t.stato() for t in tunnel_inoltro or []]),
+        "ascolto": cfg.collegamento.startswith("inoltro:"),
         # dalla 1.13.0: quelle che si cambiano dalla pagina della rete ("Gestisci il Raspberry")
         "impostazioni": {"squadra": cfg.squadra, "validita_min": cfg.validita_min,
                          "aggiornamento_min": cfg.aggiornamento_min, "errore_massimo_m": cfg.errore_massimo_m,
@@ -239,6 +245,7 @@ def main(argv=None) -> int:
         log.info("Libreria TAK meshtastic-tak %s; dal TAK Server alle radio: %s", sdk.versione,
                  f"chat e oggetti, al massimo {cfg.tempo_radio_percento:g}% del tempo radio"
                  if cfg.invio_radio else "disattivato (invio = no)")
+    solo_ascolto = cfg.collegamento.startswith("inoltro:")   # sul server: la radio e' di un gateway che inoltra
     tak.avvia()
     ponte.avvia_uscite()
     pausa = Pausa()
@@ -246,7 +253,8 @@ def main(argv=None) -> int:
     if cfg.gestione_attiva:
         try:
             gestione = Gestione(cfg, pausa, ponte.tz)
-            gestione.radio = GestioneRadio(ponte)
+            if not solo_ascolto:
+                gestione.radio = GestioneRadio(ponte)
             gestione.icone = ponte.imposta_icone
             gestione.copertura = ponte.copertura_per_la_pagina
             gestione.storico = ponte.storico.dati
@@ -278,11 +286,34 @@ def main(argv=None) -> int:
             except Exception as e:  # noqa
                 log.error("Accesso da internet non avviato (%s): il gateway lavora lo stesso", e)
                 accesso = None
+    # dalla 1.23.0: una copia dei pacchetti ricevuti anche ad altri server. Spento se in [inoltro] non c'e' niente;
+    # se qualcosa qui non parte, il lavoro di sempre continua.
+    inoltro: Optional[Inoltro] = None
+    tunnel_inoltro: List[AccessoEsterno] = []
+    if cfg.inoltro_errore:
+        log.error("Inoltro verso altri server spento: %s. Il gateway lavora lo stesso", cfg.inoltro_errore)
+    elif cfg.inoltro_reti:
+        try:
+            inoltro = Inoltro(cfg.inoltro_porta)
+            inoltro.avvia()
+            for rete in cfg.inoltro_reti:
+                t = AccessoEsterno(cfg, cfg.inoltro_porta, rete=rete, inoltro=True)
+                t.avvia()
+                tunnel_inoltro.append(t)
+            ponte.inoltro = inoltro
+            log.info("Inoltro: una copia dei pacchetti ricevuti dalla radio va anche a %s (solo ascolto: da li' "
+                     "non si comanda ne' il gateway ne' la radio)", ", ".join(cfg.inoltro_reti))
+        except Exception as e:  # noqa
+            log.error("Inoltro verso altri server non avviato (%s): il gateway lavora lo stesso", e)
+            ponte.inoltro = None
     avviato = time.time()
-    sistema = Sistema()
-    threading.Thread(target=sistema.ciclo, args=(fermo,), name="sistema", daemon=True).start()
+    sistema: Optional[Sistema] = None
+    if not solo_ascolto:
+        sistema = Sistema()
+        threading.Thread(target=sistema.ciclo, args=(fermo,), name="sistema", daemon=True).start()
     if gestione is not None:
-        gestione.fornisci_stato = lambda: stato_per_la_rete(cfg, ponte, tak, gestione, accesso, avviato, sistema)
+        gestione.fornisci_stato = lambda: stato_per_la_rete(cfg, ponte, tak, gestione, accesso, avviato, sistema,
+                                                            inoltro, tunnel_inoltro)
 
     def aspetta(secondi: float) -> bool:
         """Attesa prima di riprovare, interrotta da una pausa; True se il ponte si deve fermare."""
@@ -295,6 +326,8 @@ def main(argv=None) -> int:
         return fermo.is_set()
 
     attesa = 0
+    attesa_remota = 3.0 * float(os.environ.get("MESH2TAK_ATTESE") or 1)   # (nelle prove automatiche: piu' breve)
+    remoto_avvisato = False
     while not fermo.is_set():
         if pausa.attiva:
             pausa.rilasciato.set()   # il nodo e' libero: la pagina puo' usarlo
@@ -310,9 +343,18 @@ def main(argv=None) -> int:
         try:
             iface = apri_interfaccia(cfg)
         except Exception as e:  # noqa
+            if solo_ascolto:
+                # il gateway non e' (ancora) collegato a questo server: si riprova spesso, costa nulla, e lo si
+                # dice una volta sola
+                attesa = attesa_remota
+                if not remoto_avvisato:
+                    remoto_avvisato = True
+                    log.info("In attesa del gateway: %s", spiega_errore_nodo(e, cfg))
+                continue
             attesa = min(max(attesa * 2, 10), 120)
             log.error("Nodo Meshtastic: %s. Riprovo tra %d s", spiega_errore_nodo(e, cfg), attesa)
             continue
+        remoto_avvisato = False
         if pausa.attiva:   # chiesta mentre ci si collegava
             try:
                 iface.close()
@@ -342,7 +384,10 @@ def main(argv=None) -> int:
             continue   # nessuna attesa: alla fine della pausa il ponte si ricollega subito
         durata = time.time() - inizio
         attesa = cfg.riconnessione_nodo_s if durata > 300 else min(max(attesa * 2, cfg.riconnessione_nodo_s), 900)
-        if cfg.collegamento.startswith("serial"):
+        if solo_ascolto:
+            attesa = attesa_remota
+            log.info("Il gateway che inoltra si e' riavviato, ricollegato alla radio o non risponde: lo aspetto")
+        elif cfg.collegamento.startswith("serial"):
             log.warning("La radio USB si e' scollegata dopo %d s: riprovo tra %d s", durata, attesa)
         else:
             log.warning("Il nodo Meshtastic ha chiuso il collegamento dopo %d s. Succede anche quando un'altra "
@@ -350,6 +395,10 @@ def main(argv=None) -> int:
     log.info("Arresto in corso")
     if accesso is not None:
         accesso.ferma()
+    for t in tunnel_inoltro:
+        t.ferma()
+    if inoltro is not None:
+        inoltro.ferma()
     if gestione is not None:
         gestione.ferma()
     ponte.ferma_uscite()
