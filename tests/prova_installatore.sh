@@ -417,6 +417,18 @@ esegui boot2 /tmp/pi-run3d2.log --accesso-esterno=casa --canale-pubblico; U3D2=$
 controlla "opzioni insieme: accesso tenuto (stessa chiave, stesso nome, nessuna domanda), solo la squadra" '[ $U3D2 = 0 ] && [ "$(cat /etc/mesh2tak/accesso/chiave.pub)" = "$CHIAVE_PRIMA" ] && grep -qx "nome = casa" /etc/mesh2tak/mesh2tak.conf && canali_nodo && grep -q "canale-pubblico ignorato" /tmp/pi-run3d2.log && ! grep -q "Nome (minuscole" /tmp/pi-run3d2.log && grep -q "Codice di controllo di questo Raspberry" /tmp/pi-run3d2.log'
 controlla "la stessa chiave a ogni rilancio" 'CHIAVE1=$(cat /etc/mesh2tak/accesso/chiave.pub); esegui boot2 /tmp/pi-run3e.log && [ "$(cat /etc/mesh2tak/accesso/chiave.pub)" = "$CHIAVE1" ] && grep -qx "nome = casa" /etc/mesh2tak/mesh2tak.conf'
 
+echo "== 3e2 inoltro verso un altro server (1.23.0): spento finche' non lo si chiede, e resta agli aggiornamenti"
+controlla "senza --inoltro nessuna sezione [inoltro]" '! grep -q "^\[inoltro\]" /etc/mesh2tak/mesh2tak.conf'
+esegui boot2 /tmp/pi-run3e2.log --inoltro=https://rete.altro.lan:8443/; U3E2=$?
+controlla "--inoltro scrive il server nella configurazione, il resto non cambia" '[ $U3E2 = 0 ] && grep -qx "reti = https://rete.altro.lan:8443" /etc/mesh2tak/mesh2tak.conf && grep -qx "nome = casa" /etc/mesh2tak/mesh2tak.conf && [ "$(cat /etc/mesh2tak/accesso/chiave.pub)" = "$CHIAVE_PRIMA" ]'
+controlla "il gateway parte con l'inoltro acceso" 'sleep 3; grep -q "Inoltro: una copia dei pacchetti" "$STUB/servizio.log"'
+esegui boot2 /tmp/pi-run3e3.log; U3E3=$?
+controlla "a un rilancio senza opzioni l'inoltro resta" '[ $U3E3 = 0 ] && grep -qx "reti = https://rete.altro.lan:8443" /etc/mesh2tak/mesh2tak.conf'
+esegui boot2 /tmp/pi-run3e4.log --inoltro=http://non-cifrato.lan; U3E4=$?
+controlla "un indirizzo non https viene rifiutato e non cambia niente" '[ $U3E4 != 0 ] && grep -q "Indirizzo non valido per --inoltro" /tmp/pi-run3e4.log && grep -qx "reti = https://rete.altro.lan:8443" /etc/mesh2tak/mesh2tak.conf'
+esegui boot2 /tmp/pi-run3e5.log --inoltro=no; U3E5=$?
+controlla "--inoltro=no lo spegne" '[ $U3E5 = 0 ] && ! grep -q "^\[inoltro\]" /etc/mesh2tak/mesh2tak.conf'
+
 echo "== 3d3 aggiornamento chiesto dalla pagina della rete: installatore vero, scaricato da un GitHub finto"
 NUOVA=$(echo "$ORA" | awk -F. '{print $1"."$2+1".0"}'); ROTTA=$(echo "$ORA" | awk -F. '{print $1"."$2+2".0"}')
 GH=/tmp/pi-github
@@ -514,7 +526,7 @@ assert chiedi()[0] == 403
 s, d = chiedi(**{\"X-Authentik-Username\": \"andrea\"})
 assert s == 200 and d[\"formato\"] == 2 and d[\"zoom\"] == 17 and isinstance(d[\"celle\"], list), d
 assert isinstance(d[\"ripetitori\"], list), d
-assert d[\"preset\"] == \"LONG_FAST\" and d[\"limite_snr\"] == -17.5, d
+assert d[\"preset\"] == \"MEDIUM_FAST\" and d[\"limite_snr\"] == -12.5, d
 "'
 : > "$STUB/chiamate.log"
 aggiorna_dalla_pagina /tmp/pi-agg6.log

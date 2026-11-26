@@ -3,6 +3,15 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.23.0
+
+- Un gateway può mandare una copia di quello che riceve dalla radio anche ad **altri server** (al massimo 4), oltre al lavoro di sempre con il suo TAK Server. La funzione nasce spenta: finché non la accendi non cambia niente.
+- L'altro server **ascolta soltanto**: converte i pacchetti per il suo TAK Server, e da lì non si comanda né il gateway né la radio, e niente va in radio. Passano posizioni, nomi delle radio, telemetria e pacchetti TAK; la chiave del canale non esce dal Raspberry. In viaggio è tutto cifrato, con un collegamento come quello di oggi.
+- Si accende sul Raspberry: `sudo bash installa-ponte-meshtastic.sh --inoltro=https://PAGINA-DELLA-RETE-DELL-ALTRO-SERVER` (`--inoltro=no` lo spegne; la scelta resta agli aggiornamenti). Sull'altro server la richiesta compare nella pagina della rete con scritto «Chiede solo di essere ascoltato» e si approva con il codice di controllo, come sempre; «Togli dalla rete» lo ferma.
+- Sul server che ascolta serve una volta sola il certificato con cui mandare i dati al suo TAK Server: `sudo bash rete-meshtastic.sh certificato-convertitore --pacchetto FILE.zip`. Il convertitore (lo stesso programma del gateway, con le sue librerie) si installa solo quando si approva il primo gateway in ascolto.
+- Sulla scheda di un gateway che inoltra c'è scritto a quali server manda la copia e se sono collegati.
+- Chi non usa la funzione: aggiornare è facoltativo, server e gateway restano come sono. Per usarla servono la 1.23.0 sul gateway e sul server che ascolta; il server principale del gateway può restare alla versione che ha.
+
 ## 1.22.0
 
 - Dentro lo **stack takit** torna «Gestisci la radio» da internet: ogni gateway ha di nuovo il suo indirizzo (meshtastic-NOME), che lo stack pubblica dietro al suo login, solo per gli amministratori. Quando aggiungi o togli un gateway, la console takit rilegge gli indirizzi da sola (qualche secondo senza pagine). Serve lo stack alfa.21 o successivo.

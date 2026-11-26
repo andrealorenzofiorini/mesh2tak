@@ -39,7 +39,7 @@ def prepara_ponti(imp: Impostazioni, reg: dict, nomi: List[str]) -> None:
     for n in nomi:
         p = reg["ponti"][n]
         utente = prepara_utente(n)
-        riga = riga_autorizzata(p["chiave"], p["porta"])
+        riga = riga_autorizzata(p["chiave"], porta_tunnel(p))
         prima = leggi(P(f"{CHIAVI_DIR}/{utente}"))
         cambiata = scrivi(P(f"{CHIAVI_DIR}/{utente}"), riga, 0o644)
         for vecchia in p.pop("impronte_vecchie", []):

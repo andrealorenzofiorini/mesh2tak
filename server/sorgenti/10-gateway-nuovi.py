@@ -245,26 +245,49 @@ def riprova_installazione(imp: Impostazioni, reg: dict, lavoro: dict) -> None:
 
 
 def aggiungi_ponte(imp: Impostazioni, reg: dict, nome: str, chiave: str, impronta: str, ignora_dns: bool = False,
-                   cambio_chiave: bool = True, installa: Optional[dict] = None, da: str = "") -> None:
+                   cambio_chiave: bool = True, installa: Optional[dict] = None, da: str = "",
+                   ascolto: bool = False) -> None:
     """Registra (o aggiorna) un ponte: DNS, utente SSH, pagina, Caddy, Authentik, registrazione. Con installa
-    (ponte nuovo dalla 1.10.0) prepara anche la configurazione che il Raspberry scarica per installarsi."""
+    (ponte nuovo dalla 1.10.0) prepara anche la configurazione che il Raspberry scarica per installarsi. Con ascolto
+    (dalla 1.23.0) il gateway lavora per un altro server e qui manda solo i pacchetti, che converte questo server."""
+    if ascolto:
+        if installa is not None:
+            raise Errore("un gateway in ascolto e' gia' installato: non si installa da qui")
+        if nome in reg["ponti"] and not reg["ponti"][nome].get("ascolto"):
+            raise Errore(f"il gateway '{nome}' c'e' gia' come gateway normale: prima toglilo dalla rete")
+        if not leggi_tak_convertitore():
+            raise Errore("manca il certificato con cui questo server manda al suo TAK Server i dati dei gateway in "
+                         "ascolto. " + ("Nella console takit: Rete radio, 'Certificato per i gateway in ascolto'."
+                                        if imp.tipo == TAKIT_STACK else
+                                        "Sul server: sudo bash rete-meshtastic.sh certificato-convertitore "
+                                        "--pacchetto FILE.zip"))
+    elif nome in reg["ponti"] and reg["ponti"][nome].get("ascolto"):
+        raise Errore(f"il gateway '{nome}' c'e' gia' in ascolto: prima toglilo dalla rete")
     if installa is not None and not leggi_impostazioni_nuovi():
         raise Errore("mancano certificato e canale per i gateway nuovi: caricali sulla pagina della rete")
     reg["dominio"] = imp.dominio
     nuovo = nome not in reg["ponti"]
     passo(f"1/5  Indirizzi: {imp.url()} e {imp.url(nome)}")
-    controlla_dns(imp, [imp.host(), imp.host(nome)], ignora_dns)
+    controlla_dns(imp, [imp.host()] + ([] if ascolto else [imp.host(nome)]), ignora_dns)
     for altro, p in reg["ponti"].items():
         if altro != nome and p.get("impronta") == impronta:
             raise Errore(f"questa chiave e' gia' del gateway '{altro}': ogni Raspberry ha la sua")
     ora = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     if nuovo:
-        usate = {p["porta"] for p in reg["ponti"].values()}
+        usate = {p["porta"] for p in reg["ponti"].values()} | {p["porta_inoltro"] for p in reg["ponti"].values()
+                                                               if p.get("ascolto")}
         occupate = porte_in_ascolto()
         porta = PORTA_BASE
         while porta in usate or porta in occupate:
             porta += 1
         reg["ponti"][nome] = {"porta": porta, "chiave": chiave, "impronta": impronta, "aggiunto": ora}
+        if ascolto:
+            # due porte: su "porta" ascolta la pagina del convertitore (per tutto il resto e' il gateway), su
+            # "porta_inoltro" arriva il tunnel del Raspberry, con i soli pacchetti
+            altra = porta + 1
+            while altra in usate or altra in occupate:
+                altra += 1
+            reg["ponti"][nome].update(ascolto=True, porta_inoltro=altra)
     else:
         p = reg["ponti"][nome]
         if p["impronta"] != impronta:
@@ -276,6 +299,8 @@ def aggiungi_ponte(imp: Impostazioni, reg: dict, nome: str, chiave: str, impront
         p.update({"chiave": chiave, "impronta": impronta, "aggiornato": ora})
     passo("2/5  Utente del gateway sul server (SSH, solo tunnel)")
     prepara_ponti(imp, reg, [nome])
+    if ascolto:
+        prepara_convertitore()
     passo("3/5  Caddy")
     configura_caddy(imp, reg)
     passo("4/5  Authentik (solo amministratori)")
@@ -286,6 +311,8 @@ def aggiungi_ponte(imp: Impostazioni, reg: dict, nome: str, chiave: str, impront
         prepara_configurazione(imp, reg, nome, installa, da)
     salva_registro(reg)
     scrivi_sito(imp, reg)
+    if ascolto:
+        avvia_convertitore(nome, reg["ponti"][nome])
     pubblica_registrazioni(imp, reg, [nome])
 
 
@@ -299,6 +326,8 @@ def rimuovi_ponte(imp: Impostazioni, reg: dict, nome: str) -> None:
     togli(file_configurazione(nome))                     # certificato e canale non piu' consegnabili
     togli(file_certificato_ponte(nome))
     togli(P(f"{AVANZAMENTO_DIR}/{nome}.json"))
+    if p.get("ascolto"):
+        togli_convertitore(nome)
     chiudi_sessioni(utente)
     try:
         pwd.getpwnam(utente)

@@ -62,6 +62,14 @@ b64 = lambda nome: base64.b64encode(open(os.path.join(QUI, "server", "pagina", n
 rete = (rete.replace('VERSIONE = "@@VERSIONE@@"', f'VERSIONE = "{versione}"')
             .replace('PAGINA_B64 = "@@PAGINA_B64@@"', f'PAGINA_B64 = "{b64("index.html")}"')
             .replace('ICONA_B64 = "@@ICONA_B64@@"', f'ICONA_B64 = "{b64("icona.svg")}"'))
+import gzip
+rete = rete.replace('PONTE_GZ_B64 = "@@PONTE_GZ_B64@@"',
+                    f'PONTE_GZ_B64 = "{base64.b64encode(gzip.compress(py.encode("utf-8"), 9, mtime=0)).decode()}"')
+# il convertitore del server usa le stesse librerie del Raspberry: le versioni devono essere scritte uguali
+for nome_sh, nome_py in (("MESHTASTIC_VER", "CONV_MESHTASTIC"), ("TAK_SDK_VER", "CONV_TAK_SDK"),
+                         ("TAK_SDK_FILE", "CONV_TAK_SDK_FILE"), ("TAK_SDK_SHA256", "CONV_TAK_SDK_SHA256")):
+    sh = re.search(rf"^{nome_sh}=(\S+)", leggi("installa.sh.in"), re.M).group(1)
+    assert re.search(rf'^{nome_py} = "{re.escape(sh)}"$', rete, re.M), (nome_sh, sh)
 assert "@@" not in rete and "\nFINE_RETE_PY\n" not in rete
 salva("rete-meshtastic.sh",
       leggi("server", "rete.sh.in").replace("@@VERSIONE@@", versione).replace("@@RETE_PY@@", rete.rstrip("\n")))

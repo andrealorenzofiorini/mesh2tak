@@ -371,7 +371,12 @@ function disegnaPonte(p) {
   const azione = el("div", "azione");
   const b = el("button", "bottone", "Gestisci la radio");
   b.type = "button";
-  if (!d) {
+  if (p.ascolto) {
+    // dalla 1.23.0: il gateway lavora per un altro server e qui manda solo una copia dei pacchetti
+    azione.append(el("small", null, "In ascolto: questo gateway lavora per un altro server. Qui arrivano solo i " +
+                                    "pacchetti che riceve dalla radio, e li converte questo server. Da qui non si " +
+                                    "comanda né il gateway né la radio."));
+  } else if (!d) {
     b.disabled = true;
     azione.append(b, el("small", null, "Si apre quando il gateway è raggiungibile"));
   } else if (!d.gestione || !d.gestione.pagina) {
@@ -393,6 +398,11 @@ function disegnaPonte(p) {
   if (d && d.id_nodo && iconeAttive()) azione.append(bottoneIcona(d.id_nodo, "gateway " + p.nome, true));
   capo.append(azione);
   if (v.spiega) capo.append(el("p", "spiega", v.spiega));
+  if (d && d.inoltro && Array.isArray(d.inoltro.server) && d.inoltro.server.length) {
+    // dalla 1.23.0: gli altri server a cui il gateway manda una copia dei pacchetti (in ascolto, non lo comandano)
+    capo.append(el("p", "spiega", "Manda una copia dei pacchetti anche a: " + d.inoltro.server.map((x) =>
+      String(x.rete || "").replace(/^https:\/\//, "") + (x.collegato ? " (collegato)" : " (non collegato)")).join(", ") + "."));
+  }
   if (v.riprova && gestione) {
     const r = el("button", "bottone secondario piccolo riprova", "Riprova l'installazione");
     r.type = "button";
@@ -453,6 +463,8 @@ function disegnaRichiesta(r) {
   chi.append(el("h3", null, r.nome));
   chi.append(el("p", "da", "Raspberry " + (r.macchina || "?") + ", dall'indirizzo " + (r.ip || "?") + ", " +
                             giornoOra(r.arrivata) + (r.versione ? " (mesh2tak " + r.versione + ")" : "")));
+  if (r.ascolto) chi.append(el("p", "da", "Chiede solo di essere ascoltato: lavora per un altro server e qui manderà " +
+                                          "una copia dei pacchetti che riceve dalla radio, convertiti da questo server."));
   if (r.sostituisce) chi.append(el("p", "avviso", "C'è già un gateway " + r.nome + " nella rete: un altro Raspberry, o questo reinstallato. " +
                                                   "Sostituendo, questo Raspberry prende il suo posto e quello vecchio non entra più."));
   if (r.stesso_nome) chi.append(el("p", "avviso", "C'è un'altra richiesta con lo stesso nome: approva solo quella con il codice giusto."));

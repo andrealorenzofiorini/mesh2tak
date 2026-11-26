@@ -223,7 +223,9 @@ def pagine_dello_stack(imp, reg: dict, con: bool = True) -> None:
         ok("Caddy: lo gestisce lo stack takit (ingresso), niente da cambiare qui")
         return
     file = P(imp.piattaforma["pagine"])
-    nuove = [{"nome": n, "porta": p["porta"]} for n, p in sorted(reg["ponti"].items())] if con else []
+    # (un gateway in ascolto, dalla 1.23.0, non ha una pagina sua da pubblicare)
+    nuove = [{"nome": n, "porta": p["porta"]} for n, p in sorted(reg["ponti"].items())
+             if not p.get("ascolto")] if con else []
     try:
         with open(file, encoding="utf-8") as f:
             prima = json.load(f).get("pagine")

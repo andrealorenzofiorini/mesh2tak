@@ -115,11 +115,13 @@ def installa_rete(imp: Impostazioni, reg: dict, ignora_dns: bool) -> None:
     """La pagina della rete con tutto quello che serve, anche senza ponti."""
     reg["dominio"] = imp.dominio
     passo(f"1/6  Indirizzo della pagina: {imp.url()}")
-    controlla_dns(imp, [imp.host()] + [imp.host(n) for n in sorted(reg["ponti"])], ignora_dns)
+    controlla_dns(imp, [imp.host()] + [imp.host(n) for n, p in sorted(reg["ponti"].items())
+                                       if not p.get("ascolto")], ignora_dns)
     passo("2/6  Utenti dei gateway (SSH, solo tunnel)")
     prepara_ponti(imp, reg, sorted(reg["ponti"]))
     passo("3/6  Servizio della pagina (senza privilegi)")
     installa_servizio_web()
+    aggiorna_convertitori(reg)        # dalla 1.23.0: solo se c'e' un gateway in ascolto
     passo("4/6  Caddy")
     configura_caddy(imp, reg)
     passo("5/6  Authentik (solo amministratori)")
@@ -289,6 +291,7 @@ def cmd_disinstalla(a) -> int:
         conferma(f"Tolgo la pagina {imp.url()}, i {len(reg['ponti'])} gateway registrati e le loro voci in Caddy, "
                  "Authentik e sshd.", "disinstalla", a.si)
         passo("1/5  Servizio della pagina")
+        togli_convertitori(reg)       # dalla 1.23.0: i servizi dei gateway in ascolto, se ce ne sono
         togli_servizio_web()
         ok("servizio della pagina tolto")
         passo("2/5  Authentik")
@@ -537,6 +540,8 @@ def leggi_lavoro(percorso: str) -> Optional[dict]:
                 lavoro["installa"] = leggi_installa(dati.get("installa"))
                 if lavoro["installa"] is None:
                     return None
+            if dati.get("ascolto") is True:
+                lavoro["ascolto"] = True
     except Errore:
         return None
     richiesta = str(dati.get("richiesta") or "")
@@ -744,7 +749,7 @@ def cmd_lavora(a) -> int:
                     if lavoro["azione"] == "aggiungi":
                         aggiungi_ponte(imp, reg, lavoro["nome"], lavoro["chiave"], lavoro["impronta"],
                                        cambio_chiave=lavoro["sostituisci"], installa=lavoro.get("installa"),
-                                       da=lavoro["da"])
+                                       da=lavoro["da"], ascolto=lavoro.get("ascolto") is True)
                     elif lavoro["azione"] == "aggiorna-ponti":
                         chiedi_aggiornamento_ponti(imp, reg, lavoro)
                     elif lavoro["azione"] == "impostazioni-nuovi":

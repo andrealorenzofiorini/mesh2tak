@@ -122,7 +122,7 @@ class Servizio:
     def accoda(self, azione: str, nome: str, da: str, chiave: str = "", richiesta: Optional[str] = None,
                sostituisci: bool = False, versione: Optional[str] = None, installa: Optional[dict] = None,
                impostazioni: Optional[dict] = None, cosa: Optional[str] = None, valori: Optional[dict] = None,
-               reimposta: bool = False) -> str:
+               reimposta: bool = False, ascolto: bool = False) -> str:
         """Scrive il lavoro in tmp e lo sposta in coda gia' completo: il passo dei lavori parte appena la
         cartella non e' vuota e non deve mai trovare un file a meta'."""
         lavoro = secrets.token_hex(8)
@@ -140,6 +140,8 @@ class Servizio:
             dati["valori"] = valori
         if reimposta:
             dati["reimposta"] = True                 # aggiornamento con la radio come all'installazione
+        if ascolto:
+            dati["ascolto"] = True                   # dalla 1.23.0: gateway in ascolto, converte questo server
         provvisorio = P(f"{TMP_DIR}/{lavoro}.json")
         with open(os.open(provvisorio, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
             json.dump(dati, f, ensure_ascii=False)
@@ -473,6 +475,10 @@ class Servizio:
                      ip=ip, controllo=controllo, ultima=int(ora))
             r.setdefault("arrivata", int(ora))
             r.setdefault("stato", "attesa")
+            if dati.get("inoltro") is True:
+                r["ascolto"] = True       # dalla 1.23.0: lavora per un altro server, qui manda solo i pacchetti
+            else:
+                r.pop("ascolto", None)
             invito = None
             if nuovo is not None:
                 r["nuovo"] = {"modello": nuovo["modello"], "radio_usb": nuovo["radio_usb"]}
@@ -519,7 +525,7 @@ class Servizio:
             v = {k: r.get(k) for k in ("id", "nome", "macchina", "versione", "ip", "controllo", "arrivata", "ultima",
                                        "stato", "errore", "dettagli", "da", "nuovo", "installa")}
             v.update(stesso_nome=nomi.count(r.get("nome")) > 1, sostituisce=r.get("nome") in ponti,
-                     fermo=bool(r.get("fermo")), invito=bool(r.get("invito")))
+                     fermo=bool(r.get("fermo")), invito=bool(r.get("invito")), ascolto=r.get("ascolto") is True)
             richieste.append(v)
         installazioni = {}
         for n in ponti:
@@ -555,8 +561,10 @@ class Servizio:
         if sostituisci and not sostituisci_ok:
             return 409, {"errore": f"c'e' gia' un gateway '{r['nome']}' nella rete: ricarica la pagina e scegli "
                                    "'Sostituisci' se questo Raspberry deve prenderne il posto"}
+        if r.get("ascolto") and installa is not None:
+            return 400, {"errore": "questo Raspberry chiede solo di essere ascoltato: approvalo senza installazione"}
         lavoro = self.accoda("aggiungi", r["nome"], utente, r["chiave"], r["id"], sostituisci=sostituisci,
-                             installa=installa)
+                             installa=installa, ascolto=r.get("ascolto") is True)
         r.update(stato="in_corso", lavoro=lavoro, approvata=int(time.time()), da=utente, errore=None, dettagli=None)
         if installa is not None:
             r["installa"] = installa

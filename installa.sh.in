@@ -29,6 +29,10 @@
 #  Opzione: --accesso-esterno  gestione del nodo e stato del gateway anche da internet, dalla pagina della
 #           rete Meshtastic sul server: il gateway chiede da solo di entrare, alla fine l'installatore mostra
 #           il codice da confermare su quella pagina; --accesso-esterno=no lo spegne
+#  Opzione: --inoltro=https://rete.altrodominio.it  (dalla 1.23.0, con --accesso-esterno gia' attivo) il gateway
+#           lavora come sempre e in piu' manda una copia dei pacchetti ricevuti dalla radio a un altro server,
+#           che li converte per il suo TAK Server e ascolta soltanto; piu' server separati da virgole (al
+#           massimo 4); --inoltro=no lo spegne. La scelta resta agli aggiornamenti
 #  Opzione: --aggiorna-meshtasticd  aggiorna meshtasticd (bloccato alla versione installata: gli
 #           aggiornamenti automatici non lo toccano) e lo blocca di nuovo
 #  Dopo:    sudo mesh2tak-scorta  prepara una microSD di scorta (in un lettore USB), copia di questa
@@ -138,7 +142,7 @@ scrivi_se_cambia() {  # $1 = file, contenuto da stdin; esito 0 se il file e' cam
 }
 
 # ---------------------------------------------------------------- argomenti
-PACCHETTO=""; SCHEDA="${MESH2TAK_SCHEDA:-}"; RIMUOVI=0; AGGIORNA_MESHTASTICD=0; CHIEDI_CANALE=0; CHIEDI_ACCESSO=0; NOME_ACCESSO_DATO=""
+PACCHETTO=""; SCHEDA="${MESH2TAK_SCHEDA:-}"; RIMUOVI=0; AGGIORNA_MESHTASTICD=0; CHIEDI_CANALE=0; CHIEDI_ACCESSO=0; NOME_ACCESSO_DATO=""; INOLTRO_DATO=""
 CANALE_PUBBLICO_DATO=""; SOLO_RADIO=0; PRESET_DATO="${MESH2TAK_PRESET:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -149,6 +153,7 @@ while [ $# -gt 0 ]; do
     --canale-pubblico) CANALE_PUBBLICO_DATO=longfast ;;
     --canale-pubblico=*) CANALE_PUBBLICO_DATO="${1#--canale-pubblico=}"; CANALE_PUBBLICO_DATO="${CANALE_PUBBLICO_DATO:-longfast}" ;;
     --accesso-esterno) CHIEDI_ACCESSO=1 ;;
+    --inoltro=*) INOLTRO_DATO="${1#--inoltro=}"; INOLTRO_DATO="${INOLTRO_DATO:-no}" ;;
     --accesso-esterno=*) CHIEDI_ACCESSO=1; NOME_ACCESSO_DATO="${1#--accesso-esterno=}" ;;
     --scheda) SCHEDA="${2:-}"; shift ;;
     --scheda=*) SCHEDA="${1#--scheda=}" ;;
@@ -298,6 +303,7 @@ trap alla_fine EXIT
 HOST=""; PORTA=8089; CA_RIGA=""; POSIZIONE=""; SCHEDA_SALVATA=""; CERTIFICATO_OK=0; CANALE_SQUADRA=""
 SECONDARIO=""; SECONDARIO_DATO=0; NOMI_NUOVI=0       # SECONDARIO*: fino alla 1.11.0, letti e non piu' usati
 ACCESSO_NOME=""; ACCESSO_RETE=""
+INOLTRO_RETI=""                                       # dalla 1.23.0: altri server a cui va una copia dei pacchetti
 # dalla 1.13.0: RADIO_PREPARATA=1 dopo che la radio e' stata preparata tutta una volta; RADIO_DA_FARE = parti da
 # sistemare una volta sola al prossimo passo 7 (es. il nome nuovo della 1.12.0), anche se l'installazione si interrompe
 RADIO_PREPARATA=""; RADIO_DA_FARE=""
@@ -344,6 +350,7 @@ salva_stato() {
     printf 'NOME_NODO=%q\nNOME_BREVE=%q\nNOME_NODO_AUTOMATICO=%q\n' "$NOME_NODO" "$NOME_BREVE" "$NOME_NODO_AUTOMATICO"
     printf 'RADIO_PREPARATA=%q\nRADIO_DA_FARE=%q\n' "$RADIO_PREPARATA" "$RADIO_DA_FARE"
     printf 'PRESET_RETE=%q\n' "$PRESET_RETE"
+    printf 'INOLTRO_RETI=%q\n' "$INOLTRO_RETI"
   } > "$STATO"
   chmod 600 "$STATO"
 }
@@ -381,6 +388,19 @@ if [ -n "$SCHEDA_SALVATA" ] && [ "$SCHEDA" != "$SCHEDA_SALVATA" ] && [ "$RADIO_P
 fi
 if [ -n "${MESH2TAK_REIMPOSTA_RADIO:-}" ] && [ "$RADIO_PREPARATA" = 1 ]; then
   RADIO_PREPARATA=0; CAMBIO_STATO=1          # chiesto con l'aggiornamento dalla pagina della rete
+fi
+if [ -n "${INOLTRO_DATO:-}" ]; then
+  if [ "$INOLTRO_DATO" = no ]; then
+    INOLTRO_RETI=""
+  else
+    INOLTRO_DATO=$(printf '%s' "$INOLTRO_DATO" | tr -d ' ' | sed 's#/*,#,#g; s#/*$##')
+    printf '%s' "$INOLTRO_DATO" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?(,https://[A-Za-z0-9.-]+(:[0-9]+)?){0,3}$' \
+      || fallisci "Indirizzo non valido per --inoltro: serve la pagina della rete dell'altro server, es. --inoltro=https://rete.altrodominio.it (al massimo 4, separati da virgole)."
+    [ -n "$ACCESSO_NOME" ] || [ "${CHIEDI_ACCESSO:-0}" = 1 ] \
+      || fallisci "Per --inoltro il gateway deve avere un nome nella rete: aggiungi --accesso-esterno."
+    INOLTRO_RETI="$INOLTRO_DATO"
+  fi
+  CAMBIO_STATO=1
 fi
 [ "$CAMBIO_STATO" = 1 ] && [ -f "$STATO" ] && salva_stato
 
@@ -1160,6 +1180,16 @@ nome = $ACCESSO_NOME
 rete = $ACCESSO_RETE
 chiave = $ACCESSO_DIR/chiave
 EOF
+  if [ -n "$INOLTRO_RETI" ]; then
+    cat >> "$CONF" <<EOF
+
+[inoltro]
+# Una copia dei pacchetti ricevuti dalla radio anche a questi server, che li convertono per il loro TAK Server.
+# Ascoltano soltanto: da li' non si comanda ne' il gateway ne' la radio. Il lavoro di sempre non cambia.
+# Si cambia con:  sudo bash installa-ponte-meshtastic.sh --inoltro=https://...   (--inoltro=no lo spegne)
+reti = $INOLTRO_RETI
+EOF
+  fi
 fi
 chmod 644 "$CONF"
 

@@ -379,8 +379,10 @@ def passo(sv, monkeypatch):
     monkeypatch.setattr(rete, "carica_registro", lambda: {"ponti": {}, "authentik": {"ponti": {}}})
     monkeypatch.setattr(rete, "registra", lambda t: chiamate.append(("registro", t)))
 
-    def aggiungi(imp, reg, nome, chiave_, impronta_, ignora_dns=False, cambio_chiave=True, installa=None, da=""):
+    def aggiungi(imp, reg, nome, chiave_, impronta_, ignora_dns=False, cambio_chiave=True, installa=None, da="", ascolto=False):
         chiamate.append(("aggiungi", nome, chiave_, impronta_, cambio_chiave))
+        if ascolto:
+            chiamate.append(("ascolto", nome))
         if installa is not None:
             chiamate.append(("installa", nome, installa, da))
         print("1/5  Indirizzi ...")

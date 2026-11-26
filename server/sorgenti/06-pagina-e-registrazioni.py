@@ -17,8 +17,9 @@ def scrivi_sito(imp: Impostazioni, reg: dict) -> None:
     scrivi(P(SITO_DIR + "/index.html"), risorsa("index.html", PAGINA_B64).decode("utf-8"))
     scrivi(P(SITO_DIR + "/icona.svg"), risorsa("icona.svg", ICONA_B64).decode("utf-8"))
     # "indirizzo": la gestione del nodo di ogni gateway da internet; con lo stack takit non c'e' (dalla 1.21.0)
-    ponti = [{"nome": n, "indirizzo": imp.url(n) if imp.pagine_dei_gateway else "", "stato": f"stato/{n}.json",
-              "aggiunto": p.get("aggiunto", "")} for n, p in sorted(reg["ponti"].items())]
+    ponti = [dict({"nome": n, "indirizzo": imp.url(n) if imp.pagine_dei_gateway and not p.get("ascolto") else "",
+                   "stato": f"stato/{n}.json", "aggiunto": p.get("aggiunto", "")},
+                  **({"ascolto": True} if p.get("ascolto") else {})) for n, p in sorted(reg["ponti"].items())]
     sito = {"formato": 1, "dominio": imp.dominio, "versione": VERSIONE, "piattaforma": imp.tipo, "ponti": ponti}
     if imp.tipo == TAKIT_STACK:
         sito["tak"] = imp.tak()       # il TAK Server dello stack: la pagina lo propone per i gateway nuovi
@@ -108,9 +109,11 @@ def porta_console(imp: Impostazioni) -> int:
 
 def scrivi_registrazione(imp: Impostazioni, nome: str, p: dict, porta_sshd: int, chiavi: List[str]) -> None:
     # anche la chiave del Raspberry: il nome del file e' la sua impronta, quindi la conosce gia' chi lo trova
-    dati = {"formato": 1, "nome": nome, "utente": utente_ponte(nome), "porta": p["porta"],
+    dati = {"formato": 1, "nome": nome, "utente": utente_ponte(nome), "porta": porta_tunnel(p),
             "ssh_host": imp.host(), "ssh_porta": porta_sshd, "chiavi_host": chiavi, "indirizzo": imp.url(nome),
             "chiave": p["chiave"]}
+    if p.get("ascolto"):
+        dati["inoltro"] = True     # dalla 1.23.0: il tunnel porta i pacchetti, non la pagina del gateway
     agg = p.get("aggiorna")
     if isinstance(agg, dict) and RE_VERSIONE_RILASCIO.match(str(agg.get("versione", ""))):
         # dalla 1.8.0: il Raspberry vede la richiesta e scarica quella versione da GitHub (mai da qui)
