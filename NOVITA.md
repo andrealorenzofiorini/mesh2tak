@@ -3,6 +3,15 @@
 Ogni versione ha qui la sua sezione: quando cambia la versione in `mesh2tak.py`, GitHub costruisce i file e
 pubblica la release con queste righe, che la pagina della rete mostra prima di aggiornare.
 
+## 1.24.0
+
+- **Wi-Fi del gateway**: se il Raspberry resta senza rete per qualche minuto (né cavo né un Wi-Fi che conosce), apre un suo Wi-Fi, «Gateway-NOME». Ci si collega con il telefono e si apre una pagina con le reti viste dal Raspberry: si sceglie la rete, si scrive la password, e il gateway si collega. Serve per portare un gateway in un posto nuovo senza cavo, schermo o tastiera.
+- Nome e password di quel Wi-Fi li dice l'installatore alla fine e, dopo, `sudo mesh2tak-wifi` sul Raspberry: conviene scriverli su un'etichetta. La password è diversa per ogni gateway.
+- Mentre il gateway prova la rete scelta il suo Wi-Fi si spegne (il Raspberry ha una radio Wi-Fi sola): se entro due minuti non ricompare, ha funzionato. Se ricompare, la pagina dice perché (password sbagliata, rete non trovata) e la rete non viene salvata.
+- Con il suo Wi-Fi aperto e nessuno collegato, ogni cinque minuti il gateway lo chiude un momento e riprova le reti che conosce: un router rimasto spento viene ritrovato da solo. Appena torna il cavo o una rete, il Wi-Fi del gateway si chiude.
+- Da quella pagina si sceglie solo il Wi-Fi: niente certificato, canale o radio. Chi è a portata e conosce la password può però cambiare la rete del gateway: per spegnere la funzione, `sudo bash installa-ponte-meshtastic.sh --wifi-gateway=no`.
+- Funziona con Raspberry Pi OS recente (rete gestita da NetworkManager) e un Raspberry con il Wi-Fi; altrimenti l'installatore lo dice e non installa niente. Sul server non cambia niente.
+
 ## 1.23.0
 
 - Un gateway può mandare una copia di quello che riceve dalla radio anche ad **altri server** (al massimo 4), oltre al lavoro di sempre con il suo TAK Server. La funzione nasce spenta: finché non la accendi non cambia niente.

@@ -33,6 +33,9 @@
 #           lavora come sempre e in piu' manda una copia dei pacchetti ricevuti dalla radio a un altro server,
 #           che li converte per il suo TAK Server e ascolta soltanto; piu' server separati da virgole (al
 #           massimo 4); --inoltro=no lo spegne. La scelta resta agli aggiornamenti
+#  Opzione: --wifi-gateway=no  (dalla 1.24.0) spegne il Wi-Fi del gateway: di serie, se il Raspberry resta senza
+#           rete per qualche minuto, apre un suo Wi-Fi con una pagina da cui scegliere a quale Wi-Fi collegarlo
+#           (nome e password: sudo mesh2tak-wifi); --wifi-gateway=si lo riaccende. La scelta resta agli aggiornamenti
 #  Opzione: --aggiorna-meshtasticd  aggiorna meshtasticd (bloccato alla versione installata: gli
 #           aggiornamenti automatici non lo toccano) e lo blocca di nuovo
 #  Dopo:    sudo mesh2tak-scorta  prepara una microSD di scorta (in un lettore USB), copia di questa
@@ -80,6 +83,10 @@ AVAHI_APP=/etc/avahi/services/mesh2tak-meshtastic.service   # l'app Meshtastic t
 ACCESSO_DIR="$CONF_DIR/accesso"            # chiave SSH del gateway per il tunnel verso il server della rete
 AIUTO_ACCESSO=/usr/local/bin/mesh2tak-accesso
 AIUTO_SCORTA=/usr/local/bin/mesh2tak-scorta
+AIUTO_WIFI=/usr/local/bin/mesh2tak-wifi            # dalla 1.24.0: senza rete il Raspberry apre un suo Wi-Fi
+UNITA_WIFI=/etc/systemd/system/mesh2tak-wifi.service
+WIFI_CONF="$CONF_DIR/wifi-configura.conf"          # nome e password di quel Wi-Fi (solo root)
+NM_DIR="${MESH2TAK_NM_DIR:-/etc/NetworkManager}"
 UNITA_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.service
 TIMER_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.timer
 SVEGLIA_AGGIORNA=/etc/systemd/system/mesh2tak-aggiorna.path   # dalla 1.13.0: comandi dalla pagina subito, non dopo 2 minuti
@@ -133,6 +140,19 @@ installa_pacchetti() {
     || fallisci_log "apt-get non riesce a installare: $* (il Raspberry e' collegato a internet?)"
 }
 
+togli_wifi_gateway() {
+  # spegne e toglie il Wi-Fi del gateway; le reti scelte dalla pagina restano (sono le reti del Raspberry)
+  if [ -f "$UNITA_WIFI" ]; then
+    systemctl disable --now mesh2tak-wifi >/dev/null 2>&1 || true
+    rm -f "$UNITA_WIFI"; systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+  if [ -f "$NM_DIR/system-connections/mesh2tak-configura.nmconnection" ]; then
+    nmcli connection delete id mesh2tak-configura >/dev/null 2>&1 || true
+    rm -f "$NM_DIR/system-connections/mesh2tak-configura.nmconnection"
+  fi
+  rm -f "$NM_DIR/dnsmasq-shared.d/mesh2tak-configura.conf" "$WIFI_CONF" "$AIUTO_WIFI"
+  rm -rf /var/lib/mesh2tak-wifi
+}
 installato() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'; }
 scrivi_se_cambia() {  # $1 = file, contenuto da stdin; esito 0 se il file e' cambiato
   local nuovo; nuovo=$(cat)
@@ -142,7 +162,7 @@ scrivi_se_cambia() {  # $1 = file, contenuto da stdin; esito 0 se il file e' cam
 }
 
 # ---------------------------------------------------------------- argomenti
-PACCHETTO=""; SCHEDA="${MESH2TAK_SCHEDA:-}"; RIMUOVI=0; AGGIORNA_MESHTASTICD=0; CHIEDI_CANALE=0; CHIEDI_ACCESSO=0; NOME_ACCESSO_DATO=""; INOLTRO_DATO=""
+PACCHETTO=""; SCHEDA="${MESH2TAK_SCHEDA:-}"; RIMUOVI=0; AGGIORNA_MESHTASTICD=0; CHIEDI_CANALE=0; CHIEDI_ACCESSO=0; NOME_ACCESSO_DATO=""; INOLTRO_DATO=""; WIFI_GATEWAY_DATO=""
 CANALE_PUBBLICO_DATO=""; SOLO_RADIO=0; PRESET_DATO="${MESH2TAK_PRESET:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -154,6 +174,7 @@ while [ $# -gt 0 ]; do
     --canale-pubblico=*) CANALE_PUBBLICO_DATO="${1#--canale-pubblico=}"; CANALE_PUBBLICO_DATO="${CANALE_PUBBLICO_DATO:-longfast}" ;;
     --accesso-esterno) CHIEDI_ACCESSO=1 ;;
     --inoltro=*) INOLTRO_DATO="${1#--inoltro=}"; INOLTRO_DATO="${INOLTRO_DATO:-no}" ;;
+    --wifi-gateway=si|--wifi-gateway=no) WIFI_GATEWAY_DATO="${1#--wifi-gateway=}" ;;
     --accesso-esterno=*) CHIEDI_ACCESSO=1; NOME_ACCESSO_DATO="${1#--accesso-esterno=}" ;;
     --scheda) SCHEDA="${2:-}"; shift ;;
     --scheda=*) SCHEDA="${1#--scheda=}" ;;
@@ -206,6 +227,7 @@ if [ "$RIMUOVI" = 1 ]; then
   rm -f "$AGGIORNAMENTI_CONF"
   systemctl disable --now mesh2tak-aggiorna.timer mesh2tak-aggiorna.path >/dev/null 2>&1 || true
   rm -f "$UNITA_AGGIORNA" "$TIMER_AGGIORNA" "$SVEGLIA_AGGIORNA"; rm -rf "$STATO_AGGIORNA"
+  togli_wifi_gateway
   systemctl daemon-reload >/dev/null 2>&1 || true
   if installato meshtasticd; then apt-mark unhold meshtasticd >/dev/null 2>&1 || true; fi
   ok "tolte anche le protezioni del Raspberry (riavvio automatico, registri, aggiornamenti automatici)"
@@ -304,6 +326,7 @@ HOST=""; PORTA=8089; CA_RIGA=""; POSIZIONE=""; SCHEDA_SALVATA=""; CERTIFICATO_OK
 SECONDARIO=""; SECONDARIO_DATO=0; NOMI_NUOVI=0       # SECONDARIO*: fino alla 1.11.0, letti e non piu' usati
 ACCESSO_NOME=""; ACCESSO_RETE=""
 INOLTRO_RETI=""                                       # dalla 1.23.0: altri server a cui va una copia dei pacchetti
+WIFI_GATEWAY="si"                                     # dalla 1.24.0: senza rete apre un suo Wi-Fi per scegliere la rete
 # dalla 1.13.0: RADIO_PREPARATA=1 dopo che la radio e' stata preparata tutta una volta; RADIO_DA_FARE = parti da
 # sistemare una volta sola al prossimo passo 7 (es. il nome nuovo della 1.12.0), anche se l'installazione si interrompe
 RADIO_PREPARATA=""; RADIO_DA_FARE=""
@@ -351,6 +374,7 @@ salva_stato() {
     printf 'RADIO_PREPARATA=%q\nRADIO_DA_FARE=%q\n' "$RADIO_PREPARATA" "$RADIO_DA_FARE"
     printf 'PRESET_RETE=%q\n' "$PRESET_RETE"
     printf 'INOLTRO_RETI=%q\n' "$INOLTRO_RETI"
+    printf 'WIFI_GATEWAY=%q\n' "$WIFI_GATEWAY"
   } > "$STATO"
   chmod 600 "$STATO"
 }
@@ -388,6 +412,9 @@ if [ -n "$SCHEDA_SALVATA" ] && [ "$SCHEDA" != "$SCHEDA_SALVATA" ] && [ "$RADIO_P
 fi
 if [ -n "${MESH2TAK_REIMPOSTA_RADIO:-}" ] && [ "$RADIO_PREPARATA" = 1 ]; then
   RADIO_PREPARATA=0; CAMBIO_STATO=1          # chiesto con l'aggiornamento dalla pagina della rete
+fi
+if [ -n "${WIFI_GATEWAY_DATO:-}" ] && [ "$WIFI_GATEWAY_DATO" != "$WIFI_GATEWAY" ]; then
+  WIFI_GATEWAY="$WIFI_GATEWAY_DATO"; CAMBIO_STATO=1
 fi
 if [ -n "${INOLTRO_DATO:-}" ]; then
   if [ "$INOLTRO_DATO" = no ]; then
@@ -948,6 +975,15 @@ cat > "$DIR/mesh2tak.py" <<'FINE_MESH2TAK_PY'
 FINE_MESH2TAK_PY
 chmod 755 "$DIR/mesh2tak.py"
 
+# Wi-Fi del gateway (dalla 1.24.0): programma di sistema (solo librerie standard di Python), lanciato da root
+cat > "$DIR/wifi.py" <<'FINE_WIFI_PY'
+@@WIFI_PY@@
+FINE_WIFI_PY
+chmod 755 "$DIR/wifi.py"
+printf '%s\n' '#!/bin/sh' '# Wi-Fi del gateway (mesh2tak): nome e password del Wi-Fi che il Raspberry apre quando resta senza rete' \
+  "exec python3 -I $DIR/wifi.py \"\$@\"" > "$AIUTO_WIFI"
+chmod 755 "$AIUTO_WIFI"
+
 # microSD di scorta: programma di sistema (solo librerie standard di Python), lanciato da root
 cat > "$DIR/scorta.py" <<'FINE_SCORTA_PY'
 @@SCORTA_PY@@
@@ -1385,6 +1421,54 @@ if installato meshtasticd; then
   fi
 fi
 
+# Wi-Fi del gateway (dalla 1.24.0): se il Raspberry resta senza rete apre un suo Wi-Fi, con una pagina da cui
+# scegliere a quale Wi-Fi collegarlo. Solo con NetworkManager (Raspberry Pi OS da Bookworm) e una scheda Wi-Fi.
+WIFI_NOME=""; WIFI_PASSWORD=""
+if [ "$WIFI_GATEWAY" != si ]; then
+  togli_wifi_gateway
+  info "Wi-Fi del gateway spento (--wifi-gateway=si lo riaccende)"
+elif ! command -v nmcli >/dev/null 2>&1 || ! systemctl is-active --quiet NetworkManager 2>/dev/null; then
+  togli_wifi_gateway
+  info "Wi-Fi del gateway: non attivo (su questo sistema la rete non e' gestita da NetworkManager)"
+elif ! nmcli -t -f DEVICE,TYPE device 2>/dev/null | grep -q ':wifi$'; then
+  togli_wifi_gateway
+  info "Wi-Fi del gateway: non attivo (questo Raspberry non ha una scheda Wi-Fi)"
+else
+  # il Wi-Fi condiviso di NetworkManager distribuisce gli indirizzi con dnsmasq (solo il programma, nessun servizio)
+  installato dnsmasq-base || installa_pacchetti dnsmasq-base
+  if [ ! -s "$WIFI_CONF" ] || ! grep -Eq '^password=[A-Za-z0-9-]{8,63}$' "$WIFI_CONF"; then
+    WIFI_NOME=$(printf 'Gateway-%s' "${ACCESSO_NOME:-$(hostname 2>/dev/null || echo raspberry)}" | tr -cd 'A-Za-z0-9_-' | cut -c1-32)
+    # 12 caratteri a caso, senza quelli che si confondono (0/o, 1/l/i): si legge e si scrive dal telefono
+    WIFI_PASSWORD=$(python3 -I -c 'import secrets; a = "abcdefghjkmnpqrstuvwxyz23456789"; print("-".join("".join(secrets.choice(a) for _ in range(4)) for _ in range(3)))' 2>/dev/null || true)
+    [ "${#WIFI_PASSWORD}" = 14 ] || fallisci "Non riesco a creare la password del Wi-Fi del gateway."
+    ( umask 077; printf '# Wi-Fi che il Raspberry apre quando resta senza rete (mesh2tak). Dopo una modifica: sudo systemctl restart mesh2tak-wifi\nnome=%s\npassword=%s\n' "$WIFI_NOME" "$WIFI_PASSWORD" > "$WIFI_CONF" )
+  fi
+  chown root:root "$WIFI_CONF" 2>/dev/null || true; chmod 600 "$WIFI_CONF"
+  WIFI_NOME=$(sed -n 's/^nome=//p' "$WIFI_CONF" | head -n1); WIFI_PASSWORD=$(sed -n 's/^password=//p' "$WIFI_CONF" | head -n1)
+  {
+    echo "[Unit]"
+    echo "Description=Gateway Meshtastic: senza rete apre un suo Wi-Fi per scegliere a quale Wi-Fi collegarsi"
+    echo "After=NetworkManager.service"
+    echo "Wants=NetworkManager.service"
+    echo
+    echo "[Service]"
+    echo "ExecStart=/usr/bin/python3 -I $DIR/wifi.py servizio"
+    echo "Restart=always"
+    echo "RestartSec=30"
+    echo
+    echo "[Install]"
+    echo "WantedBy=multi-user.target"
+  } > "$UNITA_WIFI.nuovo"
+  if ! cmp -s "$UNITA_WIFI.nuovo" "$UNITA_WIFI" 2>/dev/null; then
+    mv "$UNITA_WIFI.nuovo" "$UNITA_WIFI"; systemctl daemon-reload >>"$LOG" 2>&1 || true
+  else
+    rm -f "$UNITA_WIFI.nuovo"
+  fi
+  systemctl enable mesh2tak-wifi >>"$LOG" 2>&1 || true
+  systemctl restart mesh2tak-wifi >>"$LOG" 2>&1 || true
+  ok "Wi-Fi del gateway pronto: si apre da solo se il Raspberry resta senza rete per qualche minuto"
+fi
+
 # ---------------------------------------------------------------- fine
 # questo installatore e' quello buono: se un aggiornamento dalla pagina non riparte, si torna a lui
 if [ -f "$SE_STESSO" ] && [ "$SE_STESSO" != "$DIR/installatore.sh" ]; then
@@ -1443,6 +1527,12 @@ if [ -n "$ACCESSO_SEZIONE" ]; then
     info "Adesso il gateway dice: $MESSAGGIO_A"
   fi
   info "Codice, stato e chiave del gateway in seguito:   sudo mesh2tak-accesso"
+fi
+if [ -n "$WIFI_NOME" ]; then
+  echo
+  info "Se il Raspberry resta senza rete apre il Wi-Fi  $WIFI_NOME  (password  $WIFI_PASSWORD ):"
+  info "collegati con il telefono e scegli a quale Wi-Fi collegarlo. Scrivi nome e password su un'etichetta;"
+  info "li rivedi con:  sudo mesh2tak-wifi"
 fi
 info "MicroSD di scorta (lettore USB): sudo mesh2tak-scorta"
 [ -n "$ACCESSO_SEZIONE" ] && info "Aggiornamenti:                  dalla pagina della rete, \"Aggiorna i gateway\""

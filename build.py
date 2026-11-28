@@ -51,11 +51,13 @@ py = leggi("mesh2tak.py")
 versione = re.search(r'^VERSIONE = "([^"]+)"', py, re.M).group(1)
 scorta = leggi("scorta.py").replace("@@VERSIONE@@", versione)
 aggiorna = leggi("aggiorna.py").replace("@@VERSIONE@@", versione)
+wifi = leggi("wifi.py").replace("@@VERSIONE@@", versione)
+assert "\nFINE_WIFI_PY\n" not in wifi and "@@" not in wifi
 assert "\nFINE_MESH2TAK_PY\n" not in py and "\nFINE_SCORTA_PY\n" not in scorta and "@@" not in scorta
 assert "\nFINE_AGGIORNA_PY\n" not in aggiorna and "@@" not in aggiorna
 salva("installa-ponte-meshtastic.sh",
       leggi("installa.sh.in").replace("@@VERSIONE@@", versione).replace("@@MESH2TAK_PY@@", py.rstrip("\n"))
-      .replace("@@SCORTA_PY@@", scorta.rstrip("\n")).replace("@@AGGIORNA_PY@@", aggiorna.rstrip("\n")))
+      .replace("@@SCORTA_PY@@", scorta.rstrip("\n")).replace("@@AGGIORNA_PY@@", aggiorna.rstrip("\n")).replace("@@WIFI_PY@@", wifi.rstrip("\n")))
 
 rete = leggi("server", "rete_meshtastic.py")
 b64 = lambda nome: base64.b64encode(open(os.path.join(QUI, "server", "pagina", nome), "rb").read()).decode()

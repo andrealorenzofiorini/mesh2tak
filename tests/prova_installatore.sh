@@ -77,7 +77,7 @@ vivo() { [ -f $pidf ] && kill -0 "$(cat $pidf)" 2>/dev/null; }
 ferma() { if vivo; then kill "$(cat $pidf)"; sleep 1; fi; rm -f $pidf; }
 case "$cmd" in
   reboot) echo RIAVVIO >> /tmp/stubs-pi/chiamate.log; exit 0 ;;
-  is-active) [ "$unit" = meshtasticd ] && exit 0; [ "$unit" = mesh2tak ] && vivo && exit 0; exit 3 ;;
+  is-active) [ "$unit" = NetworkManager ] && { [ -f /tmp/stubs-pi/networkmanager ]; exit $?; }; [ "$unit" = meshtasticd ] && exit 0; [ "$unit" = mesh2tak ] && vivo && exit 0; exit 3 ;;
   stop) [ "$unit" = mesh2tak ] && ferma; exit 0 ;;
   restart|start)
     if [ "$unit" = mesh2tak ]; then
@@ -93,6 +93,18 @@ case "$cmd" in
   *) exit 0 ;;
 esac
 EOF
+# NetworkManager finto: c'e' solo se la prova lo accende, con o senza scheda Wi-Fi
+cat > "$STUB/nmcli" <<'EOF'
+#!/bin/bash
+echo "nmcli $*" >> /tmp/stubs-pi/chiamate.log
+case "$*" in
+  "-t -f DEVICE,TYPE device") echo "lo:loopback"; echo "eth0:ethernet"; [ -f /tmp/stubs-pi/wifi ] && echo "wlan0:wifi" ;;
+  "-t -f NAME,TYPE,STATE connection show --active") echo "Wired connection 1:802-3-ethernet:activated" ;;
+esac
+exit 0
+EOF
+chmod 755 "$STUB/nmcli"
+export MESH2TAK_NM_DIR="$FINTO/NetworkManager"
 printf '#!/bin/bash\nexit 0\n' > "$STUB/rpi-connect"
 printf '#!/bin/bash\necho "loginctl $*" >> /tmp/stubs-pi/chiamate.log\n' > "$STUB/loginctl"
 chmod 755 "$STUB/rpi-connect" "$STUB/loginctl"
@@ -428,6 +440,30 @@ esegui boot2 /tmp/pi-run3e4.log --inoltro=http://non-cifrato.lan; U3E4=$?
 controlla "un indirizzo non https viene rifiutato e non cambia niente" '[ $U3E4 != 0 ] && grep -q "Indirizzo non valido per --inoltro" /tmp/pi-run3e4.log && grep -qx "reti = https://rete.altro.lan:8443" /etc/mesh2tak/mesh2tak.conf'
 esegui boot2 /tmp/pi-run3e5.log --inoltro=no; U3E5=$?
 controlla "--inoltro=no lo spegne" '[ $U3E5 = 0 ] && ! grep -q "^\[inoltro\]" /etc/mesh2tak/mesh2tak.conf'
+
+echo "== 3e6 Wi-Fi del gateway (1.24.0): senza rete il Raspberry apre un suo Wi-Fi per scegliere la rete"
+controlla "senza NetworkManager non si installa niente" 'grep -q "Wi-Fi del gateway: non attivo (su questo sistema" /tmp/pi-run3e5.log && [ ! -e /etc/systemd/system/mesh2tak-wifi.service ] && [ ! -e /etc/mesh2tak/wifi-configura.conf ]'
+touch "$STUB/networkmanager"
+esegui boot2 /tmp/pi-run3e6.log; U3E6=$?
+controlla "senza scheda Wi-Fi non si installa niente" '[ $U3E6 = 0 ] && grep -q "questo Raspberry non ha una scheda Wi-Fi" /tmp/pi-run3e6.log && [ ! -e /etc/systemd/system/mesh2tak-wifi.service ]'
+touch "$STUB/wifi"; : > "$STUB/chiamate.log"
+esegui boot2 /tmp/pi-run3e7.log; U3E7=$?
+controlla "con il Wi-Fi: nome dal gateway e password a caso, solo root" '[ $U3E7 = 0 ] && grep -qx "nome=Gateway-casa" /etc/mesh2tak/wifi-configura.conf && grep -Eqx "password=[a-hj-km-np-z2-9]{4}-[a-hj-km-np-z2-9]{4}-[a-hj-km-np-z2-9]{4}" /etc/mesh2tak/wifi-configura.conf && [ "$(stat -c %a:%U /etc/mesh2tak/wifi-configura.conf)" = 600:root ]'
+controlla "servizio del Wi-Fi del gateway acceso, da root, senza privilegi in piu' per il gateway" 'grep -qx "ExecStart=/usr/bin/python3 -I /opt/mesh2tak/wifi.py servizio" /etc/systemd/system/mesh2tak-wifi.service && grep -q "systemctl enable mesh2tak-wifi" "$STUB/chiamate.log" && grep -q "systemctl restart mesh2tak-wifi" "$STUB/chiamate.log" && ! runuser -u mesh2tak -- cat /etc/mesh2tak/wifi-configura.conf >/dev/null 2>&1'
+controlla "installato il programma che distribuisce gli indirizzi" 'grep -q "install -y -q dnsmasq-base" "$STUB/chiamate.log"'
+PW_WIFI=$(sed -n "s/^password=//p" /etc/mesh2tak/wifi-configura.conf)
+controlla "nome e password detti alla fine e con sudo mesh2tak-wifi (mai nel registro dell'installazione)" 'grep -q "apre il Wi-Fi  Gateway-casa  (password  $PW_WIFI )" /tmp/pi-run3e7.log && PATH="$STUB:$PATH" mesh2tak-wifi | grep -q "password  $PW_WIFI" && PATH="$STUB:$PATH" mesh2tak-wifi | grep -q "collegato con cavo" && ! grep -q "$PW_WIFI" /var/log/mesh2tak-installazione.log'
+esegui boot2 /tmp/pi-run3e8.log; U3E8=$?
+controlla "a un rilancio la password resta quella" '[ $U3E8 = 0 ] && [ "$(sed -n "s/^password=//p" /etc/mesh2tak/wifi-configura.conf)" = "$PW_WIFI" ]'
+mkdir -p "$FINTO/NetworkManager/system-connections" "$FINTO/NetworkManager/dnsmasq-shared.d"
+echo x > "$FINTO/NetworkManager/system-connections/mesh2tak-configura.nmconnection"; echo x > "$FINTO/NetworkManager/dnsmasq-shared.d/mesh2tak-configura.conf"
+echo x > "$FINTO/NetworkManager/system-connections/mesh2tak-wifi-abc.nmconnection"
+esegui boot2 /tmp/pi-run3e9.log --wifi-gateway=no; U3E9=$?
+controlla "--wifi-gateway=no toglie tutto, ma non le reti scelte dalla pagina" '[ $U3E9 = 0 ] && [ ! -e /etc/systemd/system/mesh2tak-wifi.service ] && [ ! -e /etc/mesh2tak/wifi-configura.conf ] && [ ! -e /usr/local/bin/mesh2tak-wifi ] && [ ! -e "$FINTO/NetworkManager/system-connections/mesh2tak-configura.nmconnection" ] && [ ! -e "$FINTO/NetworkManager/dnsmasq-shared.d/mesh2tak-configura.conf" ] && [ -e "$FINTO/NetworkManager/system-connections/mesh2tak-wifi-abc.nmconnection" ] && grep -q "systemctl disable --now mesh2tak-wifi" "$STUB/chiamate.log"'
+esegui boot2 /tmp/pi-run3e10.log; U3E10=$?
+controlla "spento resta spento agli aggiornamenti" '[ $U3E10 = 0 ] && [ ! -e /etc/systemd/system/mesh2tak-wifi.service ] && grep -q "Wi-Fi del gateway spento" /tmp/pi-run3e10.log'
+esegui boot2 /tmp/pi-run3e11.log --wifi-gateway=si; U3E11=$?
+controlla "--wifi-gateway=si lo riaccende" '[ $U3E11 = 0 ] && [ -e /etc/systemd/system/mesh2tak-wifi.service ] && grep -q "^password=" /etc/mesh2tak/wifi-configura.conf'
 
 echo "== 3d3 aggiornamento chiesto dalla pagina della rete: installatore vero, scaricato da un GitHub finto"
 NUOVA=$(echo "$ORA" | awk -F. '{print $1"."$2+1".0"}'); ROTTA=$(echo "$ORA" | awk -F. '{print $1"."$2+2".0"}')
