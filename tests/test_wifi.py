@@ -195,7 +195,8 @@ def test_senza_rete_apre_il_suo_wifi_e_la_pagina(impianto):
     # il telefono che prova un suo sito viene mandato alla pagina
     codice, _, intestazioni = impianto.chiedi("/generate_204", host="connectivitycheck.gstatic.com")
     assert codice == 302 and intestazioni["Location"] == f"http://10.42.0.1:{impianto.porta}/"
-    assert "aperto il Wi-Fi 'Gateway-Prova'" in impianto.registro() and "abcd-efgh-jk" not in impianto.registro()
+    assert aspetta(lambda: "aperto il Wi-Fi 'Gateway-Prova'" in impianto.registro()), impianto.registro()
+    assert "abcd-efgh-jk" not in impianto.registro()
 
 
 def test_rete_scelta_e_password_giusta(impianto):
@@ -212,7 +213,8 @@ def test_rete_scelta_e_password_giusta(impianto):
     assert stat.S_IMODE(file_rete.stat().st_mode) == 0o600 and "autoconnect=true" in file_rete.read_text()
     assert "psk=segreta;con\\\\barra\n" in file_rete.read_text()        # nel file la barra e' raddoppiata
     assert not (impianto.radice / "etc/NetworkManager/dnsmasq-shared.d/mesh2tak-configura.conf").exists()
-    assert "collegato a 'Casa: sopra'" in impianto.registro() and "segreta" not in impianto.registro()
+    assert aspetta(lambda: "collegato a 'Casa: sopra'" in impianto.registro()), impianto.registro()
+    assert "segreta" not in impianto.registro()
     # resta collegato: il Wi-Fi del gateway non si riapre
     time.sleep(2)
     assert not impianto.aperto()
